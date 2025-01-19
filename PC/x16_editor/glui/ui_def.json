@@ -1,0 +1,2918 @@
+{
+	"_glui_config":
+	{
+		"colors":
+		{
+			"none": [0, 0, 0, 0],
+			"black": [0, 0, 0],
+			"orange": [255, 96, 0],
+			"yellow": [255, 255, 0],
+			"gray": [128, 128, 128],
+			"bright": [192, 192, 192],
+			"white": [255, 255, 255],
+			"back": [16, 16, 16],
+			"btnbg": [32, 32, 32],
+			"column": [248, 248, 248],
+			"row": [0, 0, 0, 8],
+			"info_y": [192, 192, 0],
+			"main_border": [0, 192, 192],
+			"mmap_border": [192, 192, 0],
+			"main_item_s_text": [255, 255, 0],
+			"main_item_u_text": [192, 192, 192],
+			"main_item_s_back": [64, 24, 0],
+			"main_item_u_back": [0, 0, 0],
+			"bb_border": [0, 96, 192],
+			"te_border": [96, 0, 192],
+			"qe_border": [0, 192, 192],
+			"qe_btn_back_s": [48, 48, 48],
+			"qe_btn_back_u": [0, 0, 0],
+			"gfx_border": [192, 192, 0],
+			"btn_back_s": [64, 64, 64],
+			"btn_back_u": [48, 48, 48],
+			"btn_text_s": [192, 192, 192],
+			"btn_text_u": [64, 64, 64],
+			"fs_border": [0, 192, 192]
+		},
+		"fonts":
+		[
+			"tiny",
+			"small",
+			"medium",
+			"huge"
+		],
+		"includes":
+		[
+			"defs.h",
+			"shader.h",
+			"x16g.h",
+			"x16t.h"
+		]
+	},
+	"ui_editor":
+	{
+		"elements":
+		[
+			{
+				"name": "ui_edit_mode",
+				"disabled": true,
+				"x": 512,
+				"y": 384,
+				"width": 192,
+				"height": 64,
+				"align": "center center",
+				"background": "back",
+				"border": {"color": "orange", "size": 2},
+				"text": true,
+				"color": "white"
+			},
+			{
+				"name": "ui_edit_highlight",
+				"disabled": true,
+				"x": 1,
+				"width": 192,
+				"height": 152,
+				"align": "left bot",
+				"background": "back",
+				"border": {"color": "gray", "size": 2},
+				"elements":
+				[
+					{
+						"name": "ui_edit_highlight_title",
+						"align": "center",
+						"color": ["white", "white"],
+						"text": true
+					},
+					{
+						"name": "ui_edit_highlight_textA",
+						"y": 16,
+						"align": "center",
+						"color": ["white", "white"],
+						"text": true
+					},
+					{
+						"name": "ui_edit_highlight_textB",
+						"y": 16,
+						"align": "center",
+						"color": ["white", "white"],
+						"text": true
+					},
+					{
+						"name": "ui_edit_highlight_textC",
+						"y": 16,
+						"align": "center",
+						"color": ["white", "white"],
+						"text": true
+					},
+					{
+						"name": "ui_edit_highlight_textD",
+						"y": 16,
+						"align": "center",
+						"color": ["white", "white"],
+						"text": true
+					},
+					{
+						"name": "ui_edit_highlight_imgA",
+						"y": 65,
+						"width": 64,
+						"height": 64,
+						"align": "center center",
+						"image": true
+					},
+					{
+						"name": "ui_edit_highlight_imgB",
+						"y": 65,
+						"width": 64,
+						"height": 64,
+						"align": "center center",
+						"image": true
+					},
+					{
+						"name": "ui_edit_highlight_imgC",
+						"y": 65,
+						"width": 64,
+						"height": 64,
+						"align": "center center",
+						"image": true
+					},
+					{
+						"name": "ui_edit_highlight_imgD",
+						"y": 65,
+						"width": 64,
+						"height": 64,
+						"align": "center center",
+						"image": true
+					}
+				]
+			},
+			{
+				"name": "ui_edit_gfx",
+				"input": "uin_gfx_input",
+				"disabled": true,
+				"priority": 100,
+				"elements":
+				[
+					{
+						"name": "ui_gfx_palette",
+						"elements":
+						[
+							{
+								"click": "uin_gfx_palette_bright",
+								"x": 512,
+								"y": 96,
+								"width": 512,
+								"height": 512,
+								"align": "center",
+								"image": "&x16_gl_tex[X16G_GLTEX_BRIGHT_COLORS]",
+								"shader": "palette"
+							},
+							{
+								"click": "uin_gfx_palette_import",
+								"x": 512,
+								"y": 640,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import from PNG",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"x": 128,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"text": "desaturate",
+								"font": "medium",
+								"color": "bright",
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_palette_tint_des",
+								"click": "uin_gfx_palette_tint_des",
+								"x": 128,
+								"y": 136,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"x": 128,
+								"y": 176,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"text": "multiply",
+								"font": "medium",
+								"color": "bright",
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_palette_tint_mr",
+								"click": "uin_gfx_palette_tint_mr",
+								"x": 128,
+								"y": 216,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_palette_tint_mg",
+								"click": "uin_gfx_palette_tint_mg",
+								"x": 128,
+								"y": 256,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_palette_tint_mb",
+								"click": "uin_gfx_palette_tint_mb",
+								"x": 128,
+								"y": 296,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"x": 128,
+								"y": 336,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"text": "add",
+								"font": "medium",
+								"color": "bright",
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_palette_tint_ar",
+								"click": "uin_gfx_palette_tint_ar",
+								"x": 128,
+								"y": 376,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_palette_tint_ag",
+								"click": "uin_gfx_palette_tint_ag",
+								"x": 128,
+								"y": 416,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_palette_tint_ab",
+								"click": "uin_gfx_palette_tint_ab",
+								"x": 128,
+								"y": 456,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_gfx_palette_tint",
+								"x": 128,
+								"y": 536,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Apply tint",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"x": 896,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"text": "desaturate",
+								"font": "medium",
+								"color": "bright",
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_palette_dmg_des",
+								"click": "uin_gfx_palette_dmg_des",
+								"x": 896,
+								"y": 136,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"x": 896,
+								"y": 176,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"text": "add",
+								"font": "medium",
+								"color": "bright",
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_palette_dmg_add",
+								"click": "uin_gfx_palette_dmg_add",
+								"x": 896,
+								"y": 216,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"x": 896,
+								"y": 256,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"text": "color",
+								"font": "medium",
+								"color": "bright",
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_palette_dmg_r",
+								"click": "uin_gfx_palette_dmg_r",
+								"x": 896,
+								"y": 296,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_palette_dmg_g",
+								"click": "uin_gfx_palette_dmg_g",
+								"x": 896,
+								"y": 336,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_palette_dmg_b",
+								"click": "uin_gfx_palette_dmg_b",
+								"x": 896,
+								"y": 376,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_gfx_palette_dmg_single",
+								"x": 896,
+								"y": 496,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Generate damage tint",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_palette_dmg_all",
+								"x": 896,
+								"y": 536,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Generate damage all",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_lights",
+						"elements":
+						[
+							{
+								"click": "uin_gfx_light_new",
+								"x": 256,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New light",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_light_rename",
+								"x": 512,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename light",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_light_delete",
+								"x": 768,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete light",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"x": 256,
+								"y": 160,
+								"width": 384,
+								"height": 384,
+								"align": "center",
+								"image": "&x16_gl_tex[X16G_GLTEX_PALETTE]",
+								"coords": [0, 0, 1, 0.0625]
+							},
+							{
+								"x": 768,
+								"y": 160,
+								"width": 384,
+								"height": 384,
+								"align": "center",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_LIGHT]",
+								"shader": "palette"
+							},
+							{
+								"name": "ui_gfx_light_des",
+								"click": "uin_gfx_light_des",
+								"x": 512,
+								"y": 576,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_light_r",
+								"click": "uin_gfx_light_r",
+								"x": 312,
+								"y": 616,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_light_g",
+								"click": "uin_gfx_light_g",
+								"x": 512,
+								"y": 616,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"name": "ui_gfx_light_b",
+								"click": "uin_gfx_light_b",
+								"x": 712,
+								"y": 616,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_remaps",
+						"elements":
+						[
+							{
+								"x": 512,
+								"y": 496,
+								"width": 408,
+								"height": 210,
+								"align": "center",
+								"background": "back",
+								"elements":
+								[
+									{
+										"name": "ui_gfx_remap_table",
+										"x": 8,
+										"y": 8,
+										"width": 392,
+										"height": 164,
+										"background": "white",
+										"elements":
+										[
+											{
+												"x": 0,
+												"width": 60,
+												"height": 162,
+												"text": "first",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 60,
+												"width": 60,
+												"height": 162,
+												"background": "column",
+												"text": "last",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 120,
+												"width": 136,
+												"height": 162,
+												"text": "start",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 256,
+												"width": 136,
+												"height": 162,
+												"background": "column",
+												"text": "stop",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 0,
+												"y": 19,
+												"width": 392,
+												"height": 1,
+												"background": "back"
+											},
+											{
+												"x": 0,
+												"y": 20,
+												"width": 392,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"x": 0,
+												"y": 56,
+												"width": 392,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"x": 0,
+												"y": 92,
+												"width": 392,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"x": 0,
+												"y": 128,
+												"width": 392,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"click": "uin_gfx_remaps_new",
+												"x": 100,
+												"y": 172,
+												"width": 128,
+												"height": 24,
+												"align": "center",
+												"background": ["btnbg", "gray"],
+												"text": "New range",
+												"font": "small",
+												"color": ["bright", "white"],
+												"text align": "center center"
+											},
+											{
+												"click": "uin_gfx_remaps_del",
+												"x": 292,
+												"y": 172,
+												"width": 128,
+												"height": 24,
+												"align": "center",
+												"background": ["btnbg", "gray"],
+												"text": "Delete range",
+												"font": "small",
+												"color": ["bright", "white"],
+												"text align": "center center"
+											},
+											{
+												"name": "ui_gfx_remaps_ranges",
+												"y": 20,
+												"elements": 1
+											}
+										]
+									}
+								]
+							},
+							{
+								"click": "uin_gfx_remap_color",
+								"x": 256,
+								"y": 96,
+								"width": 384,
+								"height": 384,
+								"align": "center",
+								"image": "&x16_gl_tex[X16G_GLTEX_PALETTE]",
+								"coords": [0, 0, 1, 0.0625]
+							},
+							{
+								"x": 768,
+								"y": 96,
+								"width": 384,
+								"height": 384,
+								"align": "center",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
+								"shader": "palette"
+							},
+							{
+								"name": "ui_gfx_remap_color",
+								"x": 256,
+								"y": 80,
+								"text": true,
+								"color": "gray"
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_planes",
+						"elements":
+						[
+							{
+								"name": "ui_gfx_plane_variant_name",
+								"x": 512,
+								"y": 68,
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"click": "uin_gfx_plane_new4",
+								"x": 200,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New 4bpp plane",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_plane_new8",
+								"x": 408,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New 8bpp plane",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_plane_rename",
+								"x": 616,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename plane",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_plane_delete",
+								"x": 824,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete plane",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_plane_import",
+								"x": 200,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG Auto",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_plane_import_raw",
+								"click": "uin_gfx_plane_import_raw",
+								"x": 408,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG RAW",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_plane_variant",
+								"click": "uin_gfx_plane_variant",
+								"x": 408,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_plane_renvar",
+								"click": "uin_gfx_plane_renvar",
+								"x": 616,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_plane_delvar",
+								"click": "uin_gfx_plane_delvar",
+								"x": 824,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_plane_display",
+								"click": "uin_gfx_plane_display",
+								"x": 304,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": true,
+								"color": ["bright", "white"]
+							},
+							{
+								"name": "ui_gfx_plane_effect",
+								"elements":
+								[
+									{
+										"click": "uin_gfx_plane_effect_btn",
+										"custom": 0,
+										"x": 24,
+										"y": 256,
+										"width": 192,
+										"height": 32,
+										"align": "left",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_plane_effect_btn",
+										"custom": 1,
+										"x": 24,
+										"y": 304,
+										"width": 192,
+										"height": 32,
+										"align": "left",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_plane_effect_btn",
+										"custom": 2,
+										"x": 24,
+										"y": 352,
+										"width": 192,
+										"height": 32,
+										"align": "left",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_plane_effect_btn",
+										"custom": 3,
+										"x": 24,
+										"y": 400,
+										"width": 192,
+										"height": 32,
+										"align": "left",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									}
+								]
+							},
+							{
+								"name": "ui_gfx_plane_variant_box",
+								"x": 848,
+								"y": 252,
+								"width": 296,
+								"height": 296,
+								"align": "center",
+								"background": "back",
+								"elements":
+								[
+									{
+										"name": "ui_gfx_plane_variant_pl",
+										"disabled": true,
+										"x": 0,
+										"text": ">",
+										"font": "huge",
+										"text align": "right center",
+										"color": "bright"
+									},
+									{
+										"name": "ui_gfx_plane_variant_pr",
+										"disabled": true,
+										"x": 296,
+										"text": "<",
+										"font": "huge",
+										"text align": "left center",
+										"color": "bright"
+									}
+								]
+							},
+							{
+								"name": "ui_gfx_plane_texture",
+								"x": 512,
+								"y": 448,
+								"width": 384,
+								"height": 384,
+								"align": "center center",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
+								"shader": "palette"
+							},
+							{
+								"name": "ui_gfx_plane_cmaps",
+								"click": "uin_gfx_plane_colormap",
+								"x": 848,
+								"y": 256,
+								"width": 288,
+								"height": 288,
+								"align": "center",
+								"image": "&x16_gl_tex[X16G_GLTEX_BRIGHT_COLORS]",
+								"shader": "palette"
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_walls",
+						"elements":
+						[
+							{
+								"name": "ui_gfx_wall_variant_name",
+								"x": 512,
+								"y": 68,
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"name": "ui_gfx_wall_variant_info",
+								"x": 512,
+								"y": 644,
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"name": "ui_gfx_wall_resolution",
+								"x": 200,
+								"y": 48,
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"name": "ui_gfx_wall_info",
+								"x": 512,
+								"y": 208,
+								"text": true
+							},
+							{
+								"click": "uin_gfx_wall_right",
+								"x": 624,
+								"y": 52,
+								"width": 32,
+								"height": 32,
+								"align": "center",
+								"background": ["back", "gray"],
+								"text": ">",
+								"font": "huge",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_left",
+								"x": 400,
+								"y": 52,
+								"width": 32,
+								"height": 32,
+								"align": "center",
+								"background": ["back", "gray"],
+								"text": "<",
+								"font": "huge",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_wall_import_raw",
+								"click": "uin_gfx_wall_import",
+								"x": 200,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG RAW",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_new",
+								"x": 408,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New wall",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_rename",
+								"x": 616,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename wall",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_delete",
+								"x": 824,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete wall",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_import",
+								"x": 200,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG auto",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_variant",
+								"x": 408,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_renvar",
+								"x": 616,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_delvar",
+								"x": 824,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wall_fullbright_all",
+								"x": 824,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Make all fullbright",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_wall_display",
+								"click": "uin_gfx_wall_display",
+								"x": 512,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": true,
+								"color": ["bright", "white"]
+							},
+							{
+								"name": "ui_gfx_wall_animation",
+								"elements":
+								[
+									{
+										"click": "uin_gfx_wall_animation_btn",
+										"custom": 0,
+										"x": 24,
+										"y": 256,
+										"width": 192,
+										"height": 32,
+										"align": "left",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_wall_animation_btn",
+										"custom": 1,
+										"x": 24,
+										"y": 304,
+										"width": 192,
+										"height": 32,
+										"align": "left",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_wall_animation_btn",
+										"custom": 2,
+										"x": 24,
+										"y": 352,
+										"width": 192,
+										"height": 32,
+										"align": "left",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									}
+								]
+							},
+							{
+								"name": "ui_gfx_wall_texture",
+								"x": 512,
+								"y": 448,
+								"width": 384,
+								"height": 384,
+								"align": "center center",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
+								"shader": "palette light"
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_sprites",
+						"elements":
+						[
+							{
+								"name": "ui_gfx_sprite_texture",
+								"x": 512,
+								"y": 448,
+								"width": 384,
+								"height": 384,
+								"align": "center center",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
+								"shader": "palette light"
+							},
+							{
+								"name": "ui_gfx_sprite_origin",
+								"disabled": true,
+								"x": 512,
+								"y": 448,
+								"width": 1,
+								"height": 512,
+								"align": "center center",
+								"background": "white",
+								"elements":
+								[
+									{
+										"x": -256,
+										"y": 256,
+										"width": 512,
+										"height": 1,
+										"background": "white"
+									}
+								]
+							},
+							{
+								"name": "ui_gfx_sprite_variant_name",
+								"x": 512,
+								"y": 68,
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"name": "ui_gfx_sprite_variant_info",
+								"x": 512,
+								"y": 644,
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"name": "ui_gfx_sprite_resolution",
+								"x": 200,
+								"y": 64,
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"name": "ui_gfx_sprite_info",
+								"x": 512,
+								"y": 208,
+								"text": true
+							},
+							{
+								"x": 200,
+								"y": 644,
+								"align": "center",
+								"color": "bright",
+								"text align": "center center",
+								"text": "Offset X",
+								"font": "medium"
+							},
+							{
+								"x": 824,
+								"y": 644,
+								"align": "center",
+								"color": "bright",
+								"text align": "center center",
+								"text": "Offset Y",
+								"font": "medium"
+							},
+							{
+								"click": "uin_gfx_sprite_right",
+								"x": 624,
+								"y": 52,
+								"width": 32,
+								"height": 32,
+								"align": "center",
+								"background": ["back", "gray"],
+								"text": ">",
+								"font": "huge",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sprite_left",
+								"x": 400,
+								"y": 52,
+								"width": 32,
+								"height": 32,
+								"align": "center",
+								"background": ["back", "gray"],
+								"text": "<",
+								"font": "huge",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_sprite_import_raw",
+								"click": "uin_gfx_sprite_import",
+								"x": 200,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG RAW",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sprite_new",
+								"x": 408,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New sprite",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sprite_rename",
+								"x": 616,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename sprite",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sprite_delete",
+								"x": 824,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete sprite",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sprite_import",
+								"x": 200,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG auto",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sprite_variant",
+								"x": 408,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sprite_renvar",
+								"x": 616,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sprite_delvar",
+								"x": 824,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_sprite_show_origin",
+								"click": "uin_gfx_sprite_show_origin",
+								"x": 200,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text align": "center center",
+								"text": true
+							},
+							{
+								"click": "uin_gfx_sprite_mirror",
+								"x": 824,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Mirror this variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_sprite_offs_x",
+								"click": "uin_gfx_sprite_offs_x",
+								"x": 200,
+								"y": 660,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text align": "center center",
+								"text": true
+							},
+							{
+								"name": "ui_gfx_sprite_offs_y",
+								"click": "uin_gfx_sprite_offs_y",
+								"x": 824,
+								"y": 660,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text align": "center center",
+								"text": true
+							},
+							{
+								"name": "ui_gfx_sprite_display",
+								"click": "uin_gfx_sprite_display",
+								"x": 512,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": true,
+								"color": ["bright", "white"]
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_weapons",
+						"elements":
+						[
+							{
+								"name": "ui_gfx_wpn_variant_name",
+								"x": 512,
+								"y": 68,
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"click": "uin_gfx_wpn_right",
+								"x": 624,
+								"y": 52,
+								"width": 32,
+								"height": 32,
+								"align": "center",
+								"background": ["back", "gray"],
+								"text": ">",
+								"font": "huge",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wpn_left",
+								"x": 400,
+								"y": 52,
+								"width": 32,
+								"height": 32,
+								"align": "center",
+								"background": ["back", "gray"],
+								"text": "<",
+								"font": "huge",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wpn_new",
+								"x": 408,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New sprite",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wpn_rename",
+								"x": 616,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename sprite",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wpn_delete",
+								"x": 824,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete sprite",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wpn_import",
+								"x": 200,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_wpn_variant",
+								"x": 408,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_wpn_info",
+								"x": 200,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"text": true
+							},
+							{
+								"click": "uin_gfx_wpn_delvar",
+								"x": 824,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete variant",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_wpn_part_box",
+								"x": 1000,
+								"y": 192,
+								"width": 192,
+								"height": 533,
+								"align": "right",
+								"background": "back",
+								"elements":
+								[
+									{
+										"name": "ui_gfx_wpn_part_pl",
+										"x": 0,
+										"text": ">",
+										"font": "huge",
+										"text align": "right center",
+										"color": "bright"
+									},
+									{
+										"name": "ui_gfx_wpn_part_pr",
+										"x": 192,
+										"text": "<",
+										"font": "huge",
+										"text align": "left center",
+										"color": "bright"
+									},
+									{
+										"name": "ui_gfx_wpn_part_text_l",
+										"click": "uin_gfx_wpn_part_sel",
+										"x": 96,
+										"y": 2,
+										"width": 96,
+										"height": 529,
+										"align": "right",
+										"text": true,
+										"color": "bright"
+									},
+									{
+										"name": "ui_gfx_wpn_part_text_r",
+										"click": "uin_gfx_wpn_part_sel",
+										"x": 96,
+										"y": 2,
+										"width": 96,
+										"height": 529,
+										"align": "left",
+										"text": true,
+										"color": "bright"
+									}
+								]
+							},
+							{
+								"name": "ui_gfx_wpn_part_apply",
+								"click": "uin_gfx_wpn_part_apply",
+								"x": 616,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Apply parts",
+								"font": "medium",
+								"color": ["orange", "yellow"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_wpn_part_btn0",
+								"click": "uin_gfx_wpn_part_btn0",
+								"x": 200,
+								"y": 690,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": true,
+								"color": ["bright", "white"]
+							},
+							{
+								"name": "ui_gfx_wpn_part_btn1",
+								"click": "uin_gfx_wpn_part_btn1",
+								"x": 408,
+								"y": 690,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": true,
+								"color": ["bright", "white"]
+							},
+							{
+								"name": "ui_gfx_wpn_part_btn2",
+								"click": "uin_gfx_wpn_part_btn2",
+								"x": 616,
+								"y": 690,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": true,
+								"color": ["bright", "white"]
+							},
+							{
+								"name": "ui_gfx_wpn_texture",
+								"click": "uin_gfx_wpn_part_pos",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
+								"shader": "palette light"
+							},
+							{
+								"name": "ui_gfx_wpn_part_rect_box",
+								"priority": 1,
+								"elements": 1
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_skies",
+						"elements":
+						[
+							{
+								"click": "uin_gfx_sky_import",
+								"x": 200,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sky_new",
+								"x": 408,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "New sky",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sky_rename",
+								"x": 616,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Rename sky",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_gfx_sky_delete",
+								"x": 824,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Delete sky",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_sky_texture",
+								"x": 512,
+								"y": 384,
+								"width": 1024,
+								"height": 240,
+								"align": "center center",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
+								"shader": "palette"
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_hud",
+						"background": "main_border",
+						"elements":
+						[
+							{
+								"click": "uin_gfx_hud_import",
+								"x": 408,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Import PNG",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_gfx_hud_color",
+								"click": "uin_gfx_hud_color",
+								"x": 616,
+								"y": 96,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": true,
+								"color": ["bright", "white"]
+							},
+							{
+								"name": "ui_gfx_hud_texture",
+								"x": 512,
+								"y": 384,
+								"align": "center center",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
+								"shader": "palette"
+							}
+						]
+					},
+					{
+						"name": "ui_gfx_idx",
+						"x": 512,
+						"y": 8,
+						"text": true,
+						"color": "bright"
+					},
+					{
+						"name": "ui_gfx_title",
+						"x": 512,
+						"y": 48,
+						"text": true,
+						"color": "bright"
+					},
+					{
+						"click": "uin_gfx_right",
+						"x": 624,
+						"y": 12,
+						"width": 32,
+						"height": 32,
+						"align": "center",
+						"background": ["back", "gray"],
+						"text": ">",
+						"font": "huge",
+						"color": ["bright", "white"],
+						"text align": "center center"
+					},
+					{
+						"click": "uin_gfx_left",
+						"x": 400,
+						"y": 12,
+						"width": 32,
+						"height": 32,
+						"align": "center",
+						"background": ["back", "gray"],
+						"text": "<",
+						"font": "huge",
+						"color": ["bright", "white"],
+						"text align": "center center"
+					},
+					{
+						"x": 512,
+						"y": 735,
+						"width": 867,
+						"height": 48,
+						"align": "center",
+						"background": "back",
+						"border": {"color": "gfx_border", "size": 2},
+						"elements":
+						[
+							{
+								"name": "ui_gfx_palette_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 48,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "Palette",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							},
+							{
+								"name": "ui_gfx_lights_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 144,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "Lights",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							},
+							{
+								"name": "ui_gfx_remaps_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 240,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "Remaps",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							},
+							{
+								"name": "ui_gfx_planes_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 336,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "Planes",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							},
+							{
+								"name": "ui_gfx_walls_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 432,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "Walls",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							},
+							{
+								"name": "ui_gfx_sprites_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 528,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "Sprites",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							},
+							{
+								"name": "ui_gfx_weapons_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 624,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "Weapons",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							},
+							{
+								"name": "ui_gfx_skies_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 720,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "Skies",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							},
+							{
+								"name": "ui_gfx_hud_txt",
+								"click": "uin_gfx_mode_click",
+								"x": 818,
+								"y": 1,
+								"width": 96,
+								"height": 32,
+								"align": "center",
+								"text": "HUD",
+								"font": "medium",
+								"text align": "center center",
+								"color": ["main_item_u_text", "main_item_s_text"],
+								"background": ["none", "main_item_s_back"]
+							}
+						]
+					}
+				]
+			},
+			{
+				"name": "ui_edit_thg",
+				"input": "uin_thing_input",
+				"disabled": true,
+				"priority": 100,
+				"elements":
+				[
+					{
+						"name": "ui_edit_thing_edit",
+						"elements":
+						[
+							{
+								"name": "ui_thing_state_preview",
+								"click": "uin_thing_state_origin",
+								"align": "bot center",
+								"image": "&x16_thing_texture[0]",
+								"shader": "palette"
+							},
+							{
+								"name": "ui_thing_state_origin",
+								"priority": 1,
+								"x": 400,
+								"y": 460,
+								"width": 1,
+								"height": 256,
+								"align": "center center",
+								"background": "white",
+								"elements":
+								[
+									{
+										"x": -128,
+										"y": 128,
+										"width": 256,
+										"height": 1,
+										"background": "white"
+									}
+								]
+							},
+							{
+								"name": "ui_thing_idx",
+								"click": "uin_thing_select",
+								"x": 512,
+								"y": 10,
+								"width": 160,
+								"height": 40,
+								"align": "center",
+								"background": ["none", "back"],
+								"text": true,
+								"color": "bright"
+							},
+							{
+								"name": "ui_thing_title",
+								"click": "uin_thing_rename",
+								"x": 512,
+								"y": 50,
+								"width": 192,
+								"height": 28,
+								"align": "center",
+								"background": ["back", "btnbg"],
+								"text": true,
+								"color": ["bright", "white"]
+							},
+							{
+								"click": "uin_thing_right",
+								"x": 624,
+								"y": 12,
+								"width": 32,
+								"height": 32,
+								"align": "center",
+								"background": ["back", "gray"],
+								"text": ">",
+								"font": "huge",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"click": "uin_thing_left",
+								"x": 400,
+								"y": 12,
+								"width": 32,
+								"height": 32,
+								"align": "center",
+								"background": ["back", "gray"],
+								"text": "<",
+								"font": "huge",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
+								"name": "ui_thing_attrs",
+								"x": 1008,
+								"y": 16,
+								"width": 208,
+								"align": "right",
+								"background": "back",
+								"elements": 1
+							},
+							{
+								"name": "ui_thing_flags",
+								"x": 1008,
+								"width": 208,
+								"align": "right",
+								"background": "back",
+								"elements": 1
+							},
+							{
+								"name": "ui_thing_anims",
+								"x": 1008,
+								"width": 208,
+								"align": "right",
+								"background": "back",
+								"elements": 1
+							},
+							{
+								"x": 16,
+								"y": 752,
+								"width": 768,
+								"height": 246,
+								"align": "left bot",
+								"background": "back",
+								"elements":
+								[
+									{
+										"name": "ui_thing_state_anim",
+										"x": 384,
+										"text": true,
+										"color": "white"
+									},
+									{
+										"name": "ui_thing_state_table",
+										"x": 8,
+										"y": 24,
+										"width": 752,
+										"height": 182,
+										"background": "white",
+										"elements":
+										[
+											{
+												"x": 0,
+												"width": 40,
+												"height": 180,
+												"text": "index",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 40,
+												"width": 116,
+												"height": 180,
+												"background": "column",
+												"text": "sprite",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 156,
+												"width": 44,
+												"height": 180,
+												"text": "frame",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 200,
+												"width": 44,
+												"height": 180,
+												"background": "column",
+												"text": "ticks",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 244,
+												"width": 44,
+												"height": 180,
+												"text": "next",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 288,
+												"width": 116,
+												"height": 180,
+												"background": "column",
+												"text": "action",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 404,
+												"width": 116,
+												"height": 180,
+												"text": "arg[0]",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 520,
+												"width": 116,
+												"height": 180,
+												"background": "column",
+												"text": "arg[1]",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 636,
+												"width": 116,
+												"height": 180,
+												"text": "arg[2]",
+												"font": "small",
+												"text align": "center",
+												"color": "black"
+											},
+											{
+												"x": 0,
+												"y": 19,
+												"width": 752,
+												"height": 1,
+												"background": "back"
+											},
+											{
+												"x": 0,
+												"y": 20,
+												"width": 752,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"x": 0,
+												"y": 56,
+												"width": 752,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"x": 0,
+												"y": 92,
+												"width": 752,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"x": 0,
+												"y": 128,
+												"width": 752,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"x": 0,
+												"y": 164,
+												"width": 752,
+												"height": 18,
+												"background": "row"
+											},
+											{
+												"click": "uin_thing_state_new",
+												"x": 104,
+												"y": 190,
+												"width": 128,
+												"height": 24,
+												"align": "center",
+												"background": ["btnbg", "gray"],
+												"text": "New state",
+												"font": "small",
+												"color": ["bright", "white"],
+												"text align": "center center"
+											},
+											{
+												"click": "uin_thing_state_ins",
+												"x": 280,
+												"y": 190,
+												"width": 128,
+												"height": 24,
+												"align": "center",
+												"background": ["btnbg", "gray"],
+												"text": "Insert state",
+												"font": "small",
+												"color": ["bright", "white"],
+												"text align": "center center"
+											},
+											{
+												"click": "uin_thing_state_del",
+												"x": 472,
+												"y": 190,
+												"width": 128,
+												"height": 24,
+												"align": "center",
+												"background": ["btnbg", "gray"],
+												"text": "Delete state",
+												"font": "small",
+												"color": ["bright", "white"],
+												"text align": "center center"
+											},
+											{
+												"name": "ui_thing_state_lnk",
+												"click": "uin_thing_state_lnk",
+												"x": 648,
+												"y": 190,
+												"width": 128,
+												"height": 24,
+												"align": "center",
+												"background": ["btnbg", "gray"],
+												"text": "Animation link",
+												"font": "small",
+												"color": ["bright", "white"],
+												"text align": "center center"
+											},
+											{
+												"name": "ui_thing_states",
+												"y": 20,
+												"elements": 1
+											}
+										]
+									}
+								]
+							}
+						]
+					}
+				]
+			},
+			{
+				"name": "ui_edit_status",
+				"disabled": true,
+				"elements": 5
+			},
+			{
+				"name": "ui_map_menu",
+				"priority": 200,
+				"disabled": true,
+				"input": "uin_map_opt_input",
+				"x": 512,
+				"y": 384,
+				"width": 520,
+				"height": 432,
+				"align": "center center",
+				"background": "back",
+				"border": {"color": "mmap_border", "size": 2},
+				"elements":
+				[
+					{
+						"x": 260,
+						"text": "Map Options",
+						"font": "medium",
+						"color": "orange",
+						"text align": "center"
+					},
+					{
+						"click": "uin_map_opt_grpsel",
+						"x": 260,
+						"y": 40,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["btnbg", "gray"],
+						"text": "Group visibility",
+						"font": "medium",
+						"color": ["bright", "white"],
+						"text align": "center center"
+					},
+					{
+						"x": 260,
+						"y": 104,
+						"text": "Loading Screen",
+						"font": "small",
+						"color": "white",
+						"text align": "center"
+					},
+					{
+						"x": 260,
+						"y": 128,
+						"width": 160,
+						"height": 120,
+						"align": "center",
+						"background": "black"
+					},
+					{
+						"x": 260,
+						"y": 128,
+						"width": 160,
+						"height": 120,
+						"align": "center",
+						"text": "\t\n\nClick here to load\nimage from PNG ...",
+						"font": "small",
+						"color": "gray",
+						"text align": "center center"
+					},
+					{
+						"name": "ui_map_opt_load_image",
+						"click": "uin_map_opt_load_image",
+						"x": 260,
+						"y": 128,
+						"width": 160,
+						"height": 120,
+						"align": "center",
+						"image": true,
+						"shader": "palette"
+					},
+					{
+						"name": "ui_map_opt_sky_name",
+						"x": 260,
+						"y": 272,
+						"text": true,
+						"color": "white"
+					},
+					{
+						"x": 260,
+						"y": 296,
+						"width": 512,
+						"height": 120,
+						"align": "center",
+						"background": "black"
+					},
+					{
+						"x": 260,
+						"y": 296,
+						"width": 512,
+						"height": 120,
+						"align": "center",
+						"text": "Use scroll wheel to select map sky texture ...",
+						"font": "medium",
+						"color": "gray",
+						"text align": "center center"
+					},
+					{
+						"name": "ui_map_opt_sky_texture",
+						"x": 260,
+						"y": 296,
+						"width": 512,
+						"height": 120,
+						"align": "center",
+						"image": true,
+						"shader": "palette"
+					}
+				]
+			},
+			{
+				"name": "ui_main_menu",
+				"priority": 200,
+				"disabled": true,
+				"input": "uin_main_menu_input",
+				"x": 512,
+				"y": 384,
+				"width": 256,
+				"height": 532,
+				"align": "center center",
+				"background": "back",
+				"border": {"color": "main_border", "size": 2},
+				"elements":
+				[
+					{
+						"x": 128,
+						"text": "kgEdit X16",
+						"font": "huge",
+						"color": "orange",
+						"text align": "center"
+					},
+					{
+						"name": "ui_menu_new",
+						"click": "uin_menu_new",
+						"x": 128,
+						"y": 76,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["main_item_u_back", "main_item_s_back"],
+						"text": true,
+						"color": ["main_item_u_text", "main_item_s_text"]
+					},
+					{
+						"name": "ui_menu_load",
+						"click": "uin_menu_load",
+						"x": 128,
+						"y": 116,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["main_item_u_back", "main_item_s_back"],
+						"text": true,
+						"color": ["main_item_u_text", "main_item_s_text"]
+					},
+					{
+						"name": "ui_menu_save",
+						"click": "uin_menu_save",
+						"x": 128,
+						"y": 156,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["main_item_u_back", "main_item_s_back"],
+						"text": true,
+						"color": ["main_item_u_text", "main_item_s_text"]
+					},
+					{
+						"click": "uin_menu_save_as",
+						"x": 128,
+						"y": 196,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["main_item_u_back", "main_item_s_back"],
+						"text": "Save as",
+						"font": "medium",
+						"color": ["main_item_u_text", "main_item_s_text"],
+						"text align": "center center"
+					},
+					{
+						"name": "ui_menu_export",
+						"click": "uin_menu_export",
+						"x": 128,
+						"y": 236,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["main_item_u_back", "main_item_s_back"],
+						"text": true,
+						"color": ["main_item_u_text", "main_item_s_text"]
+					},
+					{
+						"name": "ui_map_options",
+						"click": "uin_map_options",
+						"x": 128,
+						"y": 276,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["main_item_u_back", "main_item_s_back"],
+						"text": "Map Options",
+						"font": "medium",
+						"color": ["main_item_u_text", "main_item_s_text"],
+						"text align": "center center"
+					},
+					{
+						"name": "ui_menu_mode_btns",
+						"elements":
+						[
+							{
+								"click": "uin_menu_mode",
+								"x": 128,
+								"y": 336,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["main_item_u_back", "main_item_s_back"],
+								"text": true,
+								"color": ["main_item_u_text", "main_item_s_text"]
+							},
+							{
+								"click": "uin_menu_mode",
+								"x": 128,
+								"y": 376,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["main_item_u_back", "main_item_s_back"],
+								"text": true,
+								"color": ["main_item_u_text", "main_item_s_text"]
+							}
+						]
+					},
+					{
+						"click": "uin_menu_generate_tables",
+						"x": 128,
+						"y": 436,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["main_item_u_back", "main_item_s_back"],
+						"text": "Generate tables",
+						"font": "medium",
+						"color": ["main_item_u_text", "main_item_s_text"],
+						"text align": "center center"
+					},
+					{
+						"click": "uin_menu_exit",
+						"x": 128,
+						"y": 476,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["main_item_u_back", "main_item_s_back"],
+						"text": "Exit",
+						"font": "medium",
+						"color": ["main_item_u_text", "main_item_s_text"],
+						"text align": "center center"
+					}
+				]
+			},
+			{
+				"name": "ui_file_select",
+				"priority": 205,
+				"disabled": true,
+				"x": 512,
+				"y": 384,
+				"width": 806,
+				"height": 612,
+				"align": "center center",
+				"background": "back",
+				"border": {"color": "fs_border", "size": 2},
+				"elements":
+				[
+					null,
+					null,
+					{
+						"name": "ui_file_select_title",
+						"x": 403,
+						"y": 5,
+						"text": true,
+						"color": "white"
+					},
+					{
+						"name": "ui_file_select_path",
+						"x": 403,
+						"y": 594,
+						"text": true,
+						"color": "bright"
+					},
+					{
+						"y": 31,
+						"width": 806,
+						"border": {"color": "fs_border", "size": 1}
+					},
+					{
+						"y": 592,
+						"width": 806,
+						"border": {"color": "fs_border", "size": 1}
+					}
+				]
+			},
+			{
+				"name": "ui_block_bits",
+				"input": "uin_block_bits_input",
+				"priority": 208,
+				"disabled": true,
+				"x": 512,
+				"y": 384,
+				"width": 384,
+				"height": 384,
+				"align": "center center",
+				"background": "back",
+				"border": {"color": "bb_border", "size": 2},
+				"elements":
+				[
+					{
+						"name": "ui_block_bits_title",
+						"x": 192,
+						"y": 5,
+						"text": true,
+						"color": "white"
+					},
+					{
+						"click": "uin_block_bits_save",
+						"x": 192,
+						"y": 328,
+						"width": 192,
+						"height": 32,
+						"align": "center",
+						"background": ["btnbg", "gray"],
+						"text": "OK",
+						"font": "medium",
+						"color": ["bright", "white"],
+						"text align": "center center"
+					},
+					{
+						"name": "ui_block_bit_btns",
+						"elements":
+						[
+							{
+								"click": "uin_block_bit_tgl",
+								"custom": 0,
+								"x": 192,
+								"y": 48,
+								"width": 192,
+								"height": 24,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_block_bit_tgl",
+								"custom": 1,
+								"x": 192,
+								"y": 80,
+								"width": 192,
+								"height": 24,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_block_bit_tgl",
+								"custom": 2,
+								"x": 192,
+								"y": 112,
+								"width": 192,
+								"height": 24,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_block_bit_tgl",
+								"custom": 3,
+								"x": 192,
+								"y": 144,
+								"width": 192,
+								"height": 24,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_block_bit_tgl",
+								"custom": 4,
+								"x": 192,
+								"y": 176,
+								"width": 192,
+								"height": 24,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_block_bit_tgl",
+								"custom": 5,
+								"x": 192,
+								"y": 208,
+								"width": 192,
+								"height": 24,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_block_bit_tgl",
+								"custom": 6,
+								"x": 192,
+								"y": 240,
+								"width": 192,
+								"height": 24,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							},
+							{
+								"click": "uin_block_bit_tgl",
+								"custom": 7,
+								"x": 192,
+								"y": 272,
+								"width": 192,
+								"height": 24,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"color": ["bright", "white"],
+								"text": true
+							}
+						]
+					}
+				]
+			},
+			{
+				"name": "ui_textentry",
+				"priority": 209,
+				"disabled": true,
+				"x": 512,
+				"y": 384,
+				"width": 384,
+				"height": 88,
+				"align": "center center",
+				"background": "back",
+				"border": {"color": "te_border", "size": 2},
+				"elements":
+				[
+					{
+						"name": "ui_textentry_title",
+						"x": 192,
+						"y": 5,
+						"text": true,
+						"color": "white"
+					},
+					{
+						"x": 0,
+						"y": 32,
+						"width": 384,
+						"height": 24,
+						"color": "black",
+						"background": "white",
+						"border": {"color": "te_border", "size": 2}
+					},
+					{
+						"name": "ui_textentry_text",
+						"x": 4,
+						"y": 32,
+						"text": true,
+						"color": "black"
+					},
+					{
+						"click": "uin_textentry_ok",
+						"x": 96,
+						"y": 60,
+						"width": 128,
+						"height": 24,
+						"align": "center",
+						"background": ["qe_btn_back_u", "qe_btn_back_s"],
+						"text": "OK",
+						"font": "medium",
+						"color": ["gray", "white"],
+						"text align": "center center"
+					},
+					{
+						"click": "uin_textentry_ko",
+						"x": 288,
+						"y": 60,
+						"width": 128,
+						"height": 24,
+						"align": "center",
+						"background": ["qe_btn_back_u", "qe_btn_back_s"],
+						"text": "Cancel",
+						"font": "medium",
+						"color": ["gray", "white"],
+						"text align": "center center"
+					}
+				]
+			},
+			{
+				"name": "ui_question",
+				"priority": 210,
+				"disabled": true,
+				"x": 512,
+				"y": 384,
+				"width": 512,
+				"height": 192,
+				"align": "center center",
+				"background": "back",
+				"border": {"color": "qe_border", "size": 2},
+				"elements":
+				[
+					{
+						"name": "ui_question_title",
+						"x": 256,
+						"y": 5,
+						"text": true,
+						"color": "white"
+					},
+					{
+						"name": "ui_question_text",
+						"x": 256,
+						"y": 96,
+						"text": true,
+						"color": "bright"
+					},
+					{
+						"y": 32,
+						"width": 512,
+						"border": {"color": "qe_border", "size": 1}
+					},
+					{
+						"click": "uin_question_yes",
+						"x": 160,
+						"y": 186,
+						"width": 128,
+						"height": 24,
+						"align": "center bot",
+						"background": ["qe_btn_back_u", "qe_btn_back_s"],
+						"text": "Yes",
+						"font": "medium",
+						"color": ["gray", "white"],
+						"text align": "center center"
+					},
+					{
+						"click": "uin_question_no",
+						"x": 352,
+						"y": 186,
+						"width": 128,
+						"height": 24,
+						"align": "center bot",
+						"background": ["qe_btn_back_u", "qe_btn_back_s"],
+						"text": "No",
+						"font": "medium",
+						"color": ["gray", "white"],
+						"text align": "center center"
+					}
+				]
+			}
+		]
+	},
+	"ui_busy_window":
+	{
+		"priority": 255,
+		"x": 512,
+		"y": 384,
+		"width": 512,
+		"height": 192,
+		"align": "center center",
+		"background": "back",
+		"border": {"color": "bright", "size": 2},
+		"elements":
+		[
+			{
+				"name": "ui_busy_text",
+				"x": 256,
+				"y": 96,
+				"text": true,
+				"color": "white"
+			}
+		]
+	}
+}
+

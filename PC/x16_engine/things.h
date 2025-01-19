@@ -1,0 +1,176 @@
+
+#define MAX_X16_THING_TYPES	128
+#define THING_MAX_SPAWN_TYPES	4
+
+#define TCMD_MOVING	0x80
+#define TCMD_GO_UP	0x40
+#define TCMD_USE	0x20
+#define TCMD_ALT	0x04
+#define TCMD_ATK	0x02
+#define TCMD_GO_DOWN	0x01
+
+#define THING_IFLAG_NOJUMP	0x01
+#define THING_IFLAG_USED	0x20
+#define THING_IFLAG_JUMPED	0x40
+#define THING_IFLAG_HEIGHTCHECK	0x80
+
+#define THING_EFLAG_SLIDING	0x80
+#define THING_EFLAG_CLIMBABLE	0x40
+#define THING_EFLAG_PROJECTILE	0x04
+#define THING_EFLAG_WATERSPEC	0x02
+#define THING_EFLAG_PUSHABLE	0x01
+
+#define THING_TYPE_PLAYER_N	127	// normal
+#define THING_TYPE_PLAYER_C	126	// crouching
+#define THING_TYPE_PLAYER_S	125	// swimming
+#define THING_TYPE_PLAYER_F	124	// flying
+
+#define THING_WEAPON_COUNT	12
+#define THING_WEAPON_FIRST	112
+
+enum
+{
+	ANIM_SPAWN,
+	ANIM_PAIN,
+	ANIM_DEATH,
+	ANIM_MOVE,
+	ANIM_FIRE,
+	ANIM_MELEE,
+	ANIM_ACTIVE,
+	ANIM_INACTIVE,
+	//
+	NUM_THING_ANIMS,
+	// weapon aliases
+	ANIM_READY = ANIM_MOVE,
+	ANIM_ATK = ANIM_FIRE,
+	ANIM_ALT = ANIM_MELEE,
+	ANIM_RAISE = ANIM_ACTIVE,
+	ANIM_LOWER = ANIM_INACTIVE,
+};
+
+typedef struct
+{
+	uint8_t radius;
+	uint8_t height;
+	uint8_t blocking;
+	uint8_t blockedby;
+	uint8_t mass;
+	uint8_t gravity;
+	uint8_t speed;
+	uint8_t eflags;
+	uint16_t health;
+	uint8_t scale;
+	uint8_t step_height;
+	uint8_t view_height;
+	uint8_t water_height;
+	//
+	uint8_t jump_pwr;
+	//
+	uint8_t spawn[THING_MAX_SPAWN_TYPES];
+} __attribute((packed)) thing_type_t;
+
+typedef struct
+{
+	uint8_t type;
+	//
+	int32_t x, y, z; // 24 bits
+	int16_t mx, my, mz;
+	//
+	int16_t floorz, ceilingz;
+	uint8_t floors, ceilings;
+	//
+	uint8_t angle;
+	uint8_t pitch;
+	//
+	uint8_t iflags;
+	uint8_t eflags;
+	//
+	uint8_t radius;
+	uint8_t height;
+	uint8_t gravity;
+	//
+	uint16_t health;
+	//
+	uint8_t scale;
+	uint8_t counter;
+	//
+	uint8_t blocking;
+	uint8_t blockedby;
+	//
+	uint8_t origin;
+	uint8_t target;
+	//
+	uint8_t sprite;
+	uint8_t ticks;
+	uint16_t next_state;
+} thing_t;
+
+typedef union
+{
+	uint8_t raw[8];
+	struct
+	{
+		uint8_t action;
+		uint8_t next;
+		uint8_t frm_nxt;
+		uint8_t sprite;
+		uint8_t ticks;
+		uint8_t arg[3];
+	};
+} thing_state_t;
+
+typedef struct
+{
+	uint32_t state;
+	uint32_t count;
+} thing_anim_t;
+
+typedef struct
+{
+	uint8_t bits_l;
+	uint8_t bits_h;
+	uint8_t angle;
+	uint8_t pitch;
+} ticcmd_t;
+
+//
+
+extern thing_type_t thing_type[MAX_X16_THING_TYPES];
+extern thing_anim_t thing_anim[MAX_X16_THING_TYPES][NUM_THING_ANIMS];
+extern uint32_t thing_hash[MAX_X16_THING_TYPES];
+extern uint32_t sprite_hash[128];
+extern uint8_t sprite_remap[128];
+extern thing_state_t *const thing_state;
+extern uint32_t num_sprlnk_thg;
+
+extern thing_t things[256];
+extern uint8_t thingsec[256][16]; // list of sectors which specific thing is in, slot 0 is main sector
+extern uint8_t thingces[256][16]; // slot (index) in sector this specific thing is at for sector given by 'thingsec'
+
+extern ticcmd_t ticcmd;
+
+// player
+extern uint8_t player_thing;
+
+// camera
+extern uint8_t camera_thing;
+
+//
+
+uint32_t thing_init(const char *file);
+
+int32_t thing_find_type(uint32_t hash);
+
+void thing_clear();
+
+uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t type, uint8_t origin);
+void thing_remove(uint8_t);
+
+void thing_launch(uint8_t tdx, uint8_t speed);
+
+uint32_t thing_check_pos(uint8_t tdx, int32_t *nx, int32_t *ny, int16_t z, uint32_t on_floor, uint8_t sdx);
+void thing_apply_position();
+
+void things_tick();
+
+uint32_t decode_state(uint16_t ss);

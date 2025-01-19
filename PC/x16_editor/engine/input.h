@@ -1,0 +1,122 @@
+
+#define INPUT_FLAG_MOUSE	0x80000000
+#define INPUT_SDLK_MASK	0x7FFFFFFF
+
+#define INEXTRA_SHIFT	1
+#define INEXTRA_CTRL	2
+#define INEXTRA_ALT	4
+#define INEXTRA_IGNORE	0x8000
+
+enum
+{
+	INTYPE_KEY,
+	INTYPE_MOUSE_BUTTON,
+	INTYPE_MOUSE_WHEEL,
+};
+
+enum
+{
+	MOUSE_WHEEL_X_UP,
+	MOUSE_WHEEL_X_DOWN,
+	MOUSE_WHEEL_Y_UP,
+	MOUSE_WHEEL_Y_DOWN,
+};
+
+enum
+{
+	INPUT_FORWARD,
+	INPUT_BACKWARD,
+	INPUT_S_LEFT,
+	INPUT_S_RIGHT,
+	INPUT_JUMP,
+	INPUT_CROUCH,
+	// editor common
+	INPUT_EDITOR_MENU,
+	INPUT_EDITOR_MENU_CLICK,
+	INPUT_EDITOR_MENU_LEFT,
+	INPUT_EDITOR_MENU_RIGHT,
+	INPUT_EDITOR_EDITMODE,
+	INPUT_EDITOR_INCREASE,
+	INPUT_EDITOR_DECREASE,
+	INPUT_EDITOR_INSERT,
+	INPUT_EDITOR_DELETE,
+	INPUT_EDITOR_COPY,
+	INPUT_EDITOR_PASTE,
+	// editor 2D
+	INPUT_E2D_DRAG_MAP,
+	INPUT_E2D_DRAG_SEL,
+	INPUT_E2D_DRAG_SOLO,
+	INPUT_E2D_GRID_MORE,
+	INPUT_E2D_GRID_LESS,
+	INPUT_E2D_ZOOM_IN,
+	INPUT_E2D_ZOOM_OUT,
+	INPUT_E2D_DRAW_POINT,
+	INPUT_E2D_DRAW_BACK,
+	INPUT_E2D_MODE_LINES,
+	INPUT_E2D_MODE_SECTOR,
+	INPUT_E2D_MODE_THINGS,
+	INPUT_E2D_OPTIONS,
+	INPUT_E2D_GROUPS,
+	INPUT_E2D_SECTOR_CONNECT,
+	INPUT_E2D_SECTOR_DISCONNECT,
+	INPUT_E2D_BLOCKING,
+	INPUT_E2D_MASKED_LINE,
+	// editor 3D
+	INPUT_E3D_CLICK_LOCK,
+	INPUT_E3D_CLICK_PICK,
+	INPUT_E3D_COPY,
+	INPUT_E3D_PASTE,
+	INPUT_E3D_HIGHLIGHT,
+	INPUT_E3D_PREVIEW,
+	INPUT_E3D_OFFS_RESET,
+	INPUT_E3D_OFFS_X_INC,
+	INPUT_E3D_OFFS_X_DEC,
+	INPUT_E3D_OFFS_Y_INC,
+	INPUT_E3D_OFFS_Y_DEC,
+	INPUT_E3D_PLANE_A_INC,
+	INPUT_E3D_PLANE_A_DEC,
+	INPUT_E3D_WALL_PEG_X,
+	INPUT_E3D_WALL_PEG_Y,
+	INPUT_E3D_WALL_MIRROR_X,
+	INPUT_E3D_WALL_MIRROR_Y,
+	INPUT_E3D_WALL_SPLIT,
+	INPUT_E3D_SECTOR_WATER,
+	//
+	INPUT__COUNT
+};
+
+typedef struct input_s
+{
+	uint32_t key;
+	uint16_t type;
+	uint16_t extra;
+} input_t;
+
+//
+//
+
+extern input_t input_list[INPUT__COUNT];
+extern uint8_t input_state[INPUT__COUNT];
+
+extern int32_t input_analog_h;
+extern int32_t input_analog_v;
+
+extern int32_t mouse_wheel_x;
+extern int32_t mouse_wheel_y;
+
+extern int32_t mouse_x;
+extern int32_t mouse_y, mouse_yy;
+extern uint32_t mouse_btn;
+
+extern uint32_t input_shift;
+extern uint32_t input_ctrl;
+extern uint32_t input_alt;
+
+//
+//
+
+void input_init();
+void input_process(uint32_t sdl_key, uint16_t type, uint16_t state);
+void input_release();
+void input_clear();
+
