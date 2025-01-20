@@ -2,4 +2,9 @@
 *.png
 *.copy
 kgedit
+shader_text.inc
+glui/fonts.c
+glui/ui_def.c
+glui/ui_def.h
+x16e/x16tex.h
 data/export/

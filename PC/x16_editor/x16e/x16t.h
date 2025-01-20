@@ -57,7 +57,7 @@ typedef struct
 	//
 	uint8_t jump_pwr;
 	//
-	uint8_t spawn[MAX_SPAWN_TYPES];
+	uint8_t spawn[THING_MAX_SPAWN_TYPES];
 } __attribute((packed)) export_type_t;
 
 typedef struct thing_st_s

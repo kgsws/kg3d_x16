@@ -64,7 +64,7 @@ uint32_t shader_init()
 	glBufferData(GL_UNIFORM_BUFFER, sizeof(shader_buffer_t), NULL, GL_STREAM_DRAW);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	glBindBufferRange(GL_UNIFORM_BUFFER, 0, shared_uniform[0], offsetof(shader_buffer_t, projection), sizeof(shader_projection_info_t));
+	glBindBufferRange(GL_UNIFORM_BUFFER, 0, shared_uniform[0], 0, sizeof(shader_buffer_t));
 
 	program = glCreateProgram();
 	if(!program)

@@ -25,8 +25,6 @@ layout(std140) uniform shader_stuff
 in vec4 tex_coord;
 out vec4 pixelColor;
 
-in vec4 gl_FragCoord;
-
 uniform sampler2D texture;
 uniform sampler2D palette;
 uniform sampler2D colormap;
