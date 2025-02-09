@@ -147,6 +147,9 @@ static void swap_thing_sector(uint8_t tdx, uint8_t sdx)
 		{
 			thingsec[tdx][j] = thingsec[tdx][0];
 			thingsec[tdx][0] = sdx;
+			sdx = thingces[tdx][j];
+			thingces[tdx][j] = thingces[tdx][0];
+			thingces[tdx][0] = sdx;
 			break;
 		}
 	}

@@ -2305,7 +2305,7 @@ thing_tick:
 	jmp	@done_pchange
 
 ;;;
-; swap thing main sectr
+; swap thing main sector
 ;;;
 ; Y - thing index
 ; RET_THING_CHECK_NEWSEC - new main sector
@@ -2325,11 +2325,20 @@ swap_main_sector:
 	cmp	RET_THING_CHECK_NEWSEC
 	bne	@next
 
-	; do the swap
+	; swap sector
 	lda	$A000,y
 	sta	(HI_PTR_L),y
 	lda	RET_THING_CHECK_NEWSEC
 	sta	$A000,y
+
+	; swap index
+	lda	#$B0
+	tsb	HI_PTR_H
+	ldx	$B000,y
+	lda	(HI_PTR_L),y
+	sta	$B000,y
+	txa
+	sta	(HI_PTR_L),y
 
 	; done
 	rts
