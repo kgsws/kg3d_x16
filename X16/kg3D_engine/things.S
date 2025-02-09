@@ -63,12 +63,12 @@ thing_spawn_org:
 	sta	REG_RAM_BANK
 
 	; find free thing slot (type >= 128)
-	ldy	#255
+	ldy	#1
 @find_loop:
 	lda	THING_STRUCT_TYPE,y
 	bmi	@found_slot
-	dey
-	bne	@find_loop
+	iny
+	bpl	@find_loop
 
 	; no more free thing slots
 	pla
@@ -86,44 +86,37 @@ thing_spawn_org:
 	sta	THING_STRUCT_TH_ORIGIN,y
 	sta	THING_STRUCT_TH_TARGET,y
 	sta	THING_STRUCT_COUNTER,y
+	sta	THING_STRUCT_MX_S,y
+	sta	THING_STRUCT_MX_L,y
+	sta	THING_STRUCT_MY_S,y
+	sta	THING_STRUCT_MY_L,y
+	sta	THING_STRUCT_MZ_S,y
+	sta	THING_STRUCT_MZ_L,y
 
 	; save type
 	lda	ARG_THING_SPAWN_TYPE
 	sta	THING_STRUCT_TYPE,y
 	tax
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; copy position
 	lda	ARG_THING_SPAWN_X_S
-	sta	THING_POS_X_S,y
+	sta	THING_STRUCT_X_S,y
 	lda	ARG_THING_SPAWN_X_L
-	sta	THING_POS_X_L,y
+	sta	THING_STRUCT_X_L,y
 	lda	ARG_THING_SPAWN_X_H
-	sta	THING_POS_X_H,y
+	sta	THING_STRUCT_X_H,y
 	lda	ARG_THING_SPAWN_Y_S
-	sta	THING_POS_Y_S,y
+	sta	THING_STRUCT_Y_S,y
 	lda	ARG_THING_SPAWN_Y_L
-	sta	THING_POS_Y_L,y
+	sta	THING_STRUCT_Y_L,y
 	lda	ARG_THING_SPAWN_Y_H
-	sta	THING_POS_Y_H,y
+	sta	THING_STRUCT_Y_H,y
 	lda	ARG_THING_SPAWN_Z_S
-	sta	THING_POS_Z_S,y
+	sta	THING_STRUCT_Z_S,y
 	lda	ARG_THING_SPAWN_Z_L
-	sta	THING_POS_Z_L,y
+	sta	THING_STRUCT_Z_L,y
 	lda	ARG_THING_SPAWN_Z_H
-	sta	THING_POS_Z_H,y
-
-	; clear position stuff
-	lda	#0
-	sta	THING_POS_MX_S,y
-	sta	THING_POS_MX_L,y
-	sta	THING_POS_MY_S,y
-	sta	THING_POS_MY_L,y
-	sta	THING_POS_MZ_S,y
-	sta	THING_POS_MZ_L,y
+	sta	THING_STRUCT_Z_H,y
 
 	;;;
 	;; load stuff from info
@@ -349,24 +342,20 @@ thing_spawn_org:
 	; place to all sectors
 	jsr	thing_apply_position
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; position might have changed
 	ldy	RET_THING_SPAWN
 	lda	ARG_THING_SPAWN_X_L
-	sta	THING_POS_X_L,y
+	sta	THING_STRUCT_X_L,y
 	lda	ARG_THING_SPAWN_X_H
-	sta	THING_POS_X_H,y
+	sta	THING_STRUCT_X_H,y
 	lda	ARG_THING_SPAWN_Y_L
-	sta	THING_POS_Y_L,y
+	sta	THING_STRUCT_Y_L,y
 	lda	ARG_THING_SPAWN_Y_H
-	sta	THING_POS_Y_H,y
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
+	sta	THING_STRUCT_Y_H,y
 
 	; done
 	rts
@@ -384,11 +373,11 @@ thing_clear:
 
 	; clear thing types
 	lda	#$FF
-	ldy	#255
+	ldy	#1
 @loop:
 	sta	THING_STRUCT_TYPE,y
-	dey
-	bne	@loop
+	iny
+	bpl	@loop
 
 	; sector things bank
 	lda	#BANK_SECTOR_THINGS
@@ -414,7 +403,7 @@ thing_clear:
 	; current weapon
 	ldx	#THING_WEAPON_FIRST
 
-	; TODO animation
+	; animation
 	lda	THTYPE_ANIM_RAISE_L,x
 	pha	; <next frame LO>
 	sta	THTEMP_PTR_H
@@ -508,10 +497,6 @@ thing_launch:
 	beq	@no_pitch
 	tax
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	;; th->mz += tab_sin[pitch] * speed
 
 	; reset accumulator
@@ -530,11 +515,11 @@ thing_launch:
 	stz	VERA_ADDRx_L
 	clc
 	lda	VERA_DATA0
-	adc	THING_POS_MZ_S,y
-	sta	THING_POS_MZ_S,y
+	adc	THING_STRUCT_MZ_S,y
+	sta	THING_STRUCT_MZ_S,y
 	lda	VERA_DATA0
-	adc	THING_POS_MZ_L,y
-	sta	THING_POS_MZ_L,y
+	adc	THING_STRUCT_MZ_L,y
+	sta	THING_STRUCT_MZ_L,y
 
 	;; speed = (tab_cos[pitch] * speed) >> 8
 
@@ -555,10 +540,6 @@ thing_launch:
 	sta	VERA_FX_CACHE_L
 
 @no_pitch:
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	;; th->mx += tab_sin[angle] * speed
 
 	; reset accumulator
@@ -580,11 +561,11 @@ thing_launch:
 	stz	VERA_ADDRx_L
 	clc
 	lda	VERA_DATA0
-	adc	THING_POS_MX_S,y
-	sta	THING_POS_MX_S,y
+	adc	THING_STRUCT_MX_S,y
+	sta	THING_STRUCT_MX_S,y
 	lda	VERA_DATA0
-	adc	THING_POS_MX_L,y
-	sta	THING_POS_MX_L,y
+	adc	THING_STRUCT_MX_L,y
+	sta	THING_STRUCT_MX_L,y
 
 	;; th->my += tab_cos[angle] * speed
 
@@ -604,11 +585,11 @@ thing_launch:
 	stz	VERA_ADDRx_L
 	clc
 	lda	VERA_DATA0
-	adc	THING_POS_MY_S,y
-	sta	THING_POS_MY_S,y
+	adc	THING_STRUCT_MY_S,y
+	sta	THING_STRUCT_MY_S,y
 	lda	VERA_DATA0
-	adc	THING_POS_MY_L,y
-	sta	THING_POS_MY_L,y
+	adc	THING_STRUCT_MY_L,y
+	sta	THING_STRUCT_MY_L,y
 
 	; done
 	rts
@@ -650,14 +631,10 @@ thing_tick:
 	lda	THING_STRUCT_FLOORZ_H,y
 	sta	THMOVE_OLD_FZ_H
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; save thing Z for checks
-	lda	THING_POS_Z_L,y
+	lda	THING_STRUCT_Z_L,y
 	sta	ARG_THING_CHECK_Z_L
-	lda	THING_POS_Z_H,y
+	lda	THING_STRUCT_Z_H,y
 	sta	ARG_THING_CHECK_Z_H
 
 	; make 'on floor' flag
@@ -744,8 +721,8 @@ thing_tick:
 	sta	VERA_FX_CACHE_L
 	stz	VERA_FX_CACHE_M
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; tab_sin
@@ -764,11 +741,11 @@ thing_tick:
 	stz	VERA_ADDRx_L
 	clc
 	lda	VERA_DATA0
-	adc	THING_POS_MX_S,y
-	sta	THING_POS_MX_S,y
+	adc	THING_STRUCT_MX_S,y
+	sta	THING_STRUCT_MX_S,y
 	lda	VERA_DATA0
-	adc	THING_POS_MX_L,y
-	sta	THING_POS_MX_L,y
+	adc	THING_STRUCT_MX_L,y
+	sta	THING_STRUCT_MX_L,y
 
 	;; th->my += tab_cos[ticcmd.move] * thing_type[th->type].speed
 
@@ -788,17 +765,13 @@ thing_tick:
 	stz	VERA_ADDRx_L
 	clc
 	lda	VERA_DATA0
-	adc	THING_POS_MY_S,y
-	sta	THING_POS_MY_S,y
+	adc	THING_STRUCT_MY_S,y
+	sta	THING_STRUCT_MY_S,y
 	lda	VERA_DATA0
-	adc	THING_POS_MY_L,y
-	sta	THING_POS_MY_L,y
+	adc	THING_STRUCT_MY_L,y
+	sta	THING_STRUCT_MY_L,y
 
 @skip_pmove:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
 	; th->angle = ticcmd.angle
 	lda	TICK_CMD_ANGLE
 	sta	THING_STRUCT_ANGLE,y
@@ -896,15 +869,15 @@ thing_tick:
 	lda	THTYPE_STRUCT_JUMPZ,x
 	sta	MATH_TEMP_A
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; th->mz = (int32_t)thing_types[th->type].jumpz << 8
 	lda	#0
-	sta	THING_POS_MZ_S,y
+	sta	THING_STRUCT_MZ_S,y
 	lda	MATH_TEMP_A
-	sta	THING_POS_MZ_L,y
+	sta	THING_STRUCT_MZ_L,y
 
 	bra	@skip_jump
 
@@ -927,8 +900,8 @@ thing_tick:
 	lda	THTYPE_STRUCT_JUMPZ,x
 	sta	MATH_TEMP_A
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; check down
@@ -938,17 +911,17 @@ thing_tick:
 
 	; go down
 	sec
-	lda	THING_POS_MZ_L,y
+	lda	THING_STRUCT_MZ_L,y
 	sbc	MATH_TEMP_A
-	sta	THING_POS_MZ_L,y
+	sta	THING_STRUCT_MZ_L,y
 
 	bra	@skip_jump
 :
 	; go up
 	clc
-	lda	THING_POS_MZ_L,y
+	lda	THING_STRUCT_MZ_L,y
 	adc	MATH_TEMP_A
-	sta	THING_POS_MZ_L,y
+	sta	THING_STRUCT_MZ_L,y
 
 @skip_jump:
 
@@ -1042,20 +1015,16 @@ thing_tick:
 	lda	$A000,y
 	sta	ARG_THING_CHECK_SECTOR
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
-	; if(th->mx || th->my)
-	lda	THING_POS_MX_S,y
-	ora	THING_POS_MX_L,y
-	ora	THING_POS_MY_S,y
-	ora	THING_POS_MY_L,y
-	bne	@do_xy_move
-
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
+
+	; if(th->mx || th->my)
+	lda	THING_STRUCT_MX_S,y
+	ora	THING_STRUCT_MX_L,y
+	ora	THING_STRUCT_MY_S,y
+	ora	THING_STRUCT_MY_L,y
+	bne	@do_xy_move
 
 	; no XY movement, check overlap flag
 	lda	THING_STRUCT_IFLAGS,y
@@ -1074,10 +1043,6 @@ thing_tick:
 	; apply changes
 	jsr	thing_apply_heights
 :
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; done
 	jmp	@no_xymove
 
@@ -1087,35 +1052,35 @@ thing_tick:
 @try_move_full:
 	; th->x += th->mx
 	stz	MATH_TEMP_A
-	lda	THING_POS_MX_L,y
+	lda	THING_STRUCT_MX_L,y
 	bpl	:+
 	dec	MATH_TEMP_A
 :
 	clc
-	lda	THING_POS_X_S,y
-	adc	THING_POS_MX_S,y
+	lda	THING_STRUCT_X_S,y
+	adc	THING_STRUCT_MX_S,y
 	sta	ARG_THING_CHECK_X_S
-	lda	THING_POS_X_L,y
-	adc	THING_POS_MX_L,y
+	lda	THING_STRUCT_X_L,y
+	adc	THING_STRUCT_MX_L,y
 	sta	ARG_THING_CHECK_X_L
-	lda	THING_POS_X_H,y
+	lda	THING_STRUCT_X_H,y
 	adc	MATH_TEMP_A
 	sta	ARG_THING_CHECK_X_H
 
 	; th->y += th->my
 	stz	MATH_TEMP_A
-	lda	THING_POS_MY_L,y
+	lda	THING_STRUCT_MY_L,y
 	bpl	:+
 	dec	MATH_TEMP_A
 :
 	clc
-	lda	THING_POS_Y_S,y
-	adc	THING_POS_MY_S,y
+	lda	THING_STRUCT_Y_S,y
+	adc	THING_STRUCT_MY_S,y
 	sta	ARG_THING_CHECK_Y_S
-	lda	THING_POS_Y_L,y
-	adc	THING_POS_MY_L,y
+	lda	THING_STRUCT_Y_L,y
+	adc	THING_STRUCT_MY_L,y
 	sta	ARG_THING_CHECK_Y_L
-	lda	THING_POS_Y_H,y
+	lda	THING_STRUCT_Y_H,y
 	adc	MATH_TEMP_A
 	sta	ARG_THING_CHECK_Y_H
 
@@ -1158,10 +1123,6 @@ thing_tick:
 	lda	THING_STRUCT_EFLAGS,y
 	bpl	@move_stop
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	;; try sliding
 	lda	THMOVE_TRY_COUNT
 	tax
@@ -1171,37 +1132,29 @@ thing_tick:
 	jmp	(@slide_try_jmp,x)
 
 @move_stop:
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; can't move, stop
 	lda	#0
-	sta	THING_POS_MX_S,y
-	sta	THING_POS_MX_L,y
-	sta	THING_POS_MY_S,y
-	sta	THING_POS_MY_L,y
+	sta	THING_STRUCT_MX_S,y
+	sta	THING_STRUCT_MX_L,y
+	sta	THING_STRUCT_MY_S,y
+	sta	THING_STRUCT_MY_L,y
 
 	bra	@move_skip
 
 @move_ok:
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; do the movement
 	lda	ARG_THING_CHECK_X_S
-	sta	THING_POS_X_S,y
+	sta	THING_STRUCT_X_S,y
 	lda	ARG_THING_CHECK_X_L
-	sta	THING_POS_X_L,y
+	sta	THING_STRUCT_X_L,y
 	lda	ARG_THING_CHECK_X_H
-	sta	THING_POS_X_H,y
+	sta	THING_STRUCT_X_H,y
 	lda	ARG_THING_CHECK_Y_S
-	sta	THING_POS_Y_S,y
+	sta	THING_STRUCT_Y_S,y
 	lda	ARG_THING_CHECK_Y_L
-	sta	THING_POS_Y_L,y
+	sta	THING_STRUCT_Y_L,y
 	lda	ARG_THING_CHECK_Y_H
-	sta	THING_POS_Y_H,y
+	sta	THING_STRUCT_Y_H,y
 
 	; sliding check
 	lda	THMOVE_TRY_COUNT
@@ -1218,61 +1171,53 @@ thing_tick:
 	lda	RET_THING_CHECK_NEWSEC
 	sta	ARG_THING_CHECK_SECTOR
 
-@move_skip:
-	;; XY friction
-
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
+
+@move_skip:
+	;; XY friction
 
 	; check flag
 	lda	THING_STRUCT_EFLAGS,y
 	and	#THING_EFLAG_PROJECTILE
 	bne	@no_xy_friction
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; thing
 	ldx	TICK_IDX
 
 	; th->mx /= 2
-	lda	THING_POS_MX_L,x
+	lda	THING_STRUCT_MX_L,x
 	rol
-	ror	THING_POS_MX_L,x
-	ror	THING_POS_MX_S,x
+	ror	THING_STRUCT_MX_L,x
+	ror	THING_STRUCT_MX_S,x
 
-	lda	THING_POS_MX_L,x
+	lda	THING_STRUCT_MX_L,x
 	bpl	:+
 	eor	#$FF
 :
 	bne	:+
-	stz	THING_POS_MX_L,x
-	stz	THING_POS_MX_S,x
+	stz	THING_STRUCT_MX_L,x
+	stz	THING_STRUCT_MX_S,x
 :
 	; th->my /= 2
-	lda	THING_POS_MY_L,x
+	lda	THING_STRUCT_MY_L,x
 	rol
-	ror	THING_POS_MY_L,x
-	ror	THING_POS_MY_S,x
+	ror	THING_STRUCT_MY_L,x
+	ror	THING_STRUCT_MY_S,x
 
-	lda	THING_POS_MY_L,x
+	lda	THING_STRUCT_MY_L,x
 	bpl	:+
 	eor	#$FF
 :
 	bne	:+
-	stz	THING_POS_MY_L,x
-	stz	THING_POS_MY_S,x
+	stz	THING_STRUCT_MY_L,x
+	stz	THING_STRUCT_MY_S,x
 :
 	; th->my /= 2
 
 @no_xy_friction:
 @no_xymove:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
 	; load height limits
 	lda	THING_STRUCT_FLOORZ_L,y
 	sta	THMOVE_FLOORZ_L
@@ -1285,14 +1230,10 @@ thing_tick:
 
 	;; Z movement
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; if(th->mz)
-	lda	THING_POS_MZ_L,y
+	lda	THING_STRUCT_MZ_L,y
 	tax
-	ora	THING_POS_MZ_S,y
+	ora	THING_STRUCT_MZ_S,y
 	beq	:++
 
 	; th->z += th->mz
@@ -1302,39 +1243,35 @@ thing_tick:
 	dec	MATH_TEMP_A
 :
 	clc
-	lda	THING_POS_MZ_S,y
-	adc	THING_POS_Z_S,y
-	sta	THING_POS_Z_S,y
+	lda	THING_STRUCT_MZ_S,y
+	adc	THING_STRUCT_Z_S,y
+	sta	THING_STRUCT_Z_S,y
 	txa
-	adc	THING_POS_Z_L,y
-	sta	THING_POS_Z_L,y
+	adc	THING_STRUCT_Z_L,y
+	sta	THING_STRUCT_Z_L,y
 	lda	MATH_TEMP_A
-	adc	THING_POS_Z_H,y
-	sta	THING_POS_Z_H,y
+	adc	THING_STRUCT_Z_H,y
+	sta	THING_STRUCT_Z_H,y
 :
 	; if(zz > th->ceilingz)
 	sec
 	lda	THMOVE_CEILZ_L
-	sbc	THING_POS_Z_L,y
+	sbc	THING_STRUCT_Z_L,y
 	lda	THMOVE_CEILZ_H
-	sbc	THING_POS_Z_H,y
+	sbc	THING_STRUCT_Z_H,y
 	bpl	@ceiling_ok
 
 	; th->z = th->ceilingz << 8
 	lda	THMOVE_CEILZ_L
-	sta	THING_POS_Z_L,y
+	sta	THING_STRUCT_Z_L,y
 	lda	THMOVE_CEILZ_H
-	sta	THING_POS_Z_H,y
+	sta	THING_STRUCT_Z_H,y
 	lda	#0
-	sta	THING_POS_Z_S,y
+	sta	THING_STRUCT_Z_S,y
 
 	; th->mz = 0
-	sta	THING_POS_MZ_S,y
-	sta	THING_POS_MZ_L,y
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
+	sta	THING_STRUCT_MZ_S,y
+	sta	THING_STRUCT_MZ_L,y
 
 	; check projectile flag
 	lda	THING_STRUCT_EFLAGS,y
@@ -1349,17 +1286,13 @@ thing_tick:
 	jsr	projectile_death
 	jmp	@do_animation
 :
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 @ceiling_ok:
 	; floor zdiff
 	sec
-	lda	THING_POS_Z_L,y
+	lda	THING_STRUCT_Z_L,y
 	sbc	THMOVE_FLOORZ_L
 	sta	MATH_TEMP_A
-	lda	THING_POS_Z_H,y
+	lda	THING_STRUCT_Z_H,y
 	sbc	THMOVE_FLOORZ_H
 	bpl	@not_in_floor
 
@@ -1378,7 +1311,7 @@ thing_tick:
 	bmi	:+
 
 	; momentnum based dip
-	lda	THING_POS_MZ_L,y
+	lda	THING_STRUCT_MZ_L,y
 	sec
 	ror
 	sta	MATH_TEMP_A
@@ -1406,22 +1339,18 @@ thing_tick:
 @no_camera_dip:
 	; th->z = th->floorz << 8
 	lda	THMOVE_FLOORZ_L
-	sta	THING_POS_Z_L,y
+	sta	THING_STRUCT_Z_L,y
 	lda	THMOVE_FLOORZ_H
-	sta	THING_POS_Z_H,y
+	sta	THING_STRUCT_Z_H,y
 	lda	#0
-	sta	THING_POS_Z_S,y
+	sta	THING_STRUCT_Z_S,y
 
 	; th->mz = 0
-	sta	THING_POS_MZ_S,y
-	sta	THING_POS_MZ_L,y
+	sta	THING_STRUCT_MZ_S,y
+	sta	THING_STRUCT_MZ_L,y
 
 	; on_floor = 1
 	sty	ARG_THING_CHECK_ONFLOOR
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
 
 	; check projectile flag
 	lda	THING_STRUCT_EFLAGS,y
@@ -1436,15 +1365,7 @@ thing_tick:
 	jsr	projectile_death
 	jmp	@do_animation
 :
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 @not_in_floor:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
 	; get thing flags
 	lda	THING_STRUCT_EFLAGS,y
 	sta	THMOVE_EFLAGS
@@ -1504,15 +1425,15 @@ thing_tick:
 	inc	TMP_THING_GRAVITY_L
 :
 @apply_float:
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; set th->mz directly
 	lda	TMP_THING_GRAVITY_S
-	sta	THING_POS_MZ_S,y
+	sta	THING_STRUCT_MZ_S,y
 	lda	TMP_THING_GRAVITY_L
-	sta	THING_POS_MZ_L,y
+	sta	THING_STRUCT_MZ_L,y
 
 	bra	@skip_z_friction
 
@@ -1524,18 +1445,18 @@ thing_tick:
 	lda	ARG_THING_CHECK_ONFLOOR
 	bne	@skip_z_friction
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; th->mz -= th->gravity << 4;
 	sec
-	lda	THING_POS_MZ_S,y
+	lda	THING_STRUCT_MZ_S,y
 	sbc	TMP_THING_GRAVITY_S
-	sta	THING_POS_MZ_S,y
-	lda	THING_POS_MZ_L,y
+	sta	THING_STRUCT_MZ_S,y
+	lda	THING_STRUCT_MZ_L,y
 	sbc	TMP_THING_GRAVITY_L
-	sta	THING_POS_MZ_L,y
+	sta	THING_STRUCT_MZ_L,y
 
 	bra	@skip_z_friction
 
@@ -1549,25 +1470,21 @@ thing_tick:
 	and	#THING_EFLAG_PROJECTILE
 	bne	@skip_z_friction
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	ldx	TICK_IDX
 
 	; th->mz /= 2
-	lda	THING_POS_MZ_L,x
+	lda	THING_STRUCT_MZ_L,x
 	rol
-	ror	THING_POS_MZ_L,x
-	ror	THING_POS_MZ_S,x
+	ror	THING_STRUCT_MZ_L,x
+	ror	THING_STRUCT_MZ_S,x
 
-	lda	THING_POS_MZ_L,x
+	lda	THING_STRUCT_MZ_L,x
 	bpl	:+
 	eor	#$FF
 :
 	bne	:+
-	stz	THING_POS_MZ_L,x
-	stz	THING_POS_MZ_S,x
+	stz	THING_STRUCT_MZ_L,x
+	stz	THING_STRUCT_MZ_S,x
 :
 @skip_z_friction:
 
@@ -1599,18 +1516,16 @@ thing_tick:
 
 	; read view height
 	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
-	pha
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
+	; thing structure bank
+	ldx	#BANK_THING_STRUCT
+	stx	REG_RAM_BANK
 
 	; zz = (th->z >> 8) + thing_type[th->type].view_height
 	clc
-	pla
-	adc	THING_POS_Z_L,y
+	adc	THING_STRUCT_Z_L,y
 	sta	THMOVE_ZZZ_L
-	lda	THING_POS_Z_H,y
+	lda	THING_STRUCT_Z_H,y
 	adc	#0
 	sta	THMOVE_ZZZ_H
 
@@ -1790,8 +1705,8 @@ thing_tick:
 	jsr	time_update
 
 	; next
-	dec	TICK_IDX
-	beq	:+
+	inc	TICK_IDX
+	bmi	:+
 	jmp	@thing_loop
 :
 	rts
@@ -1866,15 +1781,15 @@ thing_tick:
 	; try to slide using wall angle
 
 	; p2a_coord.x = th->mx
-	lda	THING_POS_MX_S,y
+	lda	THING_STRUCT_MX_S,y
 	sta	MATH_P2A_X_L
-	lda	THING_POS_MX_L,y
+	lda	THING_STRUCT_MX_L,y
 	sta	MATH_P2A_X_H
 
 	; p2a_coord.y = th->my
-	lda	THING_POS_MY_S,y
+	lda	THING_STRUCT_MY_S,y
 	sta	MATH_P2A_Y_L
-	lda	THING_POS_MY_L,y
+	lda	THING_STRUCT_MY_L,y
 	sta	MATH_P2A_Y_H
 
 	; mx = abs(p2a_coord.x)
@@ -1941,8 +1856,8 @@ thing_tick:
 	math_lsr4_u16	MATH_VAR_L, MATH_VAR_H
 	sta	THMOVE_ANG_L
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; ang = poscheck.angle
@@ -2042,9 +1957,9 @@ thing_tick:
 
 	; get result (>> 8)
 	lda	VERA_DATA0
-	sta	THING_POS_MX_S,y
+	sta	THING_STRUCT_MX_S,y
 	lda	VERA_DATA0
-	sta	THING_POS_MX_L,y
+	sta	THING_STRUCT_MX_L,y
 
 	; th->my = (poscheck.dist.y * dist) >> 8
 
@@ -2068,9 +1983,9 @@ thing_tick:
 
 	; get result (>> 8)
 	lda	VERA_DATA0
-	sta	THING_POS_MY_S,y
+	sta	THING_STRUCT_MY_S,y
 	lda	VERA_DATA0
-	sta	THING_POS_MY_L,y
+	sta	THING_STRUCT_MY_L,y
 
 	; try new position
 	jmp	@try_move_full
@@ -2078,10 +1993,10 @@ thing_tick:
 @slide_try_1:
 	; stop
 	lda	#0
-	sta	THING_POS_MX_S,y
-	sta	THING_POS_MX_L,y
-	sta	THING_POS_MY_S,y
-	sta	THING_POS_MY_L,y
+	sta	THING_STRUCT_MX_S,y
+	sta	THING_STRUCT_MX_L,y
+	sta	THING_STRUCT_MY_S,y
+	sta	THING_STRUCT_MY_L,y
 
 	; wiggle push
 
@@ -2101,16 +2016,16 @@ thing_tick:
 	; th->x
 	clc
 	lda	MATH_VAR_L
-	adc	THING_POS_X_S,y
+	adc	THING_STRUCT_X_S,y
 	sta	ARG_THING_CHECK_X_S
 	lda	MATH_VAR_H
 	bpl	:+
 	dec	MATH_VAR_U
 :
-	adc	THING_POS_X_L,y
+	adc	THING_STRUCT_X_L,y
 	sta	ARG_THING_CHECK_X_L
 	lda	MATH_VAR_U
-	adc	THING_POS_X_H,y
+	adc	THING_STRUCT_X_H,y
 	sta	ARG_THING_CHECK_X_H
 
 	; cos
@@ -2120,16 +2035,16 @@ thing_tick:
 	; th->y
 	clc
 	lda	MATH_VAR_L
-	adc	THING_POS_Y_S,y
+	adc	THING_STRUCT_Y_S,y
 	sta	ARG_THING_CHECK_Y_S
 	lda	MATH_VAR_H
 	bpl	:+
 	dex
 :
-	adc	THING_POS_Y_L,y
+	adc	THING_STRUCT_Y_L,y
 	sta	ARG_THING_CHECK_Y_L
 	txa
-	adc	THING_POS_Y_H,y
+	adc	THING_STRUCT_Y_H,y
 	sta	ARG_THING_CHECK_Y_H
 
 	; try new position
@@ -2178,34 +2093,26 @@ thing_tick:
 	bcs	:+
 	dec	THMOVE_PTC_CEILZ_H
 :
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; th->z += diff << 8
 	clc
 	tya
 	adc	ARG_THING_CHECK_Z_L
 	sta	ARG_THING_CHECK_Z_L
-	sta	THING_POS_Z_L,x
+	sta	THING_STRUCT_Z_L,x
 	bcc	:+
 	inc	ARG_THING_CHECK_Z_H
 :
 	lda	ARG_THING_CHECK_Z_H
-	sta	THING_POS_Z_H,x
+	sta	THING_STRUCT_Z_H,x
 
 	; th->mz -= th->gravity
 	sec
-	lda	THING_POS_MZ_S,x
+	lda	THING_STRUCT_MZ_S,x
 	sbc	THMOVE_PTC_GRAVITY
-	sta	THING_POS_MZ_S,x
+	sta	THING_STRUCT_MZ_S,x
 	bcs	:+
-	dec	THING_POS_MZ_L,x
+	dec	THING_STRUCT_MZ_L,x
 :
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
 	; th->type = new_type
 	lda	THMOVE_NEW_PTYPE
 	sta	THMOVE_THING_TYPE
@@ -2279,10 +2186,6 @@ thing_tick:
 	bcs	:+
 	dec	THMOVE_PTC_DIFF_H
 :
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; if(diff >= (th->z >> 8))
 	sec
 	lda	THMOVE_PTC_DIFF_L
@@ -2321,7 +2224,7 @@ thing_tick:
 
 	; th->z = th->floorz << 8
 	lda	#0
-	sta	THING_POS_Z_S,x
+	sta	THING_STRUCT_Z_S,x
 	lda	THMOVE_PTC_FLOORZ_L
 	sta	ARG_THING_CHECK_Z_L
 	lda	THMOVE_PTC_FLOORZ_H
@@ -2337,13 +2240,9 @@ thing_tick:
 	sty	ARG_THING_CHECK_ONFLOOR
 :
 	lda	ARG_THING_CHECK_Z_L
-	sta	THING_POS_Z_L,x
+	sta	THING_STRUCT_Z_L,x
 	lda	ARG_THING_CHECK_Z_H
-	sta	THING_POS_Z_H,x
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
+	sta	THING_STRUCT_Z_H,x
 
 	; th->type = new_type
 	lda	THMOVE_NEW_PTYPE
@@ -2470,22 +2369,22 @@ thing_check_heights:
 	lda	#$40
 	sta	THMOVE_ISLINK
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; read current location
-	lda	THING_POS_X_L,y
+	lda	THING_STRUCT_X_L,y
 	sta	ARG_THING_CHECK_X_L
-	lda	THING_POS_X_H,y
+	lda	THING_STRUCT_X_H,y
 	sta	ARG_THING_CHECK_X_H
-	lda	THING_POS_Y_L,y
+	lda	THING_STRUCT_Y_L,y
 	sta	ARG_THING_CHECK_Y_L
-	lda	THING_POS_Y_H,y
+	lda	THING_STRUCT_Y_H,y
 	sta	ARG_THING_CHECK_Y_H
-	lda	THING_POS_Z_L,y
+	lda	THING_STRUCT_Z_L,y
 	sta	ARG_THING_CHECK_Z_L
-	lda	THING_POS_Z_H,y
+	lda	THING_STRUCT_Z_H,y
 	sta	ARG_THING_CHECK_Z_H
 
 	; prepare variables
@@ -2625,18 +2524,18 @@ thing_check_position:
 	bcc	:+
 	jmp	@do_block_extra
 :
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; read current location
-	lda	THING_POS_X_L,y
+	lda	THING_STRUCT_X_L,y
 	sta	THMOVE_START_X_L
-	lda	THING_POS_X_H,y
+	lda	THING_STRUCT_X_H,y
 	sta	THMOVE_START_X_H
-	lda	THING_POS_Y_L,y
+	lda	THING_STRUCT_Y_L,y
 	sta	THMOVE_START_Y_L
-	lda	THING_POS_Y_H,y
+	lda	THING_STRUCT_Y_H,y
 	sta	THMOVE_START_Y_H
 
 	; prepare variables
@@ -4281,49 +4180,41 @@ check_thing:
 	stx	THMOVE_OTHER_THING
 	ldy	THMOVE_THING
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; d0.x = (tho->x >> 8) - x
 	sec
-	lda	THING_POS_X_L,x
+	lda	THING_STRUCT_X_L,x
 	sbc	ARG_THING_CHECK_X_L
 	sta	THMOVE_D0_X_L
-	lda	THING_POS_X_H,x
+	lda	THING_STRUCT_X_H,x
 	sbc	ARG_THING_CHECK_X_H
 	sta	THMOVE_D0_X_H
 
 	; d0.y = (tho->y >> 8) - y
 	sec
-	lda	THING_POS_Y_L,x
+	lda	THING_STRUCT_Y_L,x
 	sbc	ARG_THING_CHECK_Y_L
 	sta	THMOVE_D0_Y_L
-	lda	THING_POS_Y_H,x
+	lda	THING_STRUCT_Y_H,x
 	sbc	ARG_THING_CHECK_Y_H
 	sta	THMOVE_D0_Y_H
 
 	; p2a_coord.x = (tho->x >> 8) - (th->x >> 8)
 	sec
-	lda	THING_POS_X_L,x
-	sbc	THING_POS_X_L,y
+	lda	THING_STRUCT_X_L,x
+	sbc	THING_STRUCT_X_L,y
 	sta	MATH_P2A_X_L
-	lda	THING_POS_X_H,x
-	sbc	THING_POS_X_H,y
+	lda	THING_STRUCT_X_H,x
+	sbc	THING_STRUCT_X_H,y
 	sta	MATH_P2A_X_H
 
 	; p2a_coord.y = (tho->y >> 8) - (th->y >> 8);
 	sec
-	lda	THING_POS_Y_L,x
-	sbc	THING_POS_Y_L,y
+	lda	THING_STRUCT_Y_L,x
+	sbc	THING_STRUCT_Y_L,y
 	sta	MATH_P2A_Y_L
-	lda	THING_POS_Y_H,x
-	sbc	THING_POS_Y_H,y
+	lda	THING_STRUCT_Y_H,x
+	sbc	THING_STRUCT_Y_H,y
 	sta	MATH_P2A_Y_H
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
 
 	; combined radius
 	stz	THMOVE_RADRAD_H
@@ -4409,17 +4300,17 @@ check_thing:
 :
 	; overlap detected, check Z
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; other thing
 	ldx	THMOVE_OTHER_THING
 
 	; zzz = tho->z >> 8
-	lda	THING_POS_Z_L,x
+	lda	THING_STRUCT_Z_L,x
 	sta	THMOVE_ZZZ_L
-	lda	THING_POS_Z_H,x
+	lda	THING_STRUCT_Z_H,x
 	sta	THMOVE_ZZZ_H
 
 	; if(zzz - thzt >= 0)
@@ -4557,8 +4448,8 @@ check_thing:
 	lda	THTYPE_STRUCT_MASS,x
 	beq	@not_pushable
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; things
@@ -4567,21 +4458,21 @@ check_thing:
 
 	; tho->mx += th->mx
 	clc
-	lda	THING_POS_MX_S,x
-	adc	THING_POS_MX_S,y
-	sta	THING_POS_MX_S,x
-	lda	THING_POS_MX_L,x
-	adc	THING_POS_MX_L,y
-	sta	THING_POS_MX_L,x
+	lda	THING_STRUCT_MX_S,x
+	adc	THING_STRUCT_MX_S,y
+	sta	THING_STRUCT_MX_S,x
+	lda	THING_STRUCT_MX_L,x
+	adc	THING_STRUCT_MX_L,y
+	sta	THING_STRUCT_MX_L,x
 
 	; tho->my += th->my
 	clc
-	lda	THING_POS_MY_S,x
-	adc	THING_POS_MY_S,y
-	sta	THING_POS_MY_S,x
-	lda	THING_POS_MY_L,x
-	adc	THING_POS_MY_L,y
-	sta	THING_POS_MY_L,x
+	lda	THING_STRUCT_MY_S,x
+	adc	THING_STRUCT_MY_S,y
+	sta	THING_STRUCT_MY_S,x
+	lda	THING_STRUCT_MY_L,x
+	adc	THING_STRUCT_MY_L,y
+	sta	THING_STRUCT_MY_L,x
 
 @not_pushable:
 	; poscheck.blocked = 2
@@ -4647,14 +4538,10 @@ projectile_death:
 	; thing will be removed - done
 	rts
 :
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; th->z += th->mz / 2
 	clc
 	stz	MATH_TEMP_B
-	lda	THING_POS_MZ_L,y
+	lda	THING_STRUCT_MZ_L,y
 	bpl	:+
 	sec
 	ldx	#$FF
@@ -4662,26 +4549,26 @@ projectile_death:
 :
 	ror
 	sta	MATH_TEMP_A
-	lda	THING_POS_MZ_S,y
+	lda	THING_STRUCT_MZ_S,y
 	ror
 	clc
-	adc	THING_POS_Z_S,y
-	sta	THING_POS_Z_S,y
+	adc	THING_STRUCT_Z_S,y
+	sta	THING_STRUCT_Z_S,y
 	lda	MATH_TEMP_A
-	adc	THING_POS_Z_L,y
-	sta	THING_POS_Z_L,y
+	adc	THING_STRUCT_Z_L,y
+	sta	THING_STRUCT_Z_L,y
 	lda	MATH_TEMP_B
-	adc	THING_POS_Z_H,y
-	sta	THING_POS_Z_H,y
+	adc	THING_STRUCT_Z_H,y
+	sta	THING_STRUCT_Z_H,y
 
 	; total stop
 	lda	#0
-	sta	THING_POS_MX_S,y
-	sta	THING_POS_MX_L,y
-	sta	THING_POS_MY_S,y
-	sta	THING_POS_MY_L,y
-	sta	THING_POS_MZ_S,y
-	sta	THING_POS_MZ_L,y
+	sta	THING_STRUCT_MX_S,y
+	sta	THING_STRUCT_MX_L,y
+	sta	THING_STRUCT_MY_S,y
+	sta	THING_STRUCT_MY_L,y
+	sta	THING_STRUCT_MZ_S,y
+	sta	THING_STRUCT_MZ_L,y
 
 	; check wall hit
 	lda	THMOVE_BLOCKED
@@ -4753,16 +4640,16 @@ projectile_death:
 	; restore
 	ldy	TICK_IDX
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; if((th->z >> 8) <= zz)
 	sec
 	lda	MATH_TEMP_A
-	sbc	THING_POS_Z_L,y
+	sbc	THING_STRUCT_Z_L,y
 	lda	MATH_TEMP_B
-	sbc	THING_POS_Z_H,y
+	sbc	THING_STRUCT_Z_H,y
 	bmi	:+
 
 	; bot texture pointer
@@ -4855,24 +4742,24 @@ projectile_death:
 :
 	;; fix position
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; nx = th->x
-	lda	THING_POS_X_S,y
+	lda	THING_STRUCT_X_S,y
 	sta	ARG_THING_CHECK_X_S
-	lda	THING_POS_X_L,y
+	lda	THING_STRUCT_X_L,y
 	sta	ARG_THING_CHECK_X_L
-	lda	THING_POS_X_H,y
+	lda	THING_STRUCT_X_H,y
 	sta	ARG_THING_CHECK_X_H
 
 	; ny = th->y
-	lda	THING_POS_Y_S,y
+	lda	THING_STRUCT_Y_S,y
 	sta	ARG_THING_CHECK_Y_S
-	lda	THING_POS_Y_L,y
+	lda	THING_STRUCT_Y_L,y
 	sta	ARG_THING_CHECK_Y_L
-	lda	THING_POS_Y_H,y
+	lda	THING_STRUCT_Y_H,y
 	sta	ARG_THING_CHECK_Y_H
 
 	; block check
@@ -4921,19 +4808,19 @@ projectile_death:
 
 	; d0.x = (things[poscheck.hit_thing].x - nx) >> 8
 	sec
-	lda	THING_POS_X_L,x
+	lda	THING_STRUCT_X_L,x
 	sbc	ARG_THING_CHECK_X_L
 	sta	VERA_FX_CACHE_L
-	lda	THING_POS_X_H,x
+	lda	THING_STRUCT_X_H,x
 	sbc	ARG_THING_CHECK_X_H
 	sta	VERA_FX_CACHE_M
 
 	; d0.y = (things[poscheck.hit_thing].y - ny) >> 8
 	sec
-	lda	THING_POS_Y_L,x
+	lda	THING_STRUCT_Y_L,x
 	sbc	ARG_THING_CHECK_Y_L
 	pha	; <d0.y LO>
-	lda	THING_POS_Y_H,x
+	lda	THING_STRUCT_Y_H,x
 	sbc	ARG_THING_CHECK_Y_H
 	pha	; <d0.y HI>
 
@@ -5093,24 +4980,24 @@ projectile_death:
 	; place to all sectors
 	jsr	thing_apply_position
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; do the movement
 	ldy	TICK_IDX
 	lda	ARG_THING_CHECK_X_S
-	sta	THING_POS_X_S,y
+	sta	THING_STRUCT_X_S,y
 	lda	ARG_THING_CHECK_X_L
-	sta	THING_POS_X_L,y
+	sta	THING_STRUCT_X_L,y
 	lda	ARG_THING_CHECK_X_H
-	sta	THING_POS_X_H,y
+	sta	THING_STRUCT_X_H,y
 	lda	ARG_THING_CHECK_Y_S
-	sta	THING_POS_Y_S,y
+	sta	THING_STRUCT_Y_S,y
 	lda	ARG_THING_CHECK_Y_L
-	sta	THING_POS_Y_L,y
+	sta	THING_STRUCT_Y_L,y
 	lda	ARG_THING_CHECK_Y_H
-	sta	THING_POS_Y_H,y
+	sta	THING_STRUCT_Y_H,y
 
 	; done
 	rts

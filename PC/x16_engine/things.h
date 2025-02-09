@@ -143,9 +143,9 @@ extern uint8_t sprite_remap[128];
 extern thing_state_t *const thing_state;
 extern uint32_t num_sprlnk_thg;
 
-extern thing_t things[256];
-extern uint8_t thingsec[256][16]; // list of sectors which specific thing is in, slot 0 is main sector
-extern uint8_t thingces[256][16]; // slot (index) in sector this specific thing is at for sector given by 'thingsec'
+extern thing_t things[128];
+extern uint8_t thingsec[128][16]; // list of sectors which specific thing is in, slot 0 is main sector
+extern uint8_t thingces[128][16]; // slot (index) in sector this specific thing is at for sector given by 'thingsec'
 
 extern ticcmd_t ticcmd;
 

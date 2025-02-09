@@ -247,34 +247,34 @@ act_atk_projectile:
 	lda	$A000,y
 	sta	ARG_THING_SPAWN_SECTOR
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; X
-	lda	THING_POS_X_S,y
+	lda	THING_STRUCT_X_S,y
 	sta	ARG_THING_SPAWN_X_S
-	lda	THING_POS_X_L,y
+	lda	THING_STRUCT_X_L,y
 	sta	ARG_THING_SPAWN_X_L
-	lda	THING_POS_X_H,y
+	lda	THING_STRUCT_X_H,y
 	sta	ARG_THING_SPAWN_X_H
 
 	; Y
-	lda	THING_POS_Y_S,y
+	lda	THING_STRUCT_Y_S,y
 	sta	ARG_THING_SPAWN_Y_S
-	lda	THING_POS_Y_L,y
+	lda	THING_STRUCT_Y_L,y
 	sta	ARG_THING_SPAWN_Y_L
-	lda	THING_POS_Y_H,y
+	lda	THING_STRUCT_Y_H,y
 	sta	ARG_THING_SPAWN_Y_H
 
 	; Z
-	lda	THING_POS_Z_S,y
+	lda	THING_STRUCT_Z_S,y
 	sta	ARG_THING_SPAWN_Z_S
 	clc
-	lda	THING_POS_Z_L,y
+	lda	THING_STRUCT_Z_L,y
 	adc	MATH_TEMP_A
 	sta	ARG_THING_SPAWN_Z_L
-	lda	THING_POS_Z_H,y
+	lda	THING_STRUCT_Z_H,y
 	adc	#0
 	sta	ARG_THING_SPAWN_Z_H
 

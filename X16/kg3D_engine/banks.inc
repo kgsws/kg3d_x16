@@ -36,9 +36,8 @@ BANK_DRAW_MASKED = 54
 BANK_PLAYER_START = BANK_THING_STATES
 
 ; things
-; holds 256 thing slots, slot 0 is invalid
+; holds 128 thing slots, slot 0 is "no thing" but also used for local player weapon
 BANK_THING_STRUCT = 53
-BANK_THING_POS = BANK_TSPR_INFO
 
 ; things in sectors
 BANK_SECTOR_THINGS = 52

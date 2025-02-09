@@ -55,9 +55,9 @@ thing_state_t *const thing_state = (thing_state_t*)(thing_data + 8192);
 uint32_t num_sprlnk_thg;
 
 // thing ZERO is not valid
-thing_t things[256];
-uint8_t thingsec[256][16];
-uint8_t thingces[256][16];
+thing_t things[128];
+uint8_t thingsec[128][16];
+uint8_t thingces[128][16];
 
 // command
 ticcmd_t ticcmd;
@@ -233,7 +233,7 @@ void thing_clear()
 	thing_state_t *st;
 
 	// all thing slots
-	for(uint32_t i = 1; i < 256; i++)
+	for(uint32_t i = 1; i < 128; i++)
 		things[i].type = 0xFF;
 
 	// player weapon // TODO
@@ -271,13 +271,13 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	}
 
 	// find free thing slot
-	for(tdx = 255; tdx > 0; tdx--)
+	for(tdx = 1; tdx < 128; tdx++)
 	{
 		if(things[tdx].type >= 128)
 			break;
 	}
 
-	if(!tdx)
+	if(tdx >= 128)
 		return 0;
 
 	th = things + tdx;
@@ -1069,7 +1069,7 @@ static void projectile_death(thing_t *th)
 	uint32_t state;
 	thing_state_t *st;
 
-//	printf("block %d; %u\n", poscheck.blocked, poscheck.hit_thing);
+	printf("block %d; %u\n", poscheck.blocked, poscheck.hit_thing);
 
 	// stop
 	th->mx = 0;
@@ -1205,11 +1205,9 @@ void things_tick()
 	int16_t zz, gravity;
 	int16_t old_fz;
 	uint32_t on_floor;
-	uint8_t i;
 	sector_t *sec;
 
-	i = 0;
-	do
+	for(uint32_t i = 0; i < 128; i++)
 	{
 		thing_t *th = things + i;
 
@@ -1691,6 +1689,6 @@ act_next:
 				}
 			}
 		}
-	} while(--i);
+	}
 }
 

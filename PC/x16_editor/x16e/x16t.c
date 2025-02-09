@@ -266,6 +266,10 @@ const state_action_def_t state_action_def[] =
 		.name = "attack: projectile",
 		.flags = 3,
 	},
+	{
+		.name = "attack: hitscan",
+		.flags = 3,
+	},
 	// terminator
 	{}
 };

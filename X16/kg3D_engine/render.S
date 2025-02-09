@@ -159,37 +159,33 @@ render_set_detail:
 ;;;
 
 render_view:
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	;; setup camera position
 	ldy	G_CAMERA_THING
 
 	; X
-	lda	THING_POS_X_L,y
+	lda	THING_STRUCT_X_L,y
 	sta	PROJECTION_X_L
-	lda	THING_POS_X_H,y
+	lda	THING_STRUCT_X_H,y
 	sta	PROJECTION_X_H
 
 	; Y
-	lda	THING_POS_Y_L,y
+	lda	THING_STRUCT_Y_L,y
 	sta	PROJECTION_Y_L
-	lda	THING_POS_Y_H,y
+	lda	THING_STRUCT_Y_H,y
 	sta	PROJECTION_Y_H
 
 	; Z (+ viewheight)
 	clc
-	lda	THING_POS_Z_L,y
+	lda	THING_STRUCT_Z_L,y
 	adc	G_VIEWHEIGHT
 	sta	PROJECTION_Z_L
-	lda	THING_POS_Z_H,y
+	lda	THING_STRUCT_Z_H,y
 	adc	#0
 	sta	PROJECTION_Z_H
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
 
 	; angle
 	lda	THING_STRUCT_ANGLE,y
@@ -4045,25 +4041,21 @@ prepare_sprite:
 	lda	#$0C
 	sta	VERA_CTRL
 
-	; thing position bank
-	lda	#BANK_THING_POS
-	sta	REG_RAM_BANK
-
 	; p2a_coord.x = (th->x >> 8) - (projection.x >> 8)
 	sec
-	lda	THING_POS_X_L,y
+	lda	THING_STRUCT_X_L,y
 	sbc	PROJECTION_X_L
 	sta	MATH_P2A_X_L
-	lda	THING_POS_X_H,y
+	lda	THING_STRUCT_X_H,y
 	sbc	PROJECTION_X_H
 	sta	MATH_P2A_X_H
 
 	; p2a_coord.y = (th->y >> 8) - (projection.y >> 8)
 	sec
-	lda	THING_POS_Y_L,y
+	lda	THING_STRUCT_Y_L,y
 	sbc	PROJECTION_Y_L
 	sta	MATH_P2A_Y_L
-	lda	THING_POS_Y_H,y
+	lda	THING_STRUCT_Y_H,y
 	sbc	PROJECTION_Y_H
 	sta	MATH_P2A_Y_H
 
@@ -4443,16 +4435,16 @@ prepare_sprite:
 
 	ldy	SPRITE_THING
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; zdiff = projection.z - ((th->z >> 8) + spr_yoffs)
 	clc
-	lda	THING_POS_Z_L,y
+	lda	THING_STRUCT_Z_L,y
 	adc	SPRITE_OFFS_Y_L
 	sta	SPRITE_DIFF_L
-	lda	THING_POS_Z_H,y
+	lda	THING_STRUCT_Z_H,y
 	adc	SPRITE_OFFS_Y_H
 	sta	SPRITE_DIFF_H
 	sec
@@ -6754,12 +6746,12 @@ update_weapon_swing:
 	sta	MATH_VAR_L
 	stz	MATH_VAR_H
 
-	; thing position bank
-	lda	#BANK_THING_POS
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
 	; abs(mx)
-	lda	THING_POS_MX_L,y
+	lda	THING_STRUCT_MX_L,y
 	bpl	:+
 	eor	#$FF
 	ina
@@ -6767,7 +6759,7 @@ update_weapon_swing:
 	sta	MATH_P2A_X_L
 
 	; abs(my)
-	lda	THING_POS_MY_L,y
+	lda	THING_STRUCT_MY_L,y
 	bpl	:+
 	eor	#$FF
 	ina
