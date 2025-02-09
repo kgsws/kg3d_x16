@@ -36,14 +36,14 @@ BANK_DRAW_MASKED = 54
 BANK_PLAYER_START = BANK_THING_STATES
 
 ; things
-; holds 128 thing slots, slot 0 is "no thing" but also used for local player weapon
+; holds 128 thing slots, slot 0 is "no thing" but is also used for local player weapon
 BANK_THING_STRUCT = 53
 
 ; things in sectors
 BANK_SECTOR_THINGS = 52
 
 ; sectors in things
-BANK_THING_SECTORS = 51
+BANK_THING_SECTORS = 51	; only first half is used
 
 ; loaded map stuff
 BANK_MAPDATA = 48	; [4 banks] must be divisible by 4

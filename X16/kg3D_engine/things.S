@@ -2318,34 +2318,35 @@ swap_main_sector:
 	; find slot
 	ldx	#15
 	lda	#$A1
-	sta	HI_PTR_H
+	sta	TMP_PTR_H
+	stz	TMP_PTR_L
 @loop:
-	lda	(HI_PTR_L),y
+	lda	(TMP_PTR_L),y
 	beq	@stop
 	cmp	RET_THING_CHECK_NEWSEC
 	bne	@next
 
 	; swap sector
 	lda	$A000,y
-	sta	(HI_PTR_L),y
+	sta	(TMP_PTR_L),y
 	lda	RET_THING_CHECK_NEWSEC
 	sta	$A000,y
 
 	; swap index
-	lda	#$B0
-	tsb	HI_PTR_H
-	ldx	$B000,y
-	lda	(HI_PTR_L),y
-	sta	$B000,y
+	lda	#$80
+	sta	TMP_PTR_L
+	ldx	$A080,y
+	lda	(TMP_PTR_L),y
+	sta	$A080,y
 	txa
-	sta	(HI_PTR_L),y
+	sta	(TMP_PTR_L),y
 
 	; done
 	rts
 
 @next:
 	; next
-	inc	HI_PTR_H
+	inc	TMP_PTR_H
 	dex
 	bne	@loop
 @stop:
@@ -2361,6 +2362,9 @@ thing_check_heights:
 	; save thing
 	sty	TMP_PTR_L
 	sty	THMOVE_THING
+	tya
+	ora	#$80
+	sta	THCES_PTR_L
 
 	; reset heights
 	stz	THMOVE_FLOORZ_L
@@ -2413,9 +2417,8 @@ thing_check_heights:
 
 	; loop trough sectors
 	lda	#$A0
-	sta	TMP_PTR_H
-	lda	#$B0
-	sta	HI_PTR_H
+	sta	TMP_PTR_H	; thingsec
+	sta	THCES_PTR_H	; thingces
 @loop:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
@@ -2428,8 +2431,7 @@ thing_check_heights:
 	tax
 
 	; poscheck.maskblock = thingces[tdx][i] & 0x80
-	ldy	TMP_PTR_L
-	lda	(HI_PTR_L),y
+	lda	(THCES_PTR_L)
 	and	#$80
 	sta	THMOVE_MASKBLOCK
 
@@ -2444,7 +2446,7 @@ thing_check_heights:
 	jsr	check_sector_things
 	bcc	@end
 
-	inc	HI_PTR_H
+	inc	THCES_PTR_H
 	inc	TMP_PTR_H
 	lda	TMP_PTR_H
 	cmp	#$B0
@@ -3854,9 +3856,6 @@ handle_failsafe:
 ; run only after 'thing_check_position' or to remove from all sectors
 ; Y is current thing
 ; if RET_THING_CHECK_NEWSEC is zero, thing is only removed from all sectors
-; NOTES:
-;  HI_PTR_* is table of sectors of given thing
-;  IH_PTR_* is table of indexes in given sectors thing list
 
 thing_apply_position:
 	sty	THMOVE_THING
@@ -3869,9 +3868,10 @@ thing_apply_position:
 	; remove from all sectors
 	stz	TMP_PTR_L
 	lda	#$A0
-	sta	HI_PTR_H
-	lda	#$B0
-	sta	IH_PTR_H
+	sta	HI_PTR_H	; thingsec
+	sta	THCES_PTR_H	; thingces
+	lda	#$80
+	sta	THCES_PTR_L
 	ldx	#16
 @loop_del:
 	; get sector at this slot
@@ -3888,7 +3888,7 @@ thing_apply_position:
 	sta	(HI_PTR_L),y
 
 	; get slot in sector
-	lda	(IH_PTR_L),y
+	lda	(THCES_PTR_L),y
 	and	#$1F
 	ora	#$A0
 	sta	TMP_PTR_H
@@ -3916,7 +3916,7 @@ thing_apply_position:
 
 	; next
 	inc	HI_PTR_H
-	inc	IH_PTR_H
+	inc	THCES_PTR_H
 	dex
 	bne	@loop_del
 
@@ -4074,12 +4074,12 @@ place_to_sector:
 
 	; add slot index to thing
 	lda	THMOVE_PTR_H
-	ora	#$B0
-	sta	IH_PTR_H
+	sta	@opcode+2
 	lda	HI_PTR_H
 	and	#$1F
 	ora	THMOVE_MASKBLOCK
-	sta	(IH_PTR_L),y
+@opcode:
+	sta	$A080,y	; modified address
 
 	; increment thing slot index
 	inc	THMOVE_PTR_H
