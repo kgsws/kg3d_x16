@@ -136,7 +136,7 @@ extern uint8_t x16_light_data[256 * MAX_X16_LIGHTS];
 
 extern uint8_t x16_colormap_data[32 * MAX_X16_GL_CMAPS];
 
-extern editor_texture_t editor_texture[MAX_EDITOR_TEXTURES + 1];
+extern editor_texture_t editor_texture[MAX_EDITOR_TEXTURES];
 extern uint32_t editor_texture_count;
 
 extern editor_light_t editor_light[MAX_X16_LIGHTS];

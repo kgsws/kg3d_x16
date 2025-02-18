@@ -55,7 +55,7 @@ typedef struct
 {
 	uint32_t vertex;
 	uint32_t fragment;
-	uint32_t pad2[3];
+	uint32_t pad2[2];
 } shader_mode_t;
 
 typedef struct

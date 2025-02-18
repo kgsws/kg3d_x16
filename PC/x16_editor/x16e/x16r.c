@@ -407,7 +407,7 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 
 	tex_bmsk = 0xFFFF;
 
-	tex_is_sky = edit_sky_num >= 0 && !idx;
+	tex_is_sky = edit_sky_num >= 0 && (idx == 1);
 
 	et = editor_texture + idx;
 
@@ -440,7 +440,7 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 		idx += etime & anim[0];
 
 		if(idx >= editor_texture_count)
-			idx = MAX_EDITOR_TEXTURES;
+			idx = 0;
 
 		et = editor_texture + idx;
 	}
@@ -485,7 +485,7 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 		break;
 	}
 
-	if(idx >= MAX_EDITOR_TEXTURES)
+	if(!idx)
 	{
 		tex_width = 16;
 		tex_height = 16;
@@ -1818,7 +1818,7 @@ static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 	}
 
 	// floor
-	if(edit_sky_num >= 0 && !sec->plane[PLANE_BOT].texture.idx)
+	if(edit_sky_num >= 0 && sec->plane[PLANE_BOT].texture.idx == 1)
 		dr_sky(plf_top, plf_bot);
 	else
 	if(projection.z > (int16_t)sec->plane[PLANE_BOT].height)
@@ -1841,7 +1841,7 @@ static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 	}
 
 	// ceiling
-	if(edit_sky_num >= 0 && !sec->plane[PLANE_TOP].texture.idx)
+	if(edit_sky_num >= 0 && sec->plane[PLANE_TOP].texture.idx == 1)
 		dr_sky(plc_top, plc_bot);
 	else
 	if(projection.z < (int16_t)sec->plane[PLANE_TOP].height)

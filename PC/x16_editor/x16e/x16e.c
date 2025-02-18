@@ -373,11 +373,11 @@ static int32_t mark_texture(uint32_t idx, uint32_t light)
 {
 	editor_texture_t *et = editor_texture + idx;
 
-	if(idx >= MAX_EDITOR_TEXTURES)
-		return MAX_TEXTURES;
+	if(idx == 1)
+		return 0xFF;
 
 	if(!idx)
-		return 0xFF;
+		return MAX_TEXTURES;
 
 	marked_lights |= 1 << light;
 

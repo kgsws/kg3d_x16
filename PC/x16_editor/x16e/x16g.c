@@ -427,7 +427,7 @@ typedef struct
 static uint32_t gfx_mode;
 static ui_idx_t gfx_idx[GFX_NUM_MODES];
 
-uint32_t x16_editor_gt[MAX_EDITOR_TEXTURES + 1];
+uint32_t x16_editor_gt[MAX_EDITOR_TEXTURES];
 uint32_t x16_gl_tex[NUM_X16G_GLTEX];
 
 static value_ptr_t value_ptr;
@@ -446,7 +446,7 @@ uint8_t x16_light_data[256 * MAX_X16_LIGHTS];
 
 uint8_t x16_colormap_data[32 * MAX_X16_GL_CMAPS];
 
-editor_texture_t editor_texture[MAX_EDITOR_TEXTURES + 1];
+editor_texture_t editor_texture[MAX_EDITOR_TEXTURES];
 uint32_t editor_texture_count;
 
 editor_light_t editor_light[MAX_X16_LIGHTS];
@@ -2748,12 +2748,12 @@ static uint32_t find_plane_texture(uint8_t *name)
 			return i;
 	}
 
-	return MAX_EDITOR_TEXTURES;
+	return 0;
 }
 
 static uint32_t find_wall_texture(uint8_t *name)
 {
-	uint32_t fallback = MAX_EDITOR_TEXTURES;
+	uint32_t fallback = 0;
 
 	if(!name[0])
 	{
@@ -2803,7 +2803,7 @@ static uint32_t find_mask_texture(uint8_t *name)
 			return i;
 	}
 
-	return MAX_EDITOR_TEXTURES;
+	return 0;
 }
 
 static uint32_t find_sector_light(uint8_t *name)
@@ -8350,7 +8350,7 @@ uint32_t x16g_init()
 	// GL stuff
 
 	glGenTextures(NUM_X16G_GLTEX, x16_gl_tex);
-	glGenTextures(MAX_EDITOR_TEXTURES + 1, x16_editor_gt);
+	glGenTextures(MAX_EDITOR_TEXTURES, x16_editor_gt);
 
 	set_gfx_mode(GFX_MODE_PALETTE);
 
@@ -8379,7 +8379,7 @@ uint32_t x16g_init()
 		}
 	}
 
-	for(uint32_t i = 0; i <= MAX_EDITOR_TEXTURES; i++)
+	for(uint32_t i = 0; i < MAX_EDITOR_TEXTURES; i++)
 	{
 		glBindTexture(GL_TEXTURE_2D, x16_editor_gt[i]);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -8387,23 +8387,26 @@ uint32_t x16g_init()
 	}
 
 	glBindTexture(GL_TEXTURE_2D, x16_editor_gt[0]);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 64, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, x16e_tex_sky_data);
-
-	glBindTexture(GL_TEXTURE_2D, x16_editor_gt[MAX_EDITOR_TEXTURES]);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 64, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, x16e_tex_unk_data);
 
+	glBindTexture(GL_TEXTURE_2D, x16_editor_gt[1]);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 64, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, x16e_tex_sky_data);
+
+	// 'NONE'
 	editor_texture[0].name[0] = '\t';
 	editor_texture[0].type = X16G_TEX_TYPE_RGB;
 	editor_texture[0].width = 64;
 	editor_texture[0].height = 64;
 	editor_texture[0].gltex = x16_editor_gt[0];
-	editor_texture[0].data = x16e_tex_sky_data;
+	editor_texture[0].data = x16e_tex_bad_data; // hack for software preview; resolution is 16x16
 
-	editor_texture[MAX_EDITOR_TEXTURES].type = X16G_TEX_TYPE_RGB;
-	editor_texture[MAX_EDITOR_TEXTURES].width = 64;
-	editor_texture[MAX_EDITOR_TEXTURES].height = 64;
-	editor_texture[MAX_EDITOR_TEXTURES].gltex = x16_editor_gt[MAX_EDITOR_TEXTURES];
-	editor_texture[MAX_EDITOR_TEXTURES].data = x16e_tex_bad_data; // hack for software preview; resolution is 16x16
+	// 'SKY'
+	editor_texture[1].name[0] = 7;
+	editor_texture[1].type = X16G_TEX_TYPE_RGB;
+	editor_texture[1].width = 64;
+	editor_texture[1].height = 64;
+	editor_texture[1].gltex = x16_editor_gt[1];
+	editor_texture[1].data = x16e_tex_sky_data;
 
 	x16g_update_texture(X16G_GLTEX_UNK_TEXTURE);
 	x16g_update_texture(X16G_GLTEX_SPR_NONE);
@@ -8457,13 +8460,13 @@ void x16g_new_gfx()
 
 void x16g_generate()
 {
-	uint32_t gi = 1;
+	uint32_t gi = 2;
 	uint32_t ci = 0;
 	uint8_t data[256 * 256 * 2];
 
 	edit_busy_window("Generating editor graphics ...");
 
-	editor_texture_count = 1;
+	editor_texture_count = 2;
 
 	// reset palette
 	gltex_info[X16G_GLTEX_NOW_PALETTE].data = x16_palette_data;
