@@ -978,6 +978,10 @@ render_walls:
 	ora	#BANK_MAPDATA
 	sta	WALL_PTR_B
 
+	; last_angle = 'invalid'
+	lda	#$80
+	sta	WALL_LAST_ANGLE_H
+
 @loop:
 	; wall pointer
 	lda	WALN_PTR_L
@@ -1603,6 +1607,11 @@ render_wall:
 	; if(ld.y <= 0)
 	bpl	:+
 
+@invalidate:
+	; last_angle = 'invalid'
+	lda	#$80
+	sta	WALL_LAST_ANGLE_H
+
 	; inside the wall, stop
 	rts
 :
@@ -1628,10 +1637,14 @@ render_wall:
 	beq	@done_inside
 
 	; inside the wall, stop
-	rts
+	bra	@invalidate
 
 @done_inside:
 	;; V0 angle
+	lda	WALL_LAST_ANGLE_L
+	sta	WALL_A0_L
+	lda	WALL_LAST_ANGLE_H
+	bpl	@skip_a0
 
 	; p2a_coord.x = d0.x
 	lda	WALL_D0_X_L
@@ -1650,6 +1663,8 @@ render_wall:
 	lda	MATH_VAR_L
 	sta	WALL_A0_L
 	lda	MATH_VAR_H
+
+@skip_a0:
 	sta	WALL_A0_H
 
 	; wall bank
@@ -1698,8 +1713,10 @@ render_wall:
 	jsr	math_p2a
 	lda	MATH_VAR_L
 	sta	WALL_A1_L
+	sta	WALL_LAST_ANGLE_L
 	lda	MATH_VAR_H
 	sta	WALL_A1_H
+	sta	WALL_LAST_ANGLE_H
 
 	;; side check
 

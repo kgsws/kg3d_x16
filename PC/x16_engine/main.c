@@ -1866,6 +1866,7 @@ static void do_walls(uint8_t idx)
 {
 	sector_t *sec = map_sectors + idx;
 	void *wall_ptr = (void*)map_data + sec->walls;
+	uint16_t last_angle = 0x8000;
 
 	portal_last = portal_rd;
 
@@ -1896,17 +1897,24 @@ static void do_walls(uint8_t idx)
 
 		// get distance Y
 		ld.y = (d0.x * wall->solid.dist.y - d0.y * wall->solid.dist.x) >> 8;
-		if(ld.y < 0)
+		if(	ld.y < 0 ||
+			(!ld.y && idx != projection.sector)
+		){
+			last_angle = 0x8000;
 			goto do_next;
+		}
+
 		inside = ld.y == 0 || ld.y == 1;
-		if(!ld.y && idx != projection.sector)
-			goto do_next;
 
 		// V0 angle
-		p2a_coord.x = d0.x;
-		p2a_coord.y = d0.y;
-		a0 = point_to_angle();
-		draw_aline(a0, 0);
+		a0 = last_angle;
+		if(last_angle & 0x8000)
+		{
+			p2a_coord.x = d0.x;
+			p2a_coord.y = d0.y;
+			a0 = point_to_angle();
+			draw_aline(a0, 0);
+		}
 
 		// V1 diff
 		d1.x = v1->x - (projection.x >> 8);
@@ -1917,6 +1925,7 @@ static void do_walls(uint8_t idx)
 		p2a_coord.y = d1.y;
 		a1 = point_to_angle();
 		draw_aline(a1, 0);
+		last_angle = a1;
 
 		// side check
 		ad = a1 - a0;

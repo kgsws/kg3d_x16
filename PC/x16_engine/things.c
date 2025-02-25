@@ -156,6 +156,14 @@ static void swap_thing_sector(uint8_t tdx, uint8_t sdx)
 }
 
 //
+// hitscan
+
+static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_masked_t*,uint8_t))
+{
+
+}
+
+//
 // actions
 
 static uint32_t action_func(thing_t *th, uint32_t act)
@@ -219,6 +227,18 @@ static uint32_t action_func(thing_t *th, uint32_t act)
 
 				thing_launch(pdx, thing_type[ph->type].speed);
 			}
+		}
+		break;
+		case 5: // attack: hitscan
+		{
+			uint32_t tdx;
+
+			if(th == things)
+				th += player_thing;
+
+			tdx = th - things;
+
+//			thing_hitscan(tdx, cb_hitscan_attack);
 		}
 		break;
 	}
