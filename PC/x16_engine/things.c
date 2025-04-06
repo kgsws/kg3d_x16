@@ -158,38 +158,91 @@ static void swap_thing_sector(uint8_t tdx, uint8_t sdx)
 //
 // hitscan
 
-static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_masked_t*,uint8_t))
+static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_combo_t*,uint8_t))
 {
-/*	uint8_t sdx;
-	thing_t *th;
-	sector_t *sec;
-
-	th = things + tdx;
-	sdx = thingsec[tdx][0];
+	thing_t *th = things + tdx;
+	uint8_t sdx = thingsec[tdx][0];
 
 	while(1)
 	{
-		void *wall_ptr;
+		sector_t *sec = map_sectors + sdx;
+		void *wall_ptr = (void*)map_data + sec->walls;
+		uint16_t thang = (uint16_t)th->angle << 4;
+		int16_t x = th->x >> 8;
+		int16_t y = th->y >> 8;
+		uint16_t last_angle;
 
-		wall_ptr = map_data + sec->walls;
-		while(1)
 		{
-			wall_masked_t *wall = wall_ptr;
-			wall_end_t *waln;
-			vertex_t d0;
+			wall_combo_t *wall = wall_ptr;
 			vertex_t *vtx;
 
-			wall_ptr += wall_size_tab[(wall->angle & MARK_TYPE_BITS) >> 12];
+			// V0 diff
+			vtx = &wall->solid.vtx;
+			p2a_coord.x = vtx->x - x;
+			p2a_coord.y = vtx->y - y;
+
+			// point angle
+			last_angle = point_to_angle();
+		}
+
+		while(1)
+		{
+			wall_combo_t *wall = wall_ptr;
+			wall_end_t *waln;
+			vertex_t *vtx;
+			uint16_t angle;
+			uint16_t hit;
+
+			// wall ptr
+			wall_ptr += wall_size_tab[(wall->solid.angle & MARK_MID_BITS) >> 12];
 			waln = wall_ptr;
 
-			vtx = &wall->vtx;
-			d0.x = vtx->x - th->x;
-			d0.y = vtx->y - th->y;
+			// V0 diff
+			vtx = &waln->vtx;
+			p2a_coord.x = vtx->x - x;
+			p2a_coord.y = vtx->y - y;
 
-			if(wall->angle & MARK_LAST)
+			// point angle
+			angle = point_to_angle();
+
+			hit = (thang - last_angle) & 0x0FFF;
+			hit |= (angle - thang) & 0x0FFF;
+
+			if(!(hit & 0x0800))
+			{
+				if(cb(wall, 0))
+					return;
+
+				if(!(wall->solid.angle & MARK_PORTAL))
+					return;
+
+				if(!wall->portal.backsector)
+					return;
+
+				sdx = wall->portal.backsector;
+
 				break;
+			}
+
+			if(wall->solid.angle & MARK_LAST)
+			{
+				// this should never happen
+				printf("NO HITSCAN WALL!\n");
+				return;
+			}
+
+			last_angle = angle;
 		}
-	}*/
+	}
+}
+
+//
+// hitscan
+
+uint32_t cb_hitscan_attack(wall_combo_t *wall, uint8_t tdx)
+{
+	wall->solid.tflags ^= 0x22;
+	return 0;
 }
 
 //
@@ -267,7 +320,7 @@ static uint32_t action_func(thing_t *th, uint32_t act)
 
 			tdx = th - things;
 
-//			thing_hitscan(tdx, cb_hitscan_attack);
+			thing_hitscan(tdx, cb_hitscan_attack);
 		}
 		break;
 	}
@@ -820,6 +873,7 @@ fail_safe:
 				vertex_t d0;
 				vertex_t *vtx;
 
+				// wall ptr
 				wall_ptr += wall_size_tab[(wall->angle & MARK_TYPE_BITS) >> 12];
 				waln = wall_ptr;
 
