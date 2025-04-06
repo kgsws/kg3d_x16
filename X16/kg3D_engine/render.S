@@ -403,7 +403,7 @@ render_view:
 	lda	#$06
 	sta	VERA_CTRL
 
-	; set affine X step
+	; reset affine X increment
 	stz	VERA_FX_Y_INCR_L
 	stz	VERA_FX_Y_INCR_H
 
@@ -728,9 +728,6 @@ render_sector:
 	lda	#$04
 	sta	VERA_CTRL
 
-	; texture flags
-	stz	WALL_TEXTURE_FLAGS
-
 	; sector bank
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
@@ -775,6 +772,7 @@ render_sector:
 	sta	RENDER_TEXTURE_ANGLE
 
 	; texture
+	stz	WALL_TEXTURE_FLAGS
 	lda	SECTOR_STRUCT_FLOOR_TEXTURE,y
 	jsr	texture_set
 
@@ -842,6 +840,7 @@ render_sector:
 	sta	RENDER_TEXTURE_ANGLE
 
 	; texture
+	stz	WALL_TEXTURE_FLAGS
 	lda	SECTOR_STRUCT_CEILING_TEXTURE,y
 	jsr	texture_set
 
@@ -989,8 +988,8 @@ render_walls:
 	lda	WALN_PTR_H
 	sta	WALL_PTR_H
 
-	; dcsel = 3, addrsel = 0
-	lda	#$06
+	; dcsel = 2, addrsel = 0
+	lda	#$04
 	sta	VERA_CTRL
 
 	; ADDR0 = 0x001F00, increment = 1
@@ -999,21 +998,6 @@ render_walls:
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
-
-	; reset affine X increment
-	stz	VERA_FX_Y_INCR_L
-	stz	VERA_FX_Y_INCR_H
-
-	; dcsel = 5, addrsel = 0
-	lda	#$0A
-	sta	VERA_CTRL
-
-	; reset affine X sub
-	stz	VERA_FX_Y_POS_S
-
-	; dcsel = 2, addrsel = 0
-	lda	#$04
-	sta	VERA_CTRL
 
 	; enable cache write
 	lda	#%01000000
@@ -3913,35 +3897,13 @@ wall_render_loop:
 	lda	#$06
 	sta	VERA_CTRL
 
-	; set affine Y step
-	lda	RENDER_TEXSCALE_H,x
-	lsr
-	sta	VERA_FX_X_INCR_H
-	lda	RENDER_TEXSCALE_L,x
-	ror
-	sta	VERA_FX_X_INCR_L
-
-	; dcsel = 5, addrsel = 0
-	lda	#$0A
-	sta	VERA_CTRL
-
-	; set affine Y sub
-	lda	WALL_Y_START_L
-	sta	VERA_FX_X_POS_S
-
-	; dcsel = 4, addrsel = 0
-	lda	#$08
-	sta	VERA_CTRL
-
 	; set affine Y position
-	lda	WALL_Y_START_M
-	sta	VERA_FX_X_POS_L
-	lda	WALL_Y_START_H
-	sta	VERA_FX_X_POS_H
+wall_affine_opcode_C:
+	jsr	set_affine_yn	; modified address
 
 	; set affine X position
 wall_affine_opcode_A:
-	jsr	set_affine_xp	; modified address
+	jsr	set_affine_xpn	; modified address
 
 	; draw column
 	sec
@@ -3959,27 +3921,13 @@ detcode_wall_vline:
 	; next column
 	inc	VIDEO_DRAW_X
 
-	; dcsel = 5, addrsel = 0
-	lda	#$0A
-	sta	VERA_CTRL
-
-	; set affine Y sub
-	lda	WALL_Y_START_L
-	sta	VERA_FX_X_POS_S
-
-	; dcsel = 4, addrsel = 0
-	lda	#$08
-	sta	VERA_CTRL
-
 	; set affine Y position
-	lda	WALL_Y_START_M
-	sta	VERA_FX_X_POS_L
-	lda	WALL_Y_START_H
-	sta	VERA_FX_X_POS_H
+wall_affine_opcode_D:
+	jsr	set_affine_yhn	; modified address
 
 	; set affine X position
 wall_affine_opcode_B:
-	jsr	set_affine_xp	; modified address
+	jsr	set_affine_xpn	; modified address
 
 	; draw column
 	ldx	VIDEO_DRAW_L
@@ -5923,6 +5871,10 @@ render_masked:
 	lda	MASKED_MT_TEXTURE
 	jsr	texture_set
 
+	; dcsel = 6, addrsel = 0
+	lda	#$0C
+	sta	VERA_CTRL
+
 	; column loop
 masked_loop_col:
 	; masked bank
@@ -6926,10 +6878,74 @@ update_weapon_swing:
 	rts
 
 ;;;
+; set wall texture Y info
+;;;
+
+set_affine_yn:
+	; set affine Y step
+	lda	RENDER_TEXSCALE_H,x
+	lsr
+	sta	VERA_FX_X_INCR_H
+	lda	RENDER_TEXSCALE_L,x
+	ror
+	sta	VERA_FX_X_INCR_L
+
+set_affine_yhn:
+	; dcsel = 5, addrsel = 0
+	lda	#$0A
+	sta	VERA_CTRL
+
+	; set affine Y sub
+	lda	WALL_Y_START_L
+	sta	VERA_FX_X_POS_S
+
+	; dcsel = 4, addrsel = 0
+	lda	#$08
+	sta	VERA_CTRL
+
+	; set affine Y position
+	lda	WALL_Y_START_M
+	sta	VERA_FX_X_POS_L
+	lda	WALL_Y_START_H
+	sta	VERA_FX_X_POS_H
+
+	rts
+
+set_affine_ys:
+	; set affine Y step
+	lda	RENDER_TEXSCALE_H,x
+	lsr
+	sta	VERA_FX_Y_INCR_H
+	lda	RENDER_TEXSCALE_L,x
+	ror
+	sta	VERA_FX_Y_INCR_L
+
+set_affine_yhs:
+	; dcsel = 5, addrsel = 0
+	lda	#$0A
+	sta	VERA_CTRL
+
+	; set affine Y sub
+	lda	WALL_Y_START_L
+	sta	VERA_FX_Y_POS_S
+
+	; dcsel = 4, addrsel = 0
+	lda	#$08
+	sta	VERA_CTRL
+
+	; set affine Y position
+	lda	WALL_Y_START_M
+	sta	VERA_FX_Y_POS_L
+	lda	WALL_Y_START_H
+	sta	VERA_FX_Y_POS_H
+
+	rts
+
+;;;
 ; set wall texture X column
 ;;;
 
-set_affine_xp:
+set_affine_xpn:
 	ldx	VIDEO_DRAW_X
 	sec
 	lda	RENDER_TEXTURE_X,x
@@ -6937,6 +6953,15 @@ set_affine_xp:
 	eor	WALL_TEXTURE_XOR
 	sta	VERA_FX_Y_POS_L
 set_affine_sky:
+	rts
+
+set_affine_xps:
+	ldx	VIDEO_DRAW_X
+	sec
+	lda	RENDER_TEXTURE_X,x
+	sbc	RENDER_TEXTURE_OX
+	eor	WALL_TEXTURE_XOR
+	sta	VERA_FX_X_POS_L
 	rts
 
 set_affine_xw:
@@ -7085,15 +7110,37 @@ texture_set:
 	sty	VIDEO_TMP_0
 	tay
 
+	; dcsel = 3, addrsel = 0
+	lda	#$06
+	sta	VERA_CTRL
+
+	; reset affine increment
+	stz	VERA_FX_X_INCR_L
+	stz	VERA_FX_X_INCR_H
+	stz	VERA_FX_Y_INCR_L
+	stz	VERA_FX_Y_INCR_H
+
+	; dcsel = 5, addrsel = 0
+	lda	#$0A
+	sta	VERA_CTRL
+
+	; reset affine sub
+	stz	VERA_FX_X_POS_S
+	stz	VERA_FX_Y_POS_S
+
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
 	; default to invalid texture
 	lda	#$FF
 	sta	RENDER_TEXTURE_INFO_IDX
 
 	; default to 'plane' type
-	lda	#<set_affine_xp
+	lda	#<set_affine_xpn
 	sta	wall_affine_opcode_A+1
 	sta	wall_affine_opcode_B+1
-	lda	#>set_affine_xp
+	lda	#>set_affine_xpn
 	sta	wall_affine_opcode_A+2
 	sta	wall_affine_opcode_B+2
 	stz	COLORMAP_L
@@ -7105,6 +7152,16 @@ texture_set:
 	lda	#>video_draw_vline
 	sta	wall_vline_opcode_A+2
 	sta	wall_vline_opcode_B+2
+
+	; default to 'no XY swap'
+	lda	#<set_affine_yn
+	sta	wall_affine_opcode_C+1
+	lda	#>set_affine_yn
+	sta	wall_affine_opcode_C+2
+	lda	#<set_affine_yhn
+	sta	wall_affine_opcode_D+1
+	lda	#>set_affine_yhn
+	sta	wall_affine_opcode_D+2
 
 	; check for normal texture
 	tya
@@ -7247,6 +7304,31 @@ texture_set:
 	lda	TEXINFO_STRUCT_P_TILE_MAP,y
 	sta	VERA_FX_MAPBASE
 
+	; check for XY swap
+	lda	WALL_TEXTURE_FLAGS
+	and	#WALL__TEXFLAG_MIRROR_Y_SWAP_XY
+	beq	:+
+
+	; set to 'swapped plane' type
+	lda	#<set_affine_xps
+	sta	wall_affine_opcode_A+1
+	sta	wall_affine_opcode_B+1
+	lda	#>set_affine_xps
+	sta	wall_affine_opcode_A+2
+	sta	wall_affine_opcode_B+2
+	stz	COLORMAP_L
+
+	; set 'XY swap'
+	lda	#<set_affine_ys
+	sta	wall_affine_opcode_C+1
+	lda	#>set_affine_ys
+	sta	wall_affine_opcode_C+2
+	lda	#<set_affine_yhs
+	sta	wall_affine_opcode_D+1
+	lda	#>set_affine_yhs
+	sta	wall_affine_opcode_D+2
+
+:
 @flags:
 	; math XOR
 	lda	#$FF
@@ -7272,7 +7354,7 @@ texture_set:
 
 	; check for Y mirror
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_MIRROR_Y
+	and	#WALL__TEXFLAG_MIRROR_Y_SWAP_XY
 	beq	:+
 	inc	WALL_TEXTURE_WX
 :

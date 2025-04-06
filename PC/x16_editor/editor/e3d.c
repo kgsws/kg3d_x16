@@ -830,14 +830,14 @@ static int32_t in3d_wall_mirror_y()
 		kge_x16_tex_t *dest;
 
 		dest = &edit_hit.line->texture[edit_hit.idx];
-		dest->flags ^= TEXFLAG_MIRROR_Y; // shared with TEXFLAG_PEG_MID_BACK
+		dest->flags ^= TEXFLAG_MIRROR_Y_SWAP_XY; // shared with TEXFLAG_PEG_MID_BACK
 
 		if(editor_texture[dest->idx].type != X16G_TEX_TYPE_WALL_MASKED)
 		{
-			edit_status_printf("Texture Y mirror: %s", txt_yes_no[!(dest->flags & TEXFLAG_MIRROR_Y)]);
-
-			if(dest->flags & TEXFLAG_MIRROR_Y && editor_texture[dest->idx].type != X16G_TEX_TYPE_WALL)
-				edit_status_printf("Note: Plane textures on walls can't be Y mirrored.");
+			if(editor_texture[dest->idx].type != X16G_TEX_TYPE_WALL)
+				edit_status_printf("Texture rotate: %s", txt_yes_no[!(dest->flags & TEXFLAG_MIRROR_Y_SWAP_XY)]);
+			else
+				edit_status_printf("Texture Y mirror: %s", txt_yes_no[!(dest->flags & TEXFLAG_MIRROR_Y_SWAP_XY)]);
 		} else
 			edit_status_printf("Masked side peg: %s", txt_back_front[!(dest->flags & TEXFLAG_PEG_MID_BACK)]);
 

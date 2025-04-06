@@ -26,8 +26,8 @@
 
 #define TEXFLAG_PEG_Y	1
 #define TEXFLAG_MIRROR_X	2
-#define TEXFLAG_MIRROR_Y	4
-#define TEXFLAG_PEG_MID_BACK	TEXFLAG_MIRROR_Y
+#define TEXFLAG_MIRROR_Y_SWAP_XY	4
+#define TEXFLAG_PEG_MID_BACK	TEXFLAG_MIRROR_Y_SWAP_XY
 
 #define SECTOR_LIGHT(x)	(((x)->flags >> 4) & 7)
 
@@ -339,6 +339,7 @@ static int32_t tex_offs_y;
 static int32_t tex_step_x;
 static int32_t tex_step_y;
 static uint8_t tex_type;
+static uint8_t tex_swap;
 
 static uint8_t palette_src[256 * 3 * 16];
 static uint8_t *palette;
@@ -580,6 +581,8 @@ static texture_info_t *tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t ligh
 	uint8_t vera_tile_base;
 	uint8_t vera_map_base;
 
+	tex_swap = 0;
+
 	if(idx & 0x80)
 	{
 		if(idx & 0x40)
@@ -611,6 +614,7 @@ static texture_info_t *tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t ligh
 	{
 		// plane
 		tex_type = 0x01;
+		tex_swap = flags & TEXFLAG_MIRROR_Y_SWAP_XY;
 
 		vera_tile_base = mt->plane.vera_tile_base;
 		vera_map_base = mt->plane.vera_map_base;
@@ -629,7 +633,7 @@ static texture_info_t *tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t ligh
 		projection.cols = (uint16_t*)(wram + mt->wall.offs_cols);
 		projection.wtex = wram + mt->wall.offs_data[light];
 		projection.ta = 127;
-		if(flags & TEXFLAG_MIRROR_Y)
+		if(flags & TEXFLAG_MIRROR_Y_SWAP_XY)
 			projection.wx++;
 	}
 
@@ -1214,9 +1218,6 @@ static void dr_vline(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tno
 		return;
 	}
 
-	tex_y_start = 0;
-	tex_x_start = projection.oy;
-
 	if(tex_type & 0x80)
 	{
 		// wall / sprite
@@ -1226,9 +1227,24 @@ static void dr_vline(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tno
 		// plane
 		tex_offs_y = tx << 9;
 
-	tex_offs_x = tnow << 1;
-	tex_step_y = 0;
-	tex_step_x = step << 1;
+	if(tex_swap)
+	{
+		tex_offs_x = tex_offs_y;
+		tex_offs_y = tnow << 1;
+		tex_step_x = 0;
+		tex_step_y = step << 1;
+
+		tex_y_start = projection.oy;
+		tex_x_start = 0;
+	} else
+	{
+		tex_offs_x = tnow << 1;
+		tex_step_y = 0;
+		tex_step_x = step << 1;
+
+		tex_y_start = 0;
+		tex_x_start = projection.oy;
+	}
 
 	dst = framebuffer + x;
 	dst += y1 * 160;

@@ -13,9 +13,9 @@
 // texture flags (walls)
 #define TEXFLAG_PEG_Y	1
 #define TEXFLAG_MIRROR_X	2
-#define TEXFLAG_MIRROR_Y	4
+#define TEXFLAG_MIRROR_Y_SWAP_XY	4
 
-#define TEXFLAG_PEG_MID_BACK	TEXFLAG_MIRROR_Y
+#define TEXFLAG_PEG_MID_BACK	TEXFLAG_MIRROR_Y_SWAP_XY
 
 // wall flags
 #define WALLFLAG_PEG_X	1

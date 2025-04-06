@@ -355,6 +355,7 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 	editor_texture_t *et = editor_texture + ti->idx;
 	float tt, tb, tl, tr;
 	uint32_t flags = ti->flags & TEXFLAG_MIRROR_X;
+	float w, h;
 
 	if(bot >= top)
 		return;
@@ -393,17 +394,27 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 	glBindTexture(GL_TEXTURE_2D, et->gltex);
 	shader_update();
 
-	if(flags & TEXFLAG_PEG_Y)
+	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && (et->type == X16G_TEX_TYPE_PLANE_8BPP || et->type == X16G_TEX_TYPE_PLANE_4BPP))
 	{
-		tt = (float)oy / (float)et->height;
-		tb = tt + (top - bot) / (float)et->height * 0.5f;
+		w = et->height;
+		h = et->width;
 	} else
 	{
-		tb = (float)oy / (float)et->height;
-		tt = tb - (top - bot) / (float)et->height * 0.5f;
+		w = et->width;
+		h = et->height;
 	}
 
-	if(flags & TEXFLAG_MIRROR_Y && (et->type == X16G_TEX_TYPE_WALL || et->type == X16G_TEX_TYPE_WALL_MASKED))
+	if(flags & TEXFLAG_PEG_Y)
+	{
+		tt = (float)oy / (float)h;
+		tb = tt + (top - bot) / (float)h * 0.5f;
+	} else
+	{
+		tb = (float)oy / (float)h;
+		tt = tb - (top - bot) / (float)h * 0.5f;
+	}
+
+	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && (et->type == X16G_TEX_TYPE_WALL || et->type == X16G_TEX_TYPE_WALL_MASKED))
 	{
 		tb = -tb;
 		tt = -tt;
@@ -413,38 +424,52 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 	{
 		if(flags & TEXFLAG_MIRROR_X)
 		{
-			tr = -(float)ti->ox / (float)et->width;
-			tl = tr + ln->stuff.length / (float)et->width * 0.5f;
+			tr = -(float)ti->ox / (float)w;
+			tl = tr + ln->stuff.length / (float)w * 0.5f;
 		} else
 		{
-			tr = (float)ti->ox / (float)et->width;
-			tl = tr - ln->stuff.length / (float)et->width * 0.5f;
+			tr = (float)ti->ox / (float)w;
+			tl = tr - ln->stuff.length / (float)w * 0.5f;
 		}
 	} else
 	{
 		if(flags & TEXFLAG_MIRROR_X)
 		{
-			tl = -(float)ti->ox / (float)et->width;
-			tr = tl - ln->stuff.length / (float)et->width * 0.5f;
+			tl = -(float)ti->ox / (float)w;
+			tr = tl - ln->stuff.length / (float)w * 0.5f;
 		} else
 		{
-			tl = (float)ti->ox / (float)et->width;
-			tr = tl + ln->stuff.length / (float)et->width * 0.5f;
+			tl = (float)ti->ox / (float)w;
+			tr = tl + ln->stuff.length / (float)w * 0.5f;
 		}
 	}
 
+	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && (et->type == X16G_TEX_TYPE_PLANE_8BPP || et->type == X16G_TEX_TYPE_PLANE_4BPP))
+	{
+		gl_vertex_buf[0].t = tr;
+		gl_vertex_buf[0].s = tb;
+		gl_vertex_buf[1].t = tl;
+		gl_vertex_buf[1].s = tb;
+		gl_vertex_buf[2].t = tr;
+		gl_vertex_buf[2].s = tt;
+		gl_vertex_buf[3].t = tl;
+		gl_vertex_buf[3].s = tt;
+	} else
+	{
+		gl_vertex_buf[0].s = tr;
+		gl_vertex_buf[0].t = tb;
+		gl_vertex_buf[1].s = tl;
+		gl_vertex_buf[1].t = tb;
+		gl_vertex_buf[2].s = tr;
+		gl_vertex_buf[2].t = tt;
+		gl_vertex_buf[3].s = tl;
+		gl_vertex_buf[3].t = tt;
+	}
+
 	gl_vertex_buf[0].z = bot;
-	gl_vertex_buf[0].s = tr;
-	gl_vertex_buf[0].t = tb;
 	gl_vertex_buf[1].z = bot;
-	gl_vertex_buf[1].s = tl;
-	gl_vertex_buf[1].t = tb;
 	gl_vertex_buf[2].z = top;
-	gl_vertex_buf[2].s = tr;
-	gl_vertex_buf[2].t = tt;
 	gl_vertex_buf[3].z = top;
-	gl_vertex_buf[3].s = tl;
-	gl_vertex_buf[3].t = tt;
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }

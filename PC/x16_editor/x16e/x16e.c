@@ -10,7 +10,7 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	16
+#define MAP_VERSION	17
 #define MAP_MAGIC	0x36315870614D676B
 
 #define MAX_BANKS	4
@@ -148,17 +148,17 @@ typedef struct
 	int16_t height;
 	uint8_t texture;
 	uint8_t ox, oy;
+	uint8_t sx, sy;
 	uint8_t angle;
 	uint8_t link;
 } __attribute__((packed)) sector_plane_t;
 
 typedef struct
 {
-	// limit is 32 bytes
+	// limit is 31 bytes
 	sector_plane_t floor;
 	sector_plane_t ceiling;
 	uint16_t walls;
-	uint16_t wall_last;
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
 	uint8_t floormasked;
@@ -561,7 +561,7 @@ void x16_export_map()
 	while(ent)
 	{
 		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
-		uint32_t wall_size, wall_offs, wall_stop;
+		uint32_t wall_size, wall_offs;
 		void *wall_ptr = wall_data;
 		uint32_t lidx;
 
@@ -747,7 +747,6 @@ void x16_export_map()
 			if(BANK_SIZE - wall_offs >= wall_size)
 			{
 				map_bank[bank] += wall_size;
-				wall_stop = wall_offs + wall_size - sizeof(wall_end_t);
 				wall_offs += bank * BANK_SIZE;
 				wall_ptr = (void*)map_data + wall_offs;
 				break;
@@ -794,7 +793,6 @@ void x16_export_map()
 			map_sector->ceiling.link = list_get_idx(&edit_list_sector, (link_entry_t*)sec->plane[PLANE_TOP].link - 1) + 1;
 
 		map_sector->walls = wall_offs;
-		map_sector->wall_last = wall_stop;
 
 		map_sector->floordist = sec->plane[PLANE_BOT].dist;
 		map_sector->floormasked = masked_height * 2;

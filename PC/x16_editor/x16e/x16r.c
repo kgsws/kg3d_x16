@@ -236,6 +236,7 @@ static int32_t tex_step_x;
 static int32_t tex_step_y;
 static uint16_t tex_bmsk;
 static uint32_t tex_y_mirror;
+static uint32_t tex_swap_xy;
 static uint32_t tex_is_sky;
 
 // export
@@ -413,6 +414,7 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 
 	tex_x_start = 0;
 	tex_y_mirror = 0;
+	tex_swap_xy = 0;
 
 	if(	et->effect &&
 		(et->effect[0] & X16G_MASK_PL_EFFECT) == X16G_PL_EFFECT_ANIMATE
@@ -451,14 +453,25 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 	} else
 	{
 		projection.ox = x16tex->ox;
-		tex_y_mirror = x16tex->flags & TEXFLAG_MIRROR_Y && et->type == X16G_TEX_TYPE_WALL;
+		if(x16tex->flags & TEXFLAG_MIRROR_Y_SWAP_XY)
+		{
+			tex_y_mirror = et->type == X16G_TEX_TYPE_WALL;
+			tex_swap_xy = et->type != X16G_TEX_TYPE_WALL;
+		}
 	}
 
 	tex_y_start = x16tex->oy;
 	if(!(flags & 0x80))
 		tex_y_start -= projection.oy;
 
-	projection.ta = et->width - 1;
+	if(tex_swap_xy)
+	{
+		tex_x_start = tex_y_start;
+		tex_y_start = 0;
+		projection.ta = et->height - 1;
+	} else
+		projection.ta = et->width - 1;
+
 	projection.tx = 0;
 
 	if(!(x16tex->flags & TEXFLAG_MIRROR_X))
@@ -559,10 +572,19 @@ static void tex_vline(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tn
 {
 	uint32_t *dst;
 
-	tex_offs_x = tx << 9;
-	tex_offs_y = tnow << 1;
-	tex_step_x = 0;
-	tex_step_y = step << 1;
+	if(tex_swap_xy)
+	{
+		tex_offs_y = tx << 9;
+		tex_offs_x = tnow << 1;
+		tex_step_y = 0;
+		tex_step_x = step << 1;
+	} else
+	{
+		tex_offs_x = tx << 9;
+		tex_offs_y = tnow << 1;
+		tex_step_x = 0;
+		tex_step_y = step << 1;
+	}
 
 	dst = framebuffer + x;
 	dst += y1 * 160;

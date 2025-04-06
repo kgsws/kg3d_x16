@@ -1,5 +1,5 @@
 
-#define MAP_VERSION	16
+#define MAP_VERSION	17
 #define MAP_MAGIC	0x36315870614D676B
 #define MAX_LIGHTS	8
 #define MAX_REMAPS	4
@@ -145,17 +145,16 @@ typedef struct
 	int16_t height;
 	uint8_t texture;
 	uint8_t ox, oy;
+	uint8_t sx, sy;
 	uint8_t angle;
 	uint8_t link;
 } __attribute__((packed)) sector_plane_t;
 
 typedef struct
 {
-	// limit is 32 bytes
 	sector_plane_t floor;
 	sector_plane_t ceiling;
 	uint16_t walls;
-	uint16_t wall_last;
 	uint8_t flags;
 	int8_t floordist;
 	uint8_t floormasked;

@@ -160,7 +160,36 @@ static void swap_thing_sector(uint8_t tdx, uint8_t sdx)
 
 static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_masked_t*,uint8_t))
 {
+/*	uint8_t sdx;
+	thing_t *th;
+	sector_t *sec;
 
+	th = things + tdx;
+	sdx = thingsec[tdx][0];
+
+	while(1)
+	{
+		void *wall_ptr;
+
+		wall_ptr = map_data + sec->walls;
+		while(1)
+		{
+			wall_masked_t *wall = wall_ptr;
+			wall_end_t *waln;
+			vertex_t d0;
+			vertex_t *vtx;
+
+			wall_ptr += wall_size_tab[(wall->angle & MARK_TYPE_BITS) >> 12];
+			waln = wall_ptr;
+
+			vtx = &wall->vtx;
+			d0.x = vtx->x - th->x;
+			d0.y = vtx->y - th->y;
+
+			if(wall->angle & MARK_LAST)
+				break;
+		}
+	}*/
 }
 
 //
@@ -1092,7 +1121,7 @@ static void projectile_death(thing_t *th)
 	uint32_t state;
 	thing_state_t *st;
 
-	printf("block %d; %u\n", poscheck.blocked, poscheck.hit_thing);
+//	printf("block %d; %u\n", poscheck.blocked, poscheck.hit_thing);
 
 	// stop
 	th->mx = 0;
