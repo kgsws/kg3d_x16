@@ -2,12 +2,11 @@
 .include "../vera.inc"
 .include "banks.inc"
 .include "tables.inc"
-.include "main.inc"
 .include "math.inc"
-.include "map.inc"
 .include "zeropage.inc"
 .include "engine.inc"
 .include "things.inc"
+.include "hitscan.inc"
 
 .export action_run
 
@@ -16,6 +15,87 @@
 ;;;
 
 .segment "CODE"
+
+;;;
+; get XY
+;;;
+
+handle_XY:
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; X
+	lda	THING_STRUCT_X_S,y
+	sta	ARG_THING_SPAWN_X_S
+	lda	THING_STRUCT_X_L,y
+	sta	ARG_THING_SPAWN_X_L
+	lda	THING_STRUCT_X_H,y
+	sta	ARG_THING_SPAWN_X_H
+
+	; Y
+	lda	THING_STRUCT_Y_S,y
+	sta	ARG_THING_SPAWN_Y_S
+	lda	THING_STRUCT_Y_L,y
+	sta	ARG_THING_SPAWN_Y_L
+	lda	THING_STRUCT_Y_H,y
+	sta	ARG_THING_SPAWN_Y_H
+
+	rts
+
+;;;
+; get base info
+;;;
+
+handle_base_info:
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; check for weapon
+	ldy	TICK_IDX
+	bne	:+
+
+	; use player thing
+	ldy	G_PLAYER_THING
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing sector pointer
+	lda	$A000,y
+	sta	ARG_THING_SPAWN_SECTOR
+
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+:
+	; save for return
+	phy
+
+	; origin type
+	ldx	THING_STRUCT_TYPE,y
+
+	; weapon type
+	ldy	TICK_IDX
+	lda	THING_STRUCT_TYPE,y
+	tay
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; spawn type	; TODO: spawn slot
+	lda	THTYPE_STRUCT_SPAWN_A,y
+	sta	ARG_THING_SPAWN_TYPE
+
+	; view height
+	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
+
+	ply
+	clc
+	rts
 
 ;;;
 ; action: weapon ready
@@ -202,26 +282,8 @@ act_wpn_lower:
 ;;;
 
 act_atk_projectile:
-	; type	; TODO: from args
-	ldx	#111
-	stx	ARG_THING_SPAWN_TYPE
-
-	; get shooter	; TODO: non-weapon
-	ldy	G_PLAYER_THING
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-	; player type
-	ldx	THING_STRUCT_TYPE,y
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
-	; player view height
-	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
+	; origin
+	jsr	handle_base_info
 	pha
 
 	; projectile height / 2
@@ -239,33 +301,8 @@ act_atk_projectile:
 	lda	THTYPE_STRUCT_SPEED,x
 	pha
 
-	; thing sectors bank
-	lda	#BANK_THING_SECTORS
-	sta	REG_RAM_BANK
-
-	; thing sector pointer
-	lda	$A000,y
-	sta	ARG_THING_SPAWN_SECTOR
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-	; X
-	lda	THING_STRUCT_X_S,y
-	sta	ARG_THING_SPAWN_X_S
-	lda	THING_STRUCT_X_L,y
-	sta	ARG_THING_SPAWN_X_L
-	lda	THING_STRUCT_X_H,y
-	sta	ARG_THING_SPAWN_X_H
-
-	; Y
-	lda	THING_STRUCT_Y_S,y
-	sta	ARG_THING_SPAWN_Y_S
-	lda	THING_STRUCT_Y_L,y
-	sta	ARG_THING_SPAWN_Y_L
-	lda	THING_STRUCT_Y_H,y
-	sta	ARG_THING_SPAWN_Y_H
+	; X Y
+	jsr	handle_XY
 
 	; Z
 	lda	THING_STRUCT_Z_S,y
@@ -308,6 +345,55 @@ act_atk_projectile:
 	rts
 
 ;;;
+; action: projectile attack
+;;;
+
+cb_hitscan:
+	; TEST CODE
+	ldy	#WALL_STRUCT_TEX_FLAGS
+	lda	(WALL_PTR_L),y
+	eor	#$22
+	sta	(WALL_PTR_L),y
+
+	clc
+	rts
+
+act_atk_hitscan:
+	; origin
+	jsr	handle_base_info
+	pha
+
+	; X Y
+	jsr	handle_XY
+
+	; Z + view height
+	pla
+	adc	THING_STRUCT_Z_L,y
+	sta	ARG_THING_SPAWN_Z_L
+	lda	THING_STRUCT_Z_H,y
+	adc	#0
+	sta	ARG_THING_SPAWN_Z_H
+
+	; angle
+	lda	THING_STRUCT_ANGLE,y
+	sta	ARG_HITSCAN_ANGLE
+
+	; callback
+	ldx	#<cb_hitscan
+	ldy	#>cb_hitscan
+
+	; attack
+	jsr	hitscan
+
+	; thing states bank
+	lda	#BANK_THING_STATES
+	sta	REG_RAM_BANK
+
+	; no changes
+	clc
+	rts
+
+;;;
 ; state action calling
 ;;;
 ; THANIM_PTR_* points to current frame
@@ -323,4 +409,5 @@ action_table:
 	.word	act_wpn_raise
 	.word	act_wpn_lower
 	.word	act_atk_projectile
+	.word	act_atk_hitscan
 

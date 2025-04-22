@@ -3,7 +3,7 @@
 
 // render
 #define ENGINE_FOV	(M_PI * 0.5f)	// TODO: variable
-#define MAX_RENDER_RECURSION	1024
+#define MAX_RENDER_RECURSION	32
 
 // movement
 #define FRICTION_DEFAULT	0.95f

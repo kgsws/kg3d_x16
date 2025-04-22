@@ -1005,7 +1005,6 @@ thing_tick:
 	; projection.wd = 0
 	stz	G_VIEWDELTA
 :
-
 @skip_camera:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
@@ -1631,15 +1630,13 @@ thing_tick:
 	sta	REG_RAM_BANK
 
 	; action
-	ldy	#0
-	lda	(THANIM_PTR_L),y
+	lda	(THANIM_PTR_L)
 	beq	:+
 
 	; run action
 	asl
 	tax
 	jsr	action_run
-	ldy	#0
 	bcc	:+
 
 	; repeat
@@ -1647,7 +1644,7 @@ thing_tick:
 	bra	@act_again
 :
 	; next (lo)
-	iny
+	ldy	#1
 	lda	(THANIM_PTR_L),y
 	sta	TMP_THING_NXTFRM_L
 

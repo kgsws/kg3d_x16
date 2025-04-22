@@ -167,10 +167,10 @@ static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_combo_t*,uint8_t))
 	{
 		sector_t *sec = map_sectors + sdx;
 		void *wall_ptr = (void*)map_data + sec->walls;
-		uint16_t thang = (uint16_t)th->angle << 4;
+		uint8_t thang = th->angle;
 		int16_t x = th->x >> 8;
 		int16_t y = th->y >> 8;
-		uint16_t last_angle;
+		uint8_t last_angle;
 
 		{
 			wall_combo_t *wall = wall_ptr;
@@ -182,7 +182,7 @@ static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_combo_t*,uint8_t))
 			p2a_coord.y = vtx->y - y;
 
 			// point angle
-			last_angle = point_to_angle();
+			last_angle = point_to_angle() >> 4;
 		}
 
 		while(1)
@@ -190,8 +190,7 @@ static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_combo_t*,uint8_t))
 			wall_combo_t *wall = wall_ptr;
 			wall_end_t *waln;
 			vertex_t *vtx;
-			uint16_t angle;
-			uint16_t hit;
+			uint8_t angle, hit;
 
 			// wall ptr
 			wall_ptr += wall_size_tab[(wall->solid.angle & MARK_MID_BITS) >> 12];
@@ -203,12 +202,12 @@ static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_combo_t*,uint8_t))
 			p2a_coord.y = vtx->y - y;
 
 			// point angle
-			angle = point_to_angle();
+			angle = point_to_angle() >> 4;
 
-			hit = (thang - last_angle) & 0x0FFF;
-			hit |= (angle - thang) & 0x0FFF;
+			hit = angle - thang;
+			hit |= thang - last_angle;
 
-			if(!(hit & 0x0800))
+			if(!(hit & 0x80))
 			{
 				if(cb(wall, 0))
 					return;
@@ -287,7 +286,7 @@ static uint32_t action_func(thing_t *th, uint32_t act)
 		break;
 		case 4: // attack: projectile
 		{
-			uint32_t type = 111; // TODO
+			uint32_t type = thing_type[th->type].spawn[0]; // TODO
 			thing_t *ph;
 			uint32_t tdx, pdx;
 			uint8_t diff;
