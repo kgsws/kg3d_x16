@@ -21,8 +21,7 @@ FILE_DEST_VRAM0 = 2
 FILE_DEST_VRAM1 = 3
 
 .org $080D
-; NOTE:	loader code size limit is 0x21F3 (8691 bytes)
-; 	TABLES_0_ADDR = $2A00
+; NOTE:	loader code size limited
 
 .segment "STARTUP"
 .segment "INIT"

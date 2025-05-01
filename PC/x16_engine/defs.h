@@ -183,7 +183,9 @@ extern uint8_t sectorth[256][32]; // list of things which are in specific sector
 extern int16_t tab_sin[256];
 extern int16_t tab_cos[256];
 
-extern int16_t tab_tan[2048];
+extern int16_t *const inv_div;
+
+extern int16_t tab_tan_hs[128];
 
 extern uint8_t map_data[32 * 1024];
 

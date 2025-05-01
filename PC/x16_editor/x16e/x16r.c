@@ -58,10 +58,12 @@ typedef union
 		uint8_t ptxjmp_h[128];	// @ 0x3480
 		uint8_t yoffs_l[128];	// @ 0x3500
 		uint8_t yoffs_h[128];	// @ 0x3580
-		uint8_t sin_l[320];	// @ 0x3600
-		uint8_t sin_h[320];	// @ 0x3740
-		uint8_t pxloop[0x1553];	// @ 0x3880
-		// 0x4DD3
+		uint8_t htan_l[128];	// @ 0x3600
+		uint8_t htan_h[128];	// @ 0x3680
+		uint8_t sin_l[320];	// @ 0x3700
+		uint8_t sin_h[320];	// @ 0x3840
+		uint8_t pxloop[0x1553];	// @ 0x3980
+		// 0x4ED3
 	};
 } tables_2900_t;
 
@@ -2261,6 +2263,17 @@ void x16r_generate()
 		tables_2900.yoffs_l[i] = offs;
 		tables_2900.yoffs_h[i] = offs >> 8;
 	}
+
+	// hitscan tan
+	for(int32_t i = 1; i < 128; i++)
+	{
+		float rad = (float)(i - 64) * (M_PI / 128.0f);
+		int16_t val = tanf(rad) * 256.0f;
+		tables_2900.htan_l[i] = val;
+		tables_2900.htan_h[i] = val >> 8;
+	}
+	tables_2900.htan_l[0] = tables_2900.htan_l[1];
+	tables_2900.htan_h[0] = tables_2900.htan_h[1];
 
 	// X lookup
 	for(uint32_t i = 0; i < 160; i++)

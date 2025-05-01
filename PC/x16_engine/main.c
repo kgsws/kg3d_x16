@@ -89,9 +89,11 @@ typedef union
 		uint8_t ptxjmp_h[128];	// @ 0x3480
 		uint8_t yoffs_l[128];	// @ 0x3500
 		uint8_t yoffs_h[128];	// @ 0x3580
-		uint8_t sin_l[320];	// @ 0x3600
-		uint8_t sin_h[320];	// @ 0x3740
-		uint8_t pxloop[0x1553];	// @ 0x3880
+		uint8_t htan_l[128];	// @ 0x3600
+		uint8_t htan_h[128];	// @ 0x3680
+		uint8_t sin_l[320];	// @ 0x3700
+		uint8_t sin_h[320];	// @ 0x3840
+		uint8_t pxloop[0x1553];	// @ 0x3980
 	};
 } tables_2900_t;
 
@@ -429,7 +431,7 @@ int16_t tab_cos[256];
 
 // inverse division
 static int16_t inv_div_raw[65536];
-static int16_t *const inv_div = inv_div_raw + 32768;
+int16_t *const inv_div = inv_div_raw + 32768;
 
 // texture Z scale
 static int16_t tex_scale[4096];
@@ -441,7 +443,8 @@ static int16_t tab_depth[4096];
 static uint16_t atan_tab[4096];
 
 // tan
-int16_t tab_tan[2048];
+static int16_t tab_tan[2048];
+int16_t tab_tan_hs[128];
 
 // angle to X and reverse
 static int16_t angle2x[2048];
@@ -2997,6 +3000,10 @@ static uint32_t load_tables()
 	}
 
 	/// T0
+
+	// hitscan tan
+	for(uint32_t i = 0; i < 128; i++)
+		tab_tan_hs[i] = (tables_2900.htan_h[i] << 8) | tables_2900.htan_l[i];
 
 	// sin / cos
 	for(uint32_t i = 0; i < 256; i++)

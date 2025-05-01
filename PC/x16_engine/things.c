@@ -42,6 +42,16 @@ typedef struct
 	wall_masked_t *wall;
 } pos_check_t;
 
+typedef struct
+{
+	int16_t x, y, z;
+	uint8_t origin;
+	uint8_t sector;
+	uint8_t angle;
+	uint8_t pitch;
+	uint8_t pufftype;
+} hitscan_t;
+
 //
 
 static uint8_t thing_data[8192 * 2];
@@ -75,8 +85,11 @@ static portal_t portals[256];
 // position check variables
 uint8_t portal_rd, portal_wr, portal_bs, portal_bl;
 
-// position check result
+// position check stuff
 pos_check_t poscheck;
+
+// hitscan stuff
+hitscan_t hitscan;
 
 //
 //
@@ -162,14 +175,22 @@ static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_combo_t*,uint8_t))
 {
 	thing_t *th = things + tdx;
 	uint8_t sdx = thingsec[tdx][0];
+	int16_t x = th->x >> 8;
+	int16_t y = th->y >> 8;
+
+	hitscan.origin = tdx;
+	hitscan.angle = th->angle;
+
+	hitscan.x = x;
+	hitscan.y = y;
+	hitscan.z = th->z >> 8;
+	hitscan.z += thing_type[th->type].view_height;
 
 	while(1)
 	{
 		sector_t *sec = map_sectors + sdx;
 		void *wall_ptr = (void*)map_data + sec->walls;
 		uint8_t thang = th->angle;
-		int16_t x = th->x >> 8;
-		int16_t y = th->y >> 8;
 		uint8_t last_angle;
 
 		{
@@ -209,6 +230,7 @@ static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_combo_t*,uint8_t))
 
 			if(!(hit & 0x80))
 			{
+				hitscan.sector = sdx;
 				if(cb(wall, 0))
 					return;
 
@@ -240,8 +262,109 @@ static void thing_hitscan(uint8_t tdx, uint32_t (*cb)(wall_combo_t*,uint8_t))
 
 uint32_t cb_hitscan_attack(wall_combo_t *wall, uint8_t tdx)
 {
-	wall->solid.tflags ^= 0x22;
-	return 0;
+	vertex_t d0;
+	vertex_t *vtx;
+	int32_t dist, dd, zz;
+	uint8_t angle;
+	thing_type_t *info = thing_type + hitscan.pufftype;
+	sector_t *sec = map_sectors + hitscan.sector;
+
+	// V0 diff
+	vtx = &wall->solid.vtx;
+	d0.x = vtx->x - hitscan.x;
+	d0.y = vtx->y - hitscan.y;
+
+	// get distance
+	dist = (d0.x * wall->solid.dist.y - d0.y * wall->solid.dist.x) >> 8;
+
+	// get angle
+	angle = wall->solid.angle >> 4;
+	angle -= hitscan.angle;
+
+	// get location A
+	d0.x = hitscan.x;
+	d0.x += (wall->solid.dist.y * dist) >> 8;
+	d0.y = hitscan.y;
+	d0.y -= (wall->solid.dist.x * dist) >> 8;
+
+	// get location B
+	dist *= tab_tan_hs[angle];
+	dist >>= 8;
+	d0.x += (wall->solid.dist.x * dist) >> 8;
+	d0.y += (wall->solid.dist.y * dist) >> 8;
+
+	// get range
+	dist = d0.x - hitscan.x;
+	if(dist < 0)
+		dist = -dist;
+	dd = d0.y - hitscan.y;
+	if(dd < 0)
+		dd = -dd;
+	if(dd > dist)
+		dist = dd * inv_div[tab_cos[hitscan.angle]] * 2;
+	else
+		dist = dist * inv_div[tab_sin[hitscan.angle]] * 2;
+	dist >>= 8;
+	if(dist < 0)
+		dist = -dist;
+
+	// get Z
+	dist *= tab_tan_hs[hitscan.pitch];
+	zz = hitscan.z;
+	zz += dist >> 8;
+
+	// check floor
+	if(zz <= sec->floor.height)
+	{
+		zz = sec->floor.height;
+		dist = hitscan.z - sec->floor.height;
+hit_plane:
+		dist *= inv_div[tab_cos[hitscan.pitch]] * 2;
+		dist >>= 8;
+		d0.x = hitscan.x;
+		d0.x += (tab_sin[hitscan.angle] * dist) >> 8;
+		d0.y = hitscan.y;
+		d0.y += (tab_cos[hitscan.angle] * dist) >> 8;
+		goto do_hit;
+	}
+
+	// check ceiling
+	if(zz >= sec->ceiling.height)
+	{
+		zz = sec->ceiling.height - info->height;
+		dist = hitscan.z - sec->ceiling.height;
+		goto hit_plane;
+	}
+
+	// check backsector
+	if(	wall->solid.angle & MARK_PORTAL &&
+		wall->portal.backsector
+	){
+		sector_t *bs = map_sectors + wall->portal.backsector;
+
+		// check blocking and heights
+		if(	!(wall->portal.blocking & info->blockedby) &&
+			zz > bs->floor.height &&
+			zz < bs->ceiling.height
+		)
+			return 0;
+	}
+
+	// ceiling check
+	dd = sec->ceiling.height - info->height;
+	if(zz > dd)
+		zz = dd;
+
+	// radius offset
+	dist = info->radius + 1;
+	d0.x -= (wall->solid.dist.y * dist) >> 8;
+	d0.y += (wall->solid.dist.x * dist) >> 8;
+
+do_hit:
+	// spawn thing
+	thing_spawn((int32_t)d0.x << 8, (int32_t)d0.y << 8, zz << 8, hitscan.sector, hitscan.pufftype, 0);
+
+	return 1;
 }
 
 //
@@ -314,10 +437,14 @@ static uint32_t action_func(thing_t *th, uint32_t act)
 		{
 			uint32_t tdx;
 
+			hitscan.pufftype = thing_type[th->type].spawn[0]; // TODO
+
 			if(th == things)
 				th += player_thing;
 
 			tdx = th - things;
+
+			hitscan.pitch = th->pitch >> 1;
 
 			thing_hitscan(tdx, cb_hitscan_attack);
 		}

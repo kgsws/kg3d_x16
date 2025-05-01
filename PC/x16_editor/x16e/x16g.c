@@ -466,6 +466,7 @@ static uint_fast8_t sprite_origin = 2;
 static variant_list_t x16_weapon[MAX_X16_WPNSPR];
 static wpnspr_part_t wpn_part_info[UI_WPN_PARTS];
 static glui_dummy_t *wpn_part_rect;
+static int32_t wpn_part_copy = -1;
 
 editor_sprlink_t editor_sprlink[MAX_X16_THGSPR + MAX_X16_WPNSPR];
 uint32_t x16_num_sprlnk_thg;
@@ -528,6 +529,7 @@ static const uint8_t tm_256x16[] =
 
 static const uint8_t *update_gfx_palette(ui_idx_t *idx);
 static int32_t input_gfx_palette(glui_element_t*,uint32_t);
+static int32_t input_gfx_weapons(glui_element_t*,uint32_t);
 static const uint8_t *update_gfx_lights(ui_idx_t *idx);
 static const uint8_t *update_gfx_remaps(ui_idx_t *idx);
 static const uint8_t *update_gfx_planes(ui_idx_t *idx);
@@ -597,7 +599,8 @@ static const ui_set_t ui_set[GFX_NUM_MODES] =
 	{
 		&ui_gfx_weapons,
 		&ui_gfx_weapons_txt,
-		update_gfx_weapons
+		update_gfx_weapons,
+		input_gfx_weapons
 	},
 	[GFX_MODE_SKIES] =
 	{
@@ -2856,6 +2859,7 @@ static void update_gfx_mode(int32_t step)
 static void set_gfx_mode(uint32_t mode)
 {
 	stex_wpn_import = 0;
+	wpn_part_copy = -1;
 
 	gfx_mode = mode;
 
@@ -4204,6 +4208,7 @@ static void vlist_var_del(variant_list_t *vl, ui_idx_t *idx)
 static void gfx_cleanup()
 {
 	stex_wpn_import = 0;
+	wpn_part_copy = -1;
 
 	for(uint32_t i = 0; i < GFX_NUM_MODES; i++)
 	{
@@ -5522,6 +5527,7 @@ int32_t uin_gfx_mode_click(glui_element_t *elm, int32_t x, int32_t y)
 int32_t uin_gfx_left(glui_element_t *elm, int32_t x, int32_t y)
 {
 	stex_wpn_import = 0;
+	wpn_part_copy = -1;
 	update_gfx_mode(-1);
 	return 1;
 }
@@ -5529,6 +5535,7 @@ int32_t uin_gfx_left(glui_element_t *elm, int32_t x, int32_t y)
 int32_t uin_gfx_right(glui_element_t *elm, int32_t x, int32_t y)
 {
 	stex_wpn_import = 0;
+	wpn_part_copy = -1;
 	update_gfx_mode(1);
 	return 1;
 }
@@ -7435,6 +7442,7 @@ static void fs_weapon(uint8_t *file)
 		return;
 	}
 
+	wpn_part_copy = -1;
 	stex_wpn_import = img->width | (img->height << 16);
 	memset(wpn_part_info, 0, sizeof(wpn_part_info));
 
@@ -7555,6 +7563,8 @@ static void te_weapon_variant_new(uint8_t *text)
 		*name = 0;
 	}
 
+	wpn_part_copy = -1;
+
 	update_gfx_mode(0);
 }
 
@@ -7562,6 +7572,7 @@ static void qe_delete_weapon(uint32_t res)
 {
 	if(!res)
 		return;
+	wpn_part_copy = -1;
 	vlist_delete(x16_weapon, gfx_idx + GFX_MODE_WEAPONS);
 }
 
@@ -7600,7 +7611,60 @@ static void qe_delete_weapon_variant(uint32_t res)
 			va->wpn.base = base;
 	}
 
+	wpn_part_copy = -1;
+
 	update_gfx_mode(0);
+}
+
+static int32_t input_gfx_weapons(glui_element_t *elm, uint32_t magic)
+{
+	variant_list_t *ws;
+	variant_info_t *va;
+	wpnspr_part_t *src, *dst;
+
+	if(stex_wpn_import)
+		return 1;
+
+	if(!gfx_idx[GFX_MODE_WEAPONS].max)
+		return 1;
+
+	ws = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
+
+	if(!ws->max)
+		return 1;
+
+	va = ws->variant + ws->now;
+
+	ws = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
+	va = ws->variant + ws->now;
+
+	if(magic == EDIT_INPUT_COPY)
+	{
+		wpn_part_copy = va->ws.now;
+		edit_status_printf("Part copied.");
+		return 1;
+	}
+
+	if(magic == EDIT_INPUT_PASTE)
+	{
+		if(wpn_part_copy < 0)
+			return 1;
+
+		if(va->ws.now == wpn_part_copy)
+			return 1;
+
+		dst = va->ws.part + va->ws.now;
+		src = va->ws.part + wpn_part_copy;
+
+		*dst = *src;
+		update_gfx_mode(0);
+
+		edit_status_printf("Part pasted.");
+
+		return 1;
+	}
+
+	return 1;
 }
 
 int32_t uin_gfx_wpn_import(glui_element_t *elm, int32_t x, int32_t y)
