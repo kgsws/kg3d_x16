@@ -9,6 +9,7 @@
 .include "hitscan.inc"
 
 .export action_run
+.export action_get_XY
 
 ;;;
 ; CODE
@@ -20,7 +21,7 @@
 ; get XY
 ;;;
 
-handle_XY:
+action_get_XY:
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
@@ -94,7 +95,6 @@ handle_base_info:
 	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
 
 	ply
-	clc
 	rts
 
 ;;;
@@ -294,6 +294,7 @@ act_atk_projectile:
 
 	; Z offset
 	pla
+	sec
 	sbc	MATH_TEMP_A
 	sta	MATH_TEMP_A
 
@@ -302,7 +303,7 @@ act_atk_projectile:
 	pha
 
 	; X Y
-	jsr	handle_XY
+	jsr	action_get_XY
 
 	; Z
 	lda	THING_STRUCT_Z_S,y
@@ -348,42 +349,25 @@ act_atk_projectile:
 ; action: projectile attack
 ;;;
 
-cb_hitscan:
-	; TEST CODE
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	eor	#$22
-	sta	(WALL_PTR_L),y
-
-	clc
-	rts
-
 act_atk_hitscan:
 	; origin
 	jsr	handle_base_info
-	pha
+	tax
 
-	; X Y
-	jsr	handle_XY
-
-	; Z + view height
-	pla
-	adc	THING_STRUCT_Z_L,y
-	sta	ARG_THING_SPAWN_Z_L
-	lda	THING_STRUCT_Z_H,y
-	adc	#0
-	sta	ARG_THING_SPAWN_Z_H
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
 
 	; angle
 	lda	THING_STRUCT_ANGLE,y
 	sta	ARG_HITSCAN_ANGLE
 
-	; callback
-	ldx	#<cb_hitscan
-	ldy	#>cb_hitscan
+	; pitch
+	lda	THING_STRUCT_PITCH,y
+	sta	ARG_HITSCAN_PITCH
 
 	; attack
-	jsr	hitscan
+	jsr	hitscan_attack
 
 	; thing states bank
 	lda	#BANK_THING_STATES

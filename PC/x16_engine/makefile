@@ -1,5 +1,5 @@
 program = test
-OBJ = main.o things.o
+OBJ = main.o things.o hitscan.o
 LIBS = -lSDL2 -lGL -lGLU -lm -lpng
 OPT=-O2 -g
 CC=gcc

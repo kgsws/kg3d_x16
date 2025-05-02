@@ -2511,7 +2511,7 @@ thing_check_position:
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
 
-	; thing sector pointer
+	; thing sector
 	lda	$A000,y
 	sta	ARG_THING_CHECK_SECTOR
 :
