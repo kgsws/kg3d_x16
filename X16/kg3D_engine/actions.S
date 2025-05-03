@@ -364,7 +364,8 @@ act_atk_hitscan:
 
 	; pitch
 	lda	THING_STRUCT_PITCH,y
-	sta	ARG_HITSCAN_PITCH
+	lsr
+	sta	ARG_HITSCAN_HALF_PITCH
 
 	; attack
 	jsr	hitscan_attack

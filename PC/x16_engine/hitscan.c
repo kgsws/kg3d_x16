@@ -13,10 +13,15 @@ typedef struct
 	uint8_t sector;
 	uint8_t angle;
 	uint8_t type;
+	uint8_t axis;
+	uint8_t radius;
+	uint8_t height;
+	uint8_t blockedby;
 	int16_t sin;
 	int16_t cos;
+	int16_t idiv;
+	int16_t wtan;
 	int16_t ptan;
-	int16_t pcid;
 } hitscan_t;
 
 // hitscan stuff
@@ -31,7 +36,6 @@ uint32_t cb_attack(wall_combo_t *wall, uint8_t tdx)
 	vertex_t *vtx;
 	int32_t dist, dd, zz;
 	uint8_t angle;
-	thing_type_t *info = thing_type + hitscan.type;
 	sector_t *sec = map_sectors + hitscan.sector;
 
 	// V0 diff
@@ -59,34 +63,26 @@ uint32_t cb_attack(wall_combo_t *wall, uint8_t tdx)
 	d0.y += (wall->solid.dist.y * dist) >> 8;
 
 	// get range
-	dist = d0.x - hitscan.x;
-	if(dist < 0)
-		dist = -dist;
-
-	dd = d0.y - hitscan.y;
-	if(dd < 0)
-		dd = -dd;
-
-	if(dd > dist)
-		dist = dd * inv_div[hitscan.cos] * 2;
+	if(hitscan.axis & 0x80)
+		dist = d0.x - hitscan.x;
 	else
-		dist = dist * inv_div[hitscan.sin] * 2;
+		dist = d0.y - hitscan.y;
+
+	dist *= hitscan.idiv * 2;
 	dist >>= 8;
-	if(dist < 0)
-		dist = -dist;
 
 	// get Z
-	dist *= hitscan.ptan;
-	zz = hitscan.z;
-	zz += dist >> 8;
+	dist *= hitscan.wtan;
+	zz = hitscan.z + (dist >> 8);
 
 	// check floor
-	if(zz <= sec->floor.height)
+	if(zz < sec->floor.height)
 	{
 		zz = sec->floor.height;
-		dist = hitscan.z - sec->floor.height;
+		dd = sec->floor.height;
 hit_plane:
-		dist *= hitscan.pcid;
+		dist = hitscan.z - dd;
+		dist *= hitscan.ptan;
 		dist >>= 8;
 		d0.x = hitscan.x;
 		d0.x += (hitscan.sin * dist) >> 8;
@@ -96,10 +92,10 @@ hit_plane:
 	}
 
 	// check ceiling
-	if(zz >= sec->ceiling.height)
+	if(zz > sec->ceiling.height)
 	{
-		zz = sec->ceiling.height - info->height;
-		dist = hitscan.z - sec->ceiling.height;
+		zz = sec->ceiling.height - hitscan.height;
+		dd = sec->ceiling.height;
 		goto hit_plane;
 	}
 
@@ -110,22 +106,21 @@ hit_plane:
 		sector_t *bs = map_sectors + wall->portal.backsector;
 
 		// check blocking and heights
-		if(	!(wall->portal.blocking & info->blockedby) &&
+		if(	!(wall->portal.blocking & hitscan.blockedby) &&
 			zz > bs->floor.height &&
 			zz < bs->ceiling.height
 		)
 			return 0;
 	}
-
+#if 0
 	// ceiling check
-	dd = sec->ceiling.height - info->height;
+	dd = sec->ceiling.height - hitscan.height;
 	if(zz > dd)
 		zz = dd;
-
+#endif
 	// radius offset
-	dist = info->radius + 1;
-	d0.x -= (wall->solid.dist.y * dist) >> 8;
-	d0.y += (wall->solid.dist.x * dist) >> 8;
+	d0.x -= (wall->solid.dist.y * hitscan.radius) >> 8;
+	d0.y += (wall->solid.dist.x * hitscan.radius) >> 8;
 
 do_hit:
 	// spawn thing
@@ -222,9 +217,14 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*,uint8_
 //
 // hitscan bullet attack
 
-void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t pitch, uint8_t type)
+void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, uint8_t type)
 {
 	thing_t *th = things + tdx;
+	thing_type_t *info = thing_type + type;
+
+	hitscan.radius = info->radius + 1;
+	hitscan.height = info->height;
+	hitscan.blockedby = info->blockedby;
 
 	hitscan.z = th->z >> 8;
 	hitscan.z += zadd;
@@ -232,9 +232,20 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t pitch, uint
 	hitscan.sin = tab_sin[hang];
 	hitscan.cos = tab_cos[hang];
 
-	pitch >>= 1;
-	hitscan.ptan = tab_tan_hs[pitch];
-	hitscan.pcid = inv_div[tab_cos[pitch]] * 2;
+	hitscan.axis = (hang + 0x20) << 1;
+	if(hitscan.axis & 0x80)
+		hitscan.idiv = inv_div[hitscan.sin];
+	else
+		hitscan.idiv = inv_div[hitscan.cos];
+
+	hitscan.wtan = tab_tan_hs[halfpitch];
+
+	if(halfpitch & 0x40)
+		halfpitch -= 0x40;
+	else
+		halfpitch += 0x40;
+
+	hitscan.ptan = tab_tan_hs[halfpitch];
 
 	hitscan.type = type;
 

@@ -12,6 +12,15 @@
 .export hitscan_attack
 
 ;;;
+; NOTES: hitscan callback
+;;;
+; Hitscan callback is entered with wall bank set.
+; WALL_PTR_L is current wall.
+; ARG_THING_SPAWN_SECTOR is current sector.
+; Set carry to STOP checking.
+; Wall bank must be restored on exit, if carry is cleared.
+
+;;;
 ; CODE
 ;;;
 
@@ -218,59 +227,318 @@ cb_hitscan:
 	adc	VERA_DATA0
 	sta	HITSCAN_D0_Y_H
 
+	; if(hitscan.axis & 0x80)
+	lda	HITSCAN_AXIS
+	bpl	@aY
+
 	; dist = d0.x - hitscan.x
 	sec
 	lda	HITSCAN_D0_X_L
 	sbc	ARG_THING_SPAWN_X_L
-	sta	HITSCAN_DIST_L
+	sta	VERA_FX_CACHE_L
 	lda	HITSCAN_D0_X_H
 	sbc	ARG_THING_SPAWN_X_H
-	sta	HITSCAN_DIST_H
+	sta	VERA_FX_CACHE_M
 
-	; if(dist < 0)
-	bpl	:+
-
-	; dist = -dist
+	bra	@askip
+@aY:
+	; dist = d0.y - hitscan.y
 	sec
-	lda	#0
-	sbc	HITSCAN_DIST_L
-	sta	HITSCAN_DIST_L
-	lda	#0
-	sbc	HITSCAN_DIST_H
-	sta	HITSCAN_DIST_H
+	lda	HITSCAN_D0_Y_L
+	sbc	ARG_THING_SPAWN_Y_L
+	sta	VERA_FX_CACHE_L
+	lda	HITSCAN_D0_Y_H
+	sbc	ARG_THING_SPAWN_Y_H
+	sta	VERA_FX_CACHE_M
 
-	; dd = d0.x - hitscan.x
+@askip:
+	;; dist = dist * hitscan.idiv * 2
+
+	; dist is already set
+
+	; hitscan.idiv
+	lda	HITSCAN_IDIV_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_IDIV_H
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_M
+
+	;; dist *= hitscan.wtan
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; hitscan.wtan
+	lda	HITSCAN_WTAN_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_WTAN_H
+	sta	VERA_FX_CACHE_U
+
+	;; zz = hitscan.z + (dist >> 8)
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	clc
+	lda	VERA_DATA0
+	adc	ARG_THING_SPAWN_Z_L
+	sta	HITSCAN_ZZ_L
+	lda	VERA_DATA0
+	adc	ARG_THING_SPAWN_Z_H
+	sta	HITSCAN_ZZ_H
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; sector
+	ldx	ARG_THING_SPAWN_SECTOR
+
+	; dd = sec->floor.height
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
+	sta	MATH_VAR_L
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	sta	MATH_VAR_H
+
+	; check floor
+	sec
+	lda	HITSCAN_ZZ_L
+	sbc	MATH_VAR_L
+	lda	HITSCAN_ZZ_H
+	sbc	MATH_VAR_H
+	bpl	@no_floor
+
+	; zz = sec->floor.height
+	lda	MATH_VAR_L
+	sta	HITSCAN_ZZ_L
+	lda	MATH_VAR_H
+	sta	HITSCAN_ZZ_H
+
+	bra	@in_plane
+
+@no_floor:
+	; dd = sec->ceiling.height
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	sta	MATH_VAR_L
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
+	sta	MATH_VAR_H
+
+	; check ceiling
+	sec
+	lda	MATH_VAR_L
+	sbc	HITSCAN_ZZ_L
+	lda	MATH_VAR_H
+	sbc	HITSCAN_ZZ_H
+	bpl	@no_ceiling
+
+	; zz = sec->ceiling.height - hitscan.height
+	sec
+	lda	MATH_VAR_L
+	sbc	HITSCAN_HEIGHT
+	sta	HITSCAN_ZZ_L
+	lda	MATH_VAR_H
+	sbc	#0
+	sta	HITSCAN_ZZ_H
+
+@in_plane:
+	; dist = hitscan.z - dd
+	sec
+	lda	ARG_THING_SPAWN_Z_L
+	sbc	MATH_VAR_L
+	sta	VERA_FX_CACHE_L
+	lda	ARG_THING_SPAWN_Z_H
+	sbc	MATH_VAR_H
+	sta	VERA_FX_CACHE_M
+
+	;; dist *= hitscan.ptan
+
+	; dist is already set
+
+	; hitscan.ptan
+	lda	HITSCAN_PTAN_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_PTAN_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_M
+
+	;; hitscan.sin * dist
+
+	; dist is already set
+
+	; hitscan.sin
+	lda	HITSCAN_SIN_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_SIN_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; d0.x = hitscan.x + (result >> 8)
+	clc
+	lda	VERA_DATA0
+	adc	ARG_THING_SPAWN_X_L
+	sta	HITSCAN_D0_X_L
+	lda	VERA_DATA0
+	adc	ARG_THING_SPAWN_X_H
+	sta	HITSCAN_D0_X_H
+
+	; dist is already set
+
+	; hitscan.sin
+	lda	HITSCAN_COS_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_COS_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; d0.y = hitscan.y + (result >> 8)
+	clc
+	lda	VERA_DATA0
+	adc	ARG_THING_SPAWN_Y_L
+	sta	HITSCAN_D0_Y_L
+	lda	VERA_DATA0
+	adc	ARG_THING_SPAWN_Y_H
+	sta	HITSCAN_D0_Y_H
+
+	jmp	@do_hit
+
+@no_ceiling:
+	; wall bank
+	lda	WALL_PTR_B
+	sta	REG_RAM_BANK
+
+	; check backsector and blocking
+	ldy	#WALL_STRUCT_ANGLE+1
+	lda	(WALL_PTR_L),y
+	and	#WALL__MARK_PORTAL
+	beq	@no_bs
+	ldy	#WALL_STRUCT_BLOCKING
+	lda	(WALL_PTR_L),y
+	and	HITSCAN_BLOCKBY
+	bne	@no_bs
+	dey
+	lda	(WALL_PTR_L),y
+	beq	@no_bs
+	tax
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; zz > bs->floor.height
+	sec
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
+	sbc	HITSCAN_ZZ_L
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	sbc	HITSCAN_ZZ_H
+	bpl	@no_bs
+
+	; zz < bs->ceiling.height
+	sec
+	lda	HITSCAN_ZZ_L
+	sbc	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	lda	HITSCAN_ZZ_H
+	sbc	SECTOR_STRUCT_CEILING_HEIGHT_H,x
+	bpl	@no_bs
+
+	; wall bank
+	lda	WALL_PTR_B
+	sta	REG_RAM_BANK
+
+	; no hit detected
+	clc
+	rts
+
+@no_bs:
+	; wall bank
+	lda	WALL_PTR_B
+	sta	REG_RAM_BANK
+
+	;; d0.x -= (wall->solid.dist.y * hitscan.radius) >> 8
+
+	; hitscan.radius
+	lda	HITSCAN_RADIUS
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; wall->solid.dist.y
+	ldy	#WALL_STRUCT_DIST_Y
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_H
+	iny
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
 	sec
 	lda	HITSCAN_D0_X_L
-	sbc	ARG_THING_SPAWN_X_L
-	sta	HITSCAN_TSID_L
+	sbc	VERA_DATA0
+	sta	HITSCAN_D0_X_L
 	lda	HITSCAN_D0_X_H
-	sbc	ARG_THING_SPAWN_X_H
-	sta	HITSCAN_TSID_H
+	sbc	VERA_DATA0
+	sta	HITSCAN_D0_X_H
 
-	; if(dd < 0)
-	bpl	:+
+	;; d0.y += (wall->solid.dist.x * hitscan.radius) >> 8
 
-	; dd = -dd
-	sec
-	lda	#0
-	sbc	HITSCAN_TSID_L
-	sta	HITSCAN_TSID_L
-	lda	#0
-	sbc	HITSCAN_TSID_H
-	sta	HITSCAN_TSID_H
+	; hitscan.radius is already set
 
-	; if(dd > dist)
-	sec
-	lda	HITSCAN_TSID_L
-	sbc	HITSCAN_DIST_L
-	lda	HITSCAN_TSID_H
-	sbc	HITSCAN_DIST_H
-	bpl	:+
+	; wall->solid.dist.x
+	ldy	#WALL_STRUCT_DIST_X
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_H
+	iny
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_U
 
-:
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
 
-	; TEST
+	; get result (>> 8)
+	clc
+	lda	HITSCAN_D0_Y_L
+	adc	VERA_DATA0
+	sta	HITSCAN_D0_Y_L
+	lda	HITSCAN_D0_Y_H
+	adc	VERA_DATA0
+	sta	HITSCAN_D0_Y_H
+
+@do_hit:
+	; spawn puff
 	stz	ARG_THING_SPAWN_X_S
 	lda	HITSCAN_D0_X_L
 	sta	ARG_THING_SPAWN_X_L
@@ -282,6 +550,12 @@ cb_hitscan:
 	sta	ARG_THING_SPAWN_Y_L
 	lda	HITSCAN_D0_Y_H
 	sta	ARG_THING_SPAWN_Y_H
+
+	stz	ARG_THING_SPAWN_Z_S
+	lda	HITSCAN_ZZ_L
+	sta	ARG_THING_SPAWN_Z_L
+	lda	HITSCAN_ZZ_H
+	sta	ARG_THING_SPAWN_Z_H
 
 	lda	#110
 	sta	ARG_THING_SPAWN_TYPE
@@ -336,7 +610,6 @@ hitscan_func:
 	; get XY
 	jsr	action_get_XY
 
-hitscan_ext:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
@@ -462,13 +735,16 @@ hitscan_cb_wall:
 ;;;
 ; bullet attack
 ;;;
-; uses ARG_HITSCAN_ANGLE
+; uses ARG_HITSCAN_ANGLE, ARG_HITSCAN_HALF_PITCH, ARG_HITSCAN_TYPE
 ; Y is thing IDX
 ; X is view height
 
 hitscan_attack:
-	; get XY
-	jsr	action_get_XY
+	phy
+
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
 
 	; get Z
 	clc
@@ -485,6 +761,100 @@ hitscan_attack:
 	lda	#>cb_hitscan
 	sta	hitscan_cb_wall+2
 
+	; angle
+	ldx	ARG_HITSCAN_ANGLE
+
+	; sin
+	math_read_sin	HITSCAN_SIN_L, HITSCAN_SIN_H
+
+	; cos
+	math_read_cos	HITSCAN_COS_L, HITSCAN_COS_H
+
+	; hitscan.axis = (hang + 0x20) << 1
+	txa
+	clc
+	adc	#$20
+	asl
+	sta	HITSCAN_AXIS
+
+	; if(hitscan.axis & 0x80)
+	bpl	@aY
+
+	; use hitscan.sin
+	lda	HITSCAN_SIN_L
+	sta	MATH_VAR_L
+	lda	HITSCAN_SIN_H
+	sta	MATH_VAR_H
+
+	bra	@askip
+@aY:
+	; use hitscan.cos
+	lda	HITSCAN_COS_L
+	sta	MATH_VAR_L
+	lda	HITSCAN_COS_H
+	sta	MATH_VAR_H
+
+@askip:
+	; inverse division bank
+	lda	#BANK_IDIV_L
+	sta	REG_RAM_BANK
+
+	; inv_div
+	jsr	math_idiv
+
+	; save hitscan.idiv
+	lda	MATH_VAR_L
+	sta	HITSCAN_IDIV_L
+	lda	MATH_VAR_H
+	sta	HITSCAN_IDIV_H
+
+	; pitch
+	ldx	ARG_HITSCAN_HALF_PITCH
+
+	; wtan
+	math_read_htan	HITSCAN_WTAN_L, HITSCAN_WTAN_H
+
+	; if(halfpitch & 0x40)
+	txa
+	bit	ARG_HITSCAN_HALF_PITCH
+	bvs	@up
+
+	; halfpitch += 0x40
+	clc
+	adc	#$40
+
+	bra	@skip
+@up:
+	; halfpitch -= 0x40
+	sec
+	sbc	#$40
+
+@skip:
+	; hitscan.ptan = tab_tan_hs[halfpitch]
+	tax
+	math_read_htan	HITSCAN_PTAN_L, HITSCAN_PTAN_H
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; type
+	ldx	ARG_HITSCAN_TYPE
+
+	; height
+	lda	THTYPE_STRUCT_HEIGHT,x
+	sta	HITSCAN_HEIGHT
+
+	; radius + 1
+	lda	THTYPE_STRUCT_HEIGHT,x
+	ina
+	sta	HITSCAN_RADIUS
+
+	; blocked by
+	lda	THTYPE_STRUCT_BLOCKEDBY,x
+	sta	HITSCAN_BLOCKBY
+
 	; run
-	jmp	hitscan_ext
+	ply
+	jmp	hitscan_func
 

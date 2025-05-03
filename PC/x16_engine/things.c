@@ -232,7 +232,7 @@ static uint32_t action_func(thing_t *th, uint32_t act)
 
 			tdx = th - things;
 
-			hitscan_attack(tdx, thing_type[th->type].view_height, th->angle, th->pitch, type);
+			hitscan_attack(tdx, thing_type[th->type].view_height, th->angle, th->pitch >> 1, type);
 		}
 		break;
 	}

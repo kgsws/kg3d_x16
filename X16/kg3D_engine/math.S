@@ -11,6 +11,7 @@
 .export math_scale_down
 .export math_shift_down
 .export	math_idiv
+.export	math_idiv_ns
 .export	math_atan
 .export math_p2a
 
@@ -104,6 +105,7 @@ math_idiv:
 	; save sign
 	lda	MATH_VAR_H
 	sta	MATH_VAR_SIGN
+math_idiv_ns:
 	; sign check
 	bpl	@positive
 	; negation
@@ -114,7 +116,6 @@ math_idiv:
 	lda	#0
 	sbc	MATH_VAR_H
 	sta	MATH_VAR_H
-	rol
 @positive:
 	; if value < 8192
 	cmp	#$20
