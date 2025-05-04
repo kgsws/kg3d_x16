@@ -941,7 +941,7 @@ void x16_export_map()
 				mt.y = th->pos.y;
 				mt.z = th->pos.z;
 				mt.sector = list_get_idx(&edit_list_sector, (link_entry_t*)th->pos.sector - 1) + 1;
-				mt.angle = 0x80 - (th->pos.angle >> 8);
+				mt.angle = 0x100 - (th->pos.angle >> 8);
 				mt.flags = 0;
 				mt.extra = 0;
 

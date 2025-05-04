@@ -3948,7 +3948,7 @@ static int32_t swpn_apply()
 	return 0;
 }
 
-static uint32_t swpn_count_valid(variant_list_t *ws, uint32_t *bitmap)
+static int32_t swpn_count_valid(variant_list_t *ws, uint32_t *bitmap, int32_t *invalid)
 {
 	uint32_t count = 0;
 	uint32_t bits = 0;
@@ -3971,7 +3971,12 @@ static uint32_t swpn_count_valid(variant_list_t *ws, uint32_t *bitmap)
 			valid++;
 		}
 
-		if(valid && valid <= MAX_X16_WPNPARTS)
+		if(valid > MAX_X16_WPNPARTS)
+		{
+			if(invalid)
+				*invalid = i;
+		} else
+		if(valid)
 		{
 			bits |= 1 << i;
 			count++;
@@ -7787,6 +7792,7 @@ int32_t uin_gfx_wpn_left(glui_element_t *elm, int32_t x, int32_t y)
 	variant_list_t *ws;
 
 	stex_wpn_import = 0;
+	wpn_part_copy = -1;
 
 	if(!gfx_idx[GFX_MODE_WEAPONS].max)
 		return 1;
@@ -7807,6 +7813,7 @@ int32_t uin_gfx_wpn_right(glui_element_t *elm, int32_t x, int32_t y)
 	variant_list_t *ws;
 
 	stex_wpn_import = 0;
+	wpn_part_copy = -1;
 
 	if(!gfx_idx[GFX_MODE_WEAPONS].max)
 		return 1;
@@ -7856,12 +7863,16 @@ int32_t uin_gfx_wpn_part_pos(glui_element_t *elm, int32_t x, int32_t y)
 
 	if(!part->width)
 		return 1;
-
+#if 0
 	part->x = x / UI_WPN_IMG_SCALE;
 	part->x -= part->width / 2;
 
 	part->y = y / UI_WPN_IMG_SCALE;
 	part->y -= part->height / 2;
+#else
+	part->x = x / UI_WPN_IMG_SCALE;
+	part->y = y / UI_WPN_IMG_SCALE;
+#endif
 
 	update_gfx_mode(0);
 
@@ -8944,8 +8955,13 @@ void x16g_export()
 		variant_list_t *ws = x16_weapon + i;
 		uint8_t *ptr = stuff.raw;
 		uint32_t count, bits;
+		int32_t inv = -1;
 
-		count = swpn_count_valid(ws, &bits);
+		count = swpn_count_valid(ws, &bits, &inv);
+
+		if(inv >= 0)
+			edit_status_printf("Weapon '%s' frame %c has too many parts!", ws->name, 'A' + inv);
+
 		if(!count)
 			continue;
 

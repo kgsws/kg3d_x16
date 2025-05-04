@@ -320,6 +320,8 @@ static SDL_GLContext sdl_context;
 uint32_t frame_counter;
 static uint32_t render_flags;
 
+static uint32_t input_action;
+
 uint32_t level_tick;
 
 vertex_t display_point;
@@ -2145,7 +2147,7 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 		uint8_t ang;
 		ang = th->angle;
 		ang -= a0 >> 4;
-		ang += 16;
+		ang += 0x90;
 		ang >>= 5;
 		frm = sprite_frame + si->rot[ang];
 	} else
@@ -2647,7 +2649,7 @@ static void do_3d()
 				oy = 0;
 			}
 
-			oy += things[0].counter;
+			oy += things[0].height;
 
 			if(things[player_thing].pitch >= 148)
 			{
@@ -2683,6 +2685,7 @@ static void render()
 	{
 		level_tick++;
 		things_tick(); // 15 TPS
+		input_action = 0;
 #if 0
 		thing_t *th = things + player_thing;
 		printf("fs %u cs %u\n", th->floors, th->ceilings);
@@ -2829,6 +2832,11 @@ static void input()
 				for(uint32_t i = 0; i < NUM_KEYS; i++)
 					if(event.key.keysym.sym == mkey_sdl[i])
 						keybits &= ~(1 << i);
+				if(event.key.keysym.sym >= '1' && event.key.keysym.sym <= '9')
+					input_action = event.key.keysym.sym - 48;
+				else
+				if(event.key.keysym.sym == '0')
+					input_action = 10;
 			break;
 			case SDL_MOUSEMOTION:
 				mousex += event.motion.xrel;
@@ -2884,6 +2892,9 @@ static void input()
 		ticcmd.bits_l |= TCMD_ATK;
 	if(mbtn & 8)
 		ticcmd.bits_l |= TCMD_ALT;
+
+	// action
+	ticcmd.bits_h |= input_action;
 }
 
 //
@@ -3534,6 +3545,7 @@ static uint32_t load_tspr(uint8_t *path)
 
 static uint32_t load_wspr(uint8_t *path)
 {
+	uint32_t top_frame = 0;
 	int32_t size;
 	uint8_t data[65536 * 3];
 	uint8_t *src = data;
@@ -3571,8 +3583,6 @@ static uint32_t load_wspr(uint8_t *path)
 
 	base = weapon_frame + num_wframes;
 
-	num_wframes += count;
-
 	for(uint32_t i = 0; i < count; i++)
 	{
 		uint32_t frame, start, nsz, bsz, pcnt;
@@ -3586,6 +3596,9 @@ static uint32_t load_wspr(uint8_t *path)
 
 		wfrm = base + frame;
 
+		if(frame > top_frame)
+			top_frame = frame;
+
 		wfrm->info.start = offset + start;
 		wfrm->info.nsz = nsz;
 		wfrm->info.bsz = bsz;
@@ -3596,6 +3609,8 @@ static uint32_t load_wspr(uint8_t *path)
 		if(pcnt < 15)
 			wfrm->part[pcnt].addr = 0xFF;
 	}
+
+	num_wframes += top_frame + 1;
 
 	return 0;
 }
@@ -3837,7 +3852,7 @@ static uint32_t precache()
 	num_sframes_pc = num_sframes;
 	num_wframes_pc = num_wframes;
 
-	printf("precache: %u sinfo %u sfrm %u wfrm %u RAM\n", num_sprites, num_sframes, num_wframes, wram_used);
+	printf("precache: %u sinfo; %u sfrm; %u wfrm; %u RAM\n", num_sprites, num_sframes, num_wframes, wram_used);
 
 	return 0;
 }

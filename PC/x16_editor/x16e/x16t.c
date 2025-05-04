@@ -1746,7 +1746,7 @@ static int32_t uin_state_next(glui_element_t *elm, int32_t x, int32_t y)
 
 	if(num_limit)
 	{
-		sprintf(text, "Enter new next state (0 to %u) or leave empty.", num_limit - 1);
+		sprintf(text, "Enter new next state (max %u) or leave empty.", num_limit - 1);
 		edit_ui_textentry(text, 8, te_set_u8);
 	}
 

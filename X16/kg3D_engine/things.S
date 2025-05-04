@@ -79,11 +79,11 @@ thing_spawn_org:
 	sty	RET_THING_SPAWN
 
 	; clear structure stuff
+	lda	#$80
+	sta	THING_STRUCT_PITCH,y
 	lda	#0
 	sta	THING_STRUCT_ANGLE,y
-	sta	THING_STRUCT_PITCH,y
 	sta	THING_STRUCT_IFLAGS,y
-	sta	THING_STRUCT_TH_ORIGIN,y
 	sta	THING_STRUCT_TH_TARGET,y
 	sta	THING_STRUCT_COUNTER,y
 	sta	THING_STRUCT_MX_S,y
@@ -455,7 +455,7 @@ thing_clear:
 	; reset weapon
 	stz	THING_STRUCT_IFLAGS
 	lda	#64
-	sta	THING_STRUCT_COUNTER
+	sta	THING_STRUCT_HEIGHT
 
 	; save sprite
 	txa
@@ -599,9 +599,13 @@ thing_launch:
 ;;;
 
 thing_tick:
-	ldy	#0
+	; no-stop opcode
+	lda	#$A0	; LDY #
+	sta	@stop_opcode
+
+	; first thing slot
+	ldy	#1
 	sty	TICK_IDX
-	jmp	@do_animation
 
 	; the loop
 @thing_loop:
@@ -1606,8 +1610,9 @@ thing_tick:
 	lda	THING_STRUCT_NXTFRM_H,y
 	and	#$7F
 	ora	THING_STRUCT_NXTFRM_L,y
-	beq	@remove_thing
-
+	bne	:+
+	jmp	@remove_thing
+:
 	; get new state
 	lda	THING_STRUCT_NXTFRM_L,y
 	sta	THANIM_PTR_H
@@ -1631,11 +1636,9 @@ thing_tick:
 
 	; action
 	lda	(THANIM_PTR_L)
-	beq	:+
+	beq	@no_action
 
 	; run action
-	asl
-	tax
 	jsr	action_run
 	bcc	:+
 
@@ -1643,6 +1646,11 @@ thing_tick:
 	ldy	TICK_IDX
 	bra	@act_again
 :
+	; thing states bank
+	lda	#BANK_THING_STATES
+	sta	REG_RAM_BANK
+
+@no_action:
 	; next (lo)
 	ldy	#1
 	lda	(THANIM_PTR_L),y
@@ -1701,12 +1709,19 @@ thing_tick:
 	; TIME
 	jsr	time_update
 
+@stop_opcode:
+	ldy	#0	; modified opcode
+
 	; next
 	inc	TICK_IDX
 	bmi	:+
 	jmp	@thing_loop
 :
-	rts
+	; run weapon animation
+	lda	#$60	; RTS
+	sta	@stop_opcode
+	sty	TICK_IDX
+	jmp	@do_animation
 
 @remove_thing:
 	; check if weapon

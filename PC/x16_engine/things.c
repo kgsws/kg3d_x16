@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "defs.h"
 #include "things.h"
-#include "hitscan.h"
+#include "actions.h"
 
 //
 
@@ -157,90 +157,6 @@ static void swap_thing_sector(uint8_t tdx, uint8_t sdx)
 }
 
 //
-// actions
-
-static uint32_t action_func(thing_t *th, uint32_t act)
-{
-	switch(act)
-	{
-		case 1:	// weapon: ready
-			if(ticcmd.bits_l & TCMD_ATK && thing_anim[th->type][ANIM_ATK].state)
-			{
-				th->next_state = thing_anim[th->type][ANIM_ATK].state;
-				th->iflags = 1;
-				return 1;
-			}
-			if(ticcmd.bits_l & TCMD_ALT && thing_anim[th->type][ANIM_ALT].state)
-			{
-				th->next_state = thing_anim[th->type][ANIM_ALT].state;
-				th->iflags = 2;
-				return 1;
-			}
-			th->iflags = 0;
-		break;
-		case 2: // weapon: raise
-			th->counter -= 8; // TODO: arg[0]
-			if(th->counter & 0x80)
-				th->counter = 0;
-			if(!th->counter)
-			{
-				th->next_state = thing_anim[th->type][ANIM_READY].state;
-				return 1;
-			}
-		break;
-		case 3: // weapon: lower
-			th->counter += 8; // TODO: arg[0]
-			if(th->counter >= 64)
-			{
-				th->counter = 64;
-				// TODO: weapon swap
-			}
-		break;
-		case 4: // attack: projectile
-		{
-			uint32_t type = thing_type[th->type].spawn[0]; // TODO
-			thing_t *ph;
-			uint32_t tdx, pdx;
-			uint8_t diff;
-
-			if(th == things)
-				th += player_thing;
-
-			tdx = th - things;
-
-			diff = thing_type[th->type].view_height - thing_type[type].height / 2;
-
-			pdx = thing_spawn(th->x, th->y, th->z + ((uint32_t)diff << 8), thingsec[tdx][0], type, tdx);
-			if(pdx)
-			{
-				ph = things + pdx;
-
-				ph->angle = th->angle;
-				ph->pitch = th->pitch;
-
-				thing_launch(pdx, thing_type[ph->type].speed);
-			}
-		}
-		break;
-		case 5: // attack: hitscan
-		{
-			uint32_t tdx;
-			uint32_t type = thing_type[th->type].spawn[0]; // TODO
-
-			if(th == things)
-				th += player_thing;
-
-			tdx = th - things;
-
-			hitscan_attack(tdx, thing_type[th->type].view_height, th->angle, th->pitch >> 1, type);
-		}
-		break;
-	}
-
-	return 0;
-}
-
-//
 //
 
 void thing_clear()
@@ -256,7 +172,7 @@ void thing_clear()
 	// player weapon // TODO
 	th = things;
 	th->type = THING_WEAPON_FIRST;
-	th->counter = 64;
+	th->height = 64;
 
 	state = thing_anim[th->type][ANIM_RAISE].state;
 
@@ -316,7 +232,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	th->z = z;
 
 	th->angle = 0;
-	th->pitch = 0;
+	th->pitch = 0x80;
 	th->iflags = 0;
 	th->origin = origin;
 	th->target = 0;
@@ -1225,7 +1141,7 @@ void things_tick()
 	uint32_t on_floor;
 	sector_t *sec;
 
-	for(uint32_t i = 0; i < 128; i++)
+	for(int32_t i = 127; i >= 0; i--)
 	{
 		thing_t *th = things + i;
 
@@ -1671,7 +1587,7 @@ act_next:
 
 					st = thing_state + decode_state(th->next_state);
 
-					if(action_func(th, st->action))
+					if(action_func(i, st->action))
 						goto act_next;
 
 					th->next_state = st->next | ((st->frm_nxt & 0xE0) << 8);

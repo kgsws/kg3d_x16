@@ -100,6 +100,8 @@ ex_input_process:
 	stz	INPUT_MOUSE_TMP_X
 	stz	INPUT_MOUSE_TMP_Y
 
+	stz	INPUT_WEAPON_SLOT
+
 @loop:
 	; PS2 poll
 	lda	#e_ps2data_fetch
@@ -110,6 +112,15 @@ ex_input_process:
 	jsr	k_extapi
 	beq	@loop_stop
 
+	; check weapon slots
+	cmp	#$82
+	bcc	:+
+	cmp	#$8C
+	bcs	:+
+	sbc	#$80
+	sta	INPUT_WEAPON_SLOT
+	bra	@skip_keys
+:
 	; check F5 release
 	cmp	#$F4
 	bne	:+
@@ -422,6 +433,10 @@ ex_input_process:
 	lda	#TCMD_USE
 	tsb	TICK_CMD_BITS_L
 :
+	;; weapon changes
+	lda	INPUT_WEAPON_SLOT
+	tsb	TICK_CMD_BITS_H
+
 	; done
 	rts
 

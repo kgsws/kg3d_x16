@@ -108,13 +108,15 @@ input_t input_list[INPUT__COUNT] =
 	{
 		.key = 'c',
 		.type = INTYPE_KEY,
-		.extra = INEXTRA_CTRL
+		.extra = INEXTRA_CTRL,
+		.ignore = INEXTRA_SHIFT
 	},
 	[INPUT_EDITOR_PASTE] =
 	{
 		.key = 'v',
 		.type = INTYPE_KEY,
-		.extra = INEXTRA_CTRL
+		.extra = INEXTRA_CTRL,
+		.ignore = INEXTRA_SHIFT
 	},
 //
 // EDITOR: 2D
@@ -353,16 +355,19 @@ void input_process(uint32_t key, uint16_t type, uint16_t state)
 {
 	for(uint32_t i = 0; i < INPUT__COUNT; i++)
 	{
-		if(input_list[i].type == type && input_list[i].key == key)
+		input_t *in = input_list + i;
+
+		if(in->type == type && in->key == key)
 		{
 			uint32_t st = state;
-			if(st && !(input_list[i].extra & INEXTRA_IGNORE))
+			if(st && !(in->extra & INEXTRA_IGNORE))
 			{
 				uint32_t extra;
 				extra = !!input_shift;
 				extra |= !!input_ctrl << 1;
 				extra |= !!input_alt << 2;
-				st = input_list[i].extra == extra;
+				extra &= ~in->ignore;
+				st = in->extra == extra;
 			}
 			input_state[i] = st;
 		}

@@ -5,7 +5,7 @@
 #define INEXTRA_SHIFT	1
 #define INEXTRA_CTRL	2
 #define INEXTRA_ALT	4
-#define INEXTRA_IGNORE	0x8000
+#define INEXTRA_IGNORE	0x80
 
 enum
 {
@@ -89,7 +89,8 @@ typedef struct input_s
 {
 	uint32_t key;
 	uint16_t type;
-	uint16_t extra;
+	uint8_t extra;
+	uint8_t ignore;
 } input_t;
 
 //

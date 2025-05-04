@@ -4108,9 +4108,9 @@ prepare_sprite:
 	lda	SPRITE_ANG_L
 	sbc	SPRITE_ANG_H
 
-	; ang += 16
+	; ang += 0x90
 	clc
-	adc	#16
+	adc	#$90
 
 	; ang >>= 5
 	tax
@@ -6696,7 +6696,7 @@ update_weapon_swing:
 	; add Y offset
 	clc
 	lda	MATH_COUNTER
-	adc	THING_STRUCT_COUNTER
+	adc	THING_STRUCT_HEIGHT
 	sta	MATH_COUNTER
 
 	; get weapon iflags

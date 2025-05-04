@@ -87,7 +87,7 @@ MAP_TEMP_SPRITE_HEIGHT = TAB_TEMP_DATA + 133
 
 ; structure temp storage
 MAP_TEMP_DATA_STRUCT = TAB_TEMP_DATA + 512
-MAP_TEMP_STACK = TAB_TEMP_DATA + 512 + 64
+MAP_TEMP_STACK = TAB_TEMP_DATA + 512 + 64 + 32
 
 ; map thing in temp storage
 MAP_TEMP_THING = MAP_TEMP_DATA_STRUCT
@@ -213,6 +213,18 @@ ex_precache:
 	dey
 	bpl	@loop_reset
 
+	; tsprite info bank
+	lda	#BANK_TSPR_INFO
+	sta	REG_RAM_BANK
+
+	; clear sprite rotation flag
+	lda	#0
+	tay
+@loop_rclr:
+	sta	SPRINFO_STRUCT_ROTATE,y
+	dey
+	bne	@loop_rclr
+
 	; thing load stack pointer
 	tsx
 	dex
@@ -313,10 +325,10 @@ ex_map_load:
 
 	; clear sprite rotation flag
 	lda	#0
-	tay
+	ldy	MAP_TEMP_SPR_IDX
 @loop_rclr:
 	sta	SPRINFO_STRUCT_ROTATE,y
-	dey
+	iny
 	bne	@loop_rclr
 
 	; dcsel = 2, addrsel = 0
@@ -2192,12 +2204,8 @@ load_wspr:
 	lda	MAP_TEMP_WPN_IDX
 	bmi	@error
 
-	; check new frame count
-	clc
-	lda	MAP_WALL_VCNT
-	bmi	@error
-	adc	MAP_TEMP_WPN_IDX
-	bmi	@error
+	; top_frame = 0
+	stz	MAP_LOAD_TOP_FRAME
 
 	; load pixels
 	jsr	load_sprite_pixels
@@ -2235,10 +2243,18 @@ load_wspr:
 	bcc	:+
 	dey
 :
+	; if(info->frm > top_frame)
+	lda	MAP_TEMP_DATA_STRUCT+1
+	cmp	MAP_LOAD_TOP_FRAME
+	bcc	:+
+
+	; top_frame = info->frm
+	sta	MAP_LOAD_TOP_FRAME
+:
 	; destination pointer
 	clc
-	lda	MAP_TEMP_DATA_STRUCT+1
 	adc	MAP_TEMP_WPN_IDX
+	bmi	@error
 	sta	TMP_PTR_H
 	stz	TMP_PTR_L
 	lsr	TMP_PTR_H
@@ -2269,8 +2285,9 @@ load_wspr:
 	bne	@loop_variant
 
 	; add frames
+	lda	MAP_LOAD_TOP_FRAME
+	ina
 	clc
-	lda	MAP_WALL_VCNT
 	adc	MAP_TEMP_WPN_IDX
 	sta	MAP_TEMP_WPN_IDX
 
