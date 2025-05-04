@@ -397,7 +397,7 @@ start:
 	.word	$0B06
 	.word	text_demo_wait5
 	jsr	write_text
-	.word	$0C06
+	.word	$0C08
 	.word	text_demo_wait6
 	jsr	write_text
 	.word	$0E0E
@@ -1066,7 +1066,7 @@ text_demo_wait4:
 text_demo_wait5:
 	.asciiz	"Use SPACE to jump CTRL to crouch."
 text_demo_wait6:
-	.asciiz	"Press F5 to toggle low-res mode."
+	.asciiz	"Use numbers to switch weapons."
 text_demo_start:
 	.asciiz	"Press any key to start ..."
 
