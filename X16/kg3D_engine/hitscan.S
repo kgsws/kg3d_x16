@@ -846,7 +846,7 @@ hitscan_attack:
 	sta	HITSCAN_HEIGHT
 
 	; radius + 1
-	lda	THTYPE_STRUCT_HEIGHT,x
+	lda	THTYPE_STRUCT_ALT_RADIUS,x
 	ina
 	sta	HITSCAN_RADIUS
 

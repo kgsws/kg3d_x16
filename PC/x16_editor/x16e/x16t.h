@@ -19,6 +19,7 @@
 
 #define THING_EFLAG_SLIDING	0x80
 #define THING_EFLAG_CLIMBABLE	0x40
+#define THING_EFLAG_NOCLIP	0x08
 #define THING_EFLAG_PROJECTILE	0x04
 #define THING_EFLAG_WATERSPEC	0x02
 #define THING_EFLAG_PUSHABLE	0x01
@@ -52,8 +53,10 @@ typedef struct
 	uint16_t health;
 	uint8_t scale;
 	uint8_t step_height;
-	uint8_t view_height;
 	uint8_t water_height;
+	uint8_t view_height;
+	uint8_t atk_height;
+	uint8_t alt_radius;
 	//
 	uint8_t jump_pwr;
 	//

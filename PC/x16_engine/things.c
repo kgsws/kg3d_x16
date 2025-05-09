@@ -1,4 +1,3 @@
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -402,20 +401,9 @@ static void check_wall_point(thing_t *th, vertex_t *vtx, vertex_t d0)
 		if(portal_bl)
 			poscheck.blocked = 1;
 		else
-		if(portal_wr < 16)
+		if(portal_bs && portal_wr < 16)
 			add_sector(portal_bs, 0, 0xFF);
 	}
-}
-
-static void fallback_backsector(wall_masked_t *wall)
-{
-	if(!(wall->angle & MARK_PORTAL))
-		return;
-
-	if(!wall->backsector)
-		return;
-
-	poscheck.fallback = wall->backsector;
 }
 
 static uint32_t check_backsector(wall_masked_t *wall, int32_t th_z)
@@ -566,7 +554,7 @@ static void prepare_pos_check(uint8_t tdx, int32_t z)
 	poscheck.thing = tdx;
 	poscheck.radius = th->radius;
 	poscheck.height = th->height;
-	poscheck.blockedby = th->blockedby;
+	poscheck.blockedby = th->eflags & THING_EFLAG_NOCLIP ? 0 : th->blockedby;
 	poscheck.water_height = thing_type[th->type].water_height;
 	poscheck.step_height = thing_type[th->type].step_height;
 	poscheck.th_z_h = z + poscheck.height;
@@ -628,6 +616,17 @@ int32_t thing_find_type(uint32_t hash)
 	return -1;
 }
 
+static void fallback_backsector(wall_masked_t *wall)
+{
+	if(!(wall->angle & MARK_PORTAL))
+		return;
+
+	if(!wall->backsector)
+		return;
+
+	poscheck.fallback = wall->backsector;
+}
+
 uint32_t thing_check_pos(uint8_t tdx, int32_t *nx, int32_t *ny, int16_t z, uint32_t on_floor, uint8_t sdx)
 {
 	thing_t *th = things + tdx;
@@ -640,8 +639,6 @@ uint32_t thing_check_pos(uint8_t tdx, int32_t *nx, int32_t *ny, int16_t z, uint3
 		sdx = thingsec[tdx][0];
 
 	prepare_pos_check(tdx, z);
-
-	poscheck.fallback = 0;
 
 	if(poscheck.step_height & 0x80)
 	{
@@ -658,6 +655,8 @@ uint32_t thing_check_pos(uint8_t tdx, int32_t *nx, int32_t *ny, int16_t z, uint3
 				poscheck.step_height >>= 1;
 		}
 	}
+
+	poscheck.fallback = sdx;
 
 	portals[0].sector = sdx;
 	portals[0].islink = 0;
@@ -720,7 +719,8 @@ fail_safe:
 				if(dist + poscheck.radius < 0)
 					touch = 0;
 				else
-				if(	(wall->angle & MARK_MID_BITS) == MARK_MASKED &&
+				if(	!(th->eflags & THING_EFLAG_NOCLIP) &&
+					(wall->angle & MARK_MID_BITS) == MARK_MASKED &&
 					wall->blockmid & 0x80 &&
 					wall->blockmid & poscheck.blockedby & 0x7F
 				)
@@ -732,8 +732,13 @@ fail_safe:
 					inside = 0;
 				}
 
+				portal_bs = 0;
 				if(!poscheck.blocked)
+				{
 					portal_bl = check_backsector(wall, z);
+					if(th->eflags & THING_EFLAG_NOCLIP)
+						portal_bl = 0;
+				}
 
 				// get left side
 				dist = (d0.x * wall->dist.x + d0.y * wall->dist.y) >> 8;
@@ -760,6 +765,12 @@ fail_safe:
 
 				if(poscheck.blocked)
 					portal_bl = check_backsector(wall, z);
+
+				if(th->eflags & THING_EFLAG_NOCLIP)
+				{
+					if(!portal_bs)
+						goto do_next;
+				}
 
 				if(!portal_bl && portal_wr < 16)
 				{
@@ -815,18 +826,21 @@ do_next:
 
 		poscheck.maskblock = map_secext[sdx].maskblock;
 
-		get_sector_floorz(sec);
-		if(poscheck.tfz > poscheck.floorz)
+		if(!(th->eflags & THING_EFLAG_NOCLIP))
 		{
-			poscheck.floorz = poscheck.tfz;
-			poscheck.floors = poscheck.maskblock ? 0 : sec - map_sectors;
-		}
+			get_sector_floorz(sec);
+			if(poscheck.tfz > poscheck.floorz)
+			{
+				poscheck.floorz = poscheck.tfz;
+				poscheck.floors = poscheck.maskblock ? 0 : sec - map_sectors;
+			}
 
-		get_sector_ceilingz(sec);
-		if(poscheck.tcz < poscheck.ceilingz)
-		{
-			poscheck.ceilingz = poscheck.tcz;
-			poscheck.ceilings = sec - map_sectors;
+			get_sector_ceilingz(sec);
+			if(poscheck.tcz < poscheck.ceilingz)
+			{
+				poscheck.ceilingz = poscheck.tcz;
+				poscheck.ceilings = sec - map_sectors;
+			}
 		}
 
 		if(!newsec && inside && !poscheck.islink)
@@ -836,29 +850,43 @@ do_next:
 	if(!newsec)
 	{
 		// nothing blocked this movement, but thing is not in any sector
-		if(failsafe)
+		if(!(th->eflags & THING_EFLAG_PROJECTILE))
 		{
-			failsafe--;
-
-			if(th->eflags & THING_EFLAG_PROJECTILE && poscheck.fallback)
+			if(failsafe)
 			{
-				portals[0].sector = poscheck.fallback;
+				failsafe--;
+
+				if(failsafe & 1)
+					*nx = *nx ^ 512;
+				else
+					*ny = *ny ^ 512;
+
 				goto fail_safe;
 			}
-
-			if(failsafe & 1)
-				*nx = *nx ^ 512;
-			else
-				*ny = *ny ^ 512;
-
-			goto fail_safe;
-		}
+		} else
+			newsec = poscheck.fallback;
 	}
 
-	for(uint32_t i = 0; i < portal_wr; i++)
+	if(th->eflags & THING_EFLAG_NOCLIP)
 	{
-		if(check_things(portals[i].sector, tdx, x, y, z))
-			return 0;
+		poscheck.islink = 0x40;
+		poscheck.maskblock = 0;
+
+		get_sector_floorz(map_sectors + newsec);
+		poscheck.floorz = poscheck.tfz;
+
+		get_sector_ceilingz(map_sectors + newsec);
+		poscheck.ceilingz = poscheck.tcz;
+
+		poscheck.floors = newsec;
+		poscheck.ceilings = newsec;
+	} else
+	{
+		for(uint32_t i = 0; i < portal_wr; i++)
+		{
+			if(check_things(portals[i].sector, tdx, x, y, z))
+				return 0;
+		}
 	}
 
 	poscheck.maskblock = map_secext[portals[0].sector].maskblock;
@@ -882,18 +910,22 @@ do_next:
 	}
 
 	poscheck.ceilingz -= poscheck.height;
-	if(poscheck.ceilingz < poscheck.floorz)
+
+	if(!(th->eflags & THING_EFLAG_NOCLIP))
 	{
+		if(poscheck.ceilingz < poscheck.floorz)
+		{
 do_block_extra:
-		poscheck.blocked = -1;	// blocked by space
-		return 0;
+			poscheck.blocked = -1;	// blocked by space
+			return 0;
+		}
+
+		if(poscheck.floorz <= poscheck.waterz)
+			poscheck.iflags |= THING_IFLAG_NOJUMP;
 	}
 
 	poscheck.portal = portal_wr;
 	poscheck.sector = newsec;
-
-	if(poscheck.floorz <= poscheck.waterz)
-		poscheck.iflags |= THING_IFLAG_NOJUMP;
 
 	return newsec;
 }
@@ -952,6 +984,25 @@ uint32_t thing_check_heights(uint8_t tdx)
 	poscheck.blocked = 0;
 	poscheck.step_height &= 0x7F;
 
+	if(th->eflags & THING_EFLAG_NOCLIP)
+	{
+		uint8_t sdx = thingsec[tdx][0];
+		sector_t *sec = map_sectors + sdx;
+
+		poscheck.maskblock = 0;
+
+		poscheck.floors = sdx;
+		poscheck.ceilings = sdx;
+
+		get_sector_floorz(sec);
+		poscheck.floorz = poscheck.tfz;
+
+		get_sector_ceilingz(sec);
+		poscheck.ceilingz = poscheck.tcz;
+
+		return 1;
+	}
+
 	for(uint32_t i = 0; i < 16; i++)
 	{
 		uint8_t sdx = thingsec[tdx][i];
@@ -1002,8 +1053,14 @@ static void projectile_death(thing_t *th)
 {
 	uint32_t state;
 	thing_state_t *st;
+	int32_t nx, ny;
+	uint8_t radius;
 
 //	printf("block %d; %u\n", poscheck.blocked, poscheck.hit_thing);
+
+	// XY
+	nx = th->x;
+	ny = th->y;
 
 	// stop
 	th->mx = 0;
@@ -1017,8 +1074,15 @@ static void projectile_death(thing_t *th)
 	th->blocking = 0;
 	th->blockedby = 0;
 
+	// radius
+	radius = th->radius;
+	th->radius = thing_type[th->type].alt_radius;
+
 	// unflag
 	th->eflags &= ~THING_EFLAG_PROJECTILE;
+
+	// noclip
+	th->eflags |= THING_EFLAG_NOCLIP;
 
 	// change animation
 	state = thing_anim[th->type][ANIM_DEATH].state;
@@ -1091,10 +1155,6 @@ static void projectile_death(thing_t *th)
 	{
 		int32_t dist;
 		vertex_t d0;
-		int32_t nx, ny;
-
-		nx = th->x;
-		ny = th->y;
 
 		if(poscheck.blocked & 1)
 		{
@@ -1111,7 +1171,7 @@ static void projectile_death(thing_t *th)
 		if(poscheck.blocked & 2)
 			dist -= things[poscheck.hit_thing].radius / 2;
 
-		dist -= th->radius;
+		dist -= radius;
 		dist -= 2; // integer precision safety
 
 		if(	dist > 0 &&
@@ -1120,14 +1180,19 @@ static void projectile_death(thing_t *th)
 		{
 			nx += tab_sin[th->angle] * dist;
 			ny += tab_cos[th->angle] * dist;
-
-			if(thing_check_pos(th - things, &nx, &ny, th->z >> 8, 1, 0))
-			{
-				th->x = nx;
-				th->y = ny;
-				thing_apply_position();
-			}
+			radius = 0;
 		}
+	}
+
+	if(radius == th->radius)
+		return;
+
+	// update position / radius
+	if(thing_check_pos(th - things, &nx, &ny, th->z >> 8, 1, 0))
+	{
+		th->x = nx;
+		th->y = ny;
+		thing_apply_position();
 	}
 }
 
@@ -1344,16 +1409,7 @@ apply_position:
 			{
 				if(th->eflags & THING_EFLAG_PROJECTILE)
 				{
-					// projectile
-					if(!poscheck.blocked)
-					{
-						// bad location - failsafe failed
-						// to prevent face-rockets, remove this projectile
-						th->next_state = 0;
-						th->ticks = 1;
-						goto do_animation;
-					} else
-						projectile_death(th);
+					projectile_death(th);
 				} else
 				if(poscheck.blocked > 0 && th->eflags & THING_EFLAG_SLIDING)
 				{

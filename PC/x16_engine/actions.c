@@ -92,7 +92,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 
 			tdx = th - things;
 
-			diff = thing_type[th->type].view_height - thing_type[type].height / 2;
+			diff = thing_type[th->type].atk_height - thing_type[type].height / 2;
 
 			pdx = thing_spawn(th->x, th->y, th->z + ((uint32_t)diff << 8), thingsec[tdx][0], type, tdx);
 			if(pdx)
@@ -116,7 +116,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 
 			tdx = th - things;
 
-			hitscan_attack(tdx, thing_type[th->type].view_height, th->angle, th->pitch >> 1, type);
+			hitscan_attack(tdx, thing_type[th->type].atk_height, th->angle, th->pitch >> 1, type);
 		}
 		break;
 	}

@@ -100,8 +100,8 @@ handle_base_info:
 	lda	THTYPE_STRUCT_SPAWN_A,y
 	sta	ARG_THING_SPAWN_TYPE
 
-	; view height
-	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
+	; attack height
+	lda	THTYPE_STRUCT_ATK_HEIGHT,x
 
 	ply
 	rts

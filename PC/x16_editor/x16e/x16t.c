@@ -28,7 +28,7 @@
 
 #define UI_ATTR_HEIGHT	18
 #define UI_TITLE_HEIGHT	28
-#define UI_SPACE_HEIGHT	24
+#define UI_SPACE_HEIGHT	10
 #define UI_STATE_HEIGHT	18
 
 #define MAX_ACTION_NAME	32
@@ -36,6 +36,7 @@
 #define THING_CRC_XOR	0xF0E19B64
 
 #define THING_ATTR(str,elm)	str, sizeof(str)-1, offsetof(export_type_t, elm)
+#define FLAG_STR(str)	str, sizeof(str)-1
 
 enum
 {
@@ -46,7 +47,9 @@ enum
 	ATTR_TYPE_SCALE,
 	ATTR_TYPE_U7F,
 	ATTR_TYPE_VIEW_HEIGHT,
+	ATTR_TYPE_ATK_HEIGHT,
 	ATTR_TYPE_WATER_HEIGHT,
+	ATTR_TYPE_ARADIUS,
 };
 
 enum
@@ -191,8 +194,9 @@ static const export_type_t default_thing_info =
 // editable attributes
 static const thing_edit_attr_t thing_attr[] =
 {
-	{THING_ATTR("radius", radius), ATTR_TYPE_U8},
 	{THING_ATTR("height", height), ATTR_TYPE_U8},
+	{THING_ATTR("radius", radius), ATTR_TYPE_U8},
+	{THING_ATTR("alt radius", alt_radius), ATTR_TYPE_ARADIUS},
 	{THING_ATTR("blocking", blocking), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("blocked by", blockedby), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("mass", mass), ATTR_TYPE_U8},
@@ -201,6 +205,7 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("scale", scale), ATTR_TYPE_SCALE},
 	{THING_ATTR("step height", step_height), ATTR_TYPE_U7F},
 	{THING_ATTR("view height", view_height), ATTR_TYPE_VIEW_HEIGHT},
+	{THING_ATTR("attack height", atk_height), ATTR_TYPE_ATK_HEIGHT},
 	{THING_ATTR("water height", water_height), ATTR_TYPE_WATER_HEIGHT},
 	{THING_ATTR("health", health), ATTR_TYPE_U16},
 	{THING_ATTR("jump power", jump_pwr), ATTR_TYPE_U8},
@@ -213,11 +218,12 @@ static const thing_edit_attr_t thing_attr[] =
 // editable flags
 static const thing_edit_flag_t thing_flag[] =
 {
-	{"sliding", 7, THING_EFLAG_SLIDING},
-	{"climbable", 9, THING_EFLAG_CLIMBABLE},
-	{"projectile", 10, THING_EFLAG_PROJECTILE},
-	{"waterspec", 9, THING_EFLAG_WATERSPEC},
-	{"pushable", 8, THING_EFLAG_PUSHABLE},
+	{FLAG_STR("sliding"), THING_EFLAG_SLIDING},
+	{FLAG_STR("climbable"), THING_EFLAG_CLIMBABLE},
+	{FLAG_STR("noclip"), THING_EFLAG_NOCLIP},
+	{FLAG_STR("projectile"), THING_EFLAG_PROJECTILE},
+	{FLAG_STR("waterspec"), THING_EFLAG_WATERSPEC},
+	{FLAG_STR("pushable"), THING_EFLAG_PUSHABLE},
 };
 
 // editable animations
@@ -850,6 +856,12 @@ void x16t_update_thing_view(uint32_t force_show_state)
 					goto u8;
 				sprintf(text, "[%u]", ti->info.height * 3 / 4); // also see 'x16t_export'
 			break;
+			case ATTR_TYPE_ATK_HEIGHT:
+				// based on height when zero
+				if(src->u8)
+					goto u8;
+				sprintf(text, "[%u]", ti->info.height * 8 / 12); // also see 'x16t_export'
+			break;
 			case ATTR_TYPE_WATER_HEIGHT:
 				// based on height when zero, special when 0xFF
 				if(src->u8)
@@ -858,6 +870,12 @@ void x16t_update_thing_view(uint32_t force_show_state)
 					sprintf(text, "---");
 				else
 					sprintf(text, "[%u]", ti->info.height * 5 / 8); // also see 'x16t_export'
+			break;
+			case ATTR_TYPE_ARADIUS:
+				// equal to radius when zero
+				if(src->u8)
+					goto u8;
+				sprintf(text, "[%u]", ti->info.radius);
 			break;
 			default: // ATTR_TYPE_U8
 u8:
@@ -2521,8 +2539,14 @@ void x16t_export()
 		if(!info.view_height)
 			info.view_height = ti->info.height * 3 / 4;
 
+		if(!info.atk_height)
+			info.atk_height = ti->info.height * 8 / 12;
+
 		if(!info.water_height)
 			info.water_height = ti->info.height * 5 / 8;
+
+		if(!info.alt_radius)
+			info.alt_radius = info.radius;
 
 		for(uint32_t j = 0; j < sizeof(export_type_t); j++)
 			tdst[j * 256] = tsrc[j];

@@ -795,8 +795,7 @@ thing_tick:
 	sta	REG_RAM_BANK
 
 	; thing sector pointer
-	lda	$A000,y
-	tax
+	ldx	$A000,y
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -1106,17 +1105,6 @@ thing_tick:
 	and	#THING_EFLAG_PROJECTILE
 	beq	@not_projectile
 
-	; check for math error
-	lda	THMOVE_BLOCKED
-	bne	:+
-
-	; remove thing
-	sta	THING_STRUCT_NXTFRM_L,y
-	sta	THING_STRUCT_NXTFRM_H,y
-	ina
-	sta	THING_STRUCT_TICKS,y
-	jmp	@do_animation
-:
 	; projectile death
 	jsr	projectile_death
 	jmp	@do_animation
@@ -2427,6 +2415,51 @@ thing_check_heights:
 	adc	#0
 	sta	THMOVE_THZW_H
 
+	; check noclip
+	lda	THMOVE_NOCLIP
+	beq	:+
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing sector pointer
+	ldx	$A000,y
+
+thing_noclip_heights:
+	; poscheck.floors = sdx
+	stx	THMOVE_FLOORS
+
+	; poscheck.ceilings = sdx
+	stx	THMOVE_CEILS
+
+	; poscheck.maskblock = 0
+	stz	THMOVE_MASKBLOCK
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; get heights
+	jsr	get_sector_floorz
+	jsr	get_sector_ceilingz
+
+	; poscheck.floorz = poscheck.tfz
+	lda	THMOVE_TFZ_L
+	sta	THMOVE_FLOORZ_L
+	lda	THMOVE_TFZ_H
+	sta	THMOVE_FLOORZ_H
+
+	; poscheck.ceilingz = poscheck.tcz
+	lda	THMOVE_TCZ_L
+	sta	THMOVE_CEILZ_L
+	lda	THMOVE_TCZ_H
+	sta	THMOVE_CEILZ_H
+
+	; done
+	stz	THMOVE_BLOCKED
+	rts
+:
 	; loop trough sectors
 	lda	#$A0
 	sta	TMP_PTR_H	; thingsec
@@ -2455,7 +2488,7 @@ thing_check_heights:
 	jsr	update_sector_heights
 
 	; check things
-	jsr	check_sector_things
+	jsr	check_sector_things	; modified opcode + LO address
 	bcc	@end
 
 	inc	THCES_PTR_H
@@ -2530,15 +2563,15 @@ thing_check_position:
 	lda	$A000,y
 	sta	ARG_THING_CHECK_SECTOR
 :
+	; poscheck.fallback = sdx
+	sta	THMOVE_FALLBACK
+
 	; sector things bank
 	lda	#BANK_SECTOR_THINGS
 	sta	REG_RAM_BANK
 
 	; poscheck.sector = 0
 	stz	RET_THING_CHECK_NEWSEC
-
-	; poscheck.fallback = 0
-	stz	THMOVE_FALLBACK
 
 	; check thing count in base sector
 	ldx	ARG_THING_CHECK_SECTOR
@@ -2680,6 +2713,27 @@ thing_check_position:
 @no_fail_safe:
 	;; check things in all added sectors
 
+	; check for noclip
+	lda	THMOVE_NOCLIP
+	beq	:+
+
+	; sector
+	ldx	RET_THING_CHECK_NEWSEC
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; poscheck.islink = 0x40
+	lda	#$40
+	sta	THMOVE_ISLINK
+
+	; special height check
+	jsr	thing_noclip_heights
+
+	; skip things
+	bne	@skip_things
+:
 	; the loop
 	ldx	#0
 @loop_things:
@@ -2699,13 +2753,14 @@ thing_check_position:
 
 	; blocked
 	stz	RET_THING_CHECK_NEWSEC
-	bra	:++
+	bra	@skip_things
 :
 	; next
 	inx
 	cpx	THMOVE_PORTAL_WR
 	bne	@loop_things
-:
+
+@skip_things:
 	;; use updated height of origin sector
 
 	; sector bank
@@ -2731,6 +2786,10 @@ thing_check_position:
 	bcs	:+
 	dec	THMOVE_CEILZ_H
 :
+	; check noclip
+	lda	THMOVE_NOCLIP
+	bne	:+
+
 	; if(poscheck.ceilingz < poscheck.floorz)
 	sec
 	lda	THMOVE_CEILZ_L
@@ -2953,6 +3012,10 @@ thing_check_position:
 
 	bra	:++
 :
+	; !(th->eflags & THING_EFLAG_NOCLIP)
+	lda	THMOVE_NOCLIP
+	bne	:+
+
 	; if((wall->angle & MARK_MID_BITS) == MARK_MASKED)
 	ldy	#WALL_STRUCT_ANGLE+1
 	lda	(WALL_PTR_L),y
@@ -2974,12 +3037,22 @@ thing_check_position:
 	lda	#$80
 	sta	THMOVE_MASKBLOCK
 :
+	; reset backsector
+	stz	THMOVE_BACKSECTOR
+
 	; if(!poscheck.blocked)
 	lda	THMOVE_BLOCKED
 	bne	:+
 
 	; check backsector
 	jsr	check_backsector
+
+	; check noclip
+	lda	THMOVE_NOCLIP
+	beq	:+
+
+	; don't block
+	stz	THMOVE_BACKBLOCK
 :
 	jmp	@do_checks
 
@@ -3044,9 +3117,13 @@ thing_check_position:
 	jsr	add_sector
 :
 @not_blocked:
+	; check for noclip
+	lda	THMOVE_NOCLIP
+	bne	:+
+
 	; sector heights
 	jsr	update_sector_heights_masked
-
+:
 	; portal bank
 	lda	#BANK_PORTALS
 	sta	REG_RAM_BANK
@@ -3175,6 +3252,7 @@ thing_check_position:
 	bcc	:+
 	jmp	@skip_checks
 :
+	; if(portal_bl)
 	lda	THMOVE_BACKBLOCK
 	beq	@skip_block
 
@@ -3186,10 +3264,12 @@ thing_check_position:
 
 @skip_block:
 	ldx	THMOVE_BACKSECTOR
+	beq	:+
 	stz	THMOVE_ISLINK_SAVE
 	lda	#$C0
 	sta	THMOVE_TOUCH_SAVE
 	jsr	add_sector
+:
 	jmp	@skip_checks
 
 @do_checks:
@@ -3318,6 +3398,17 @@ thing_check_position:
 
 	; check backsector
 	jsr	check_backsector
+:
+	; check noclip
+	lda	THMOVE_NOCLIP
+	beq	:+
+
+	; check backsector
+	lda	THMOVE_BACKSECTOR
+	bne	:+
+
+	; skip
+	jmp	@skip_checks
 :
 	; if(!back_block && wall->backsector && portal_wr < 16)
 	lda	THMOVE_BACKBLOCK
@@ -3457,10 +3548,24 @@ prepare_pos_check:
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
+	; disable blocking
+	stz	THMOVE_BLOCKEDBY
+
 	; read eflags
 	lda	THING_STRUCT_EFLAGS,y
 	sta	THMOVE_EFLAGS
 
+	; store noclip flag
+	and	#THING_EFLAG_NOCLIP
+	sta	THMOVE_NOCLIP
+
+	; check noclip
+	bne	:+
+
+	; read blocked by
+	lda	THING_STRUCT_BLOCKEDBY,y
+	sta	THMOVE_BLOCKEDBY
+:
 	; read radius
 	lda	THING_STRUCT_RADIUS,y
 	sta	THMOVE_RADIUS
@@ -3468,10 +3573,6 @@ prepare_pos_check:
 	; read height
 	lda	THING_STRUCT_HEIGHT,y
 	sta	THMOVE_HEIGHT
-
-	; read blocked by
-	lda	THING_STRUCT_BLOCKEDBY,y
-	sta	THMOVE_BLOCKEDBY
 
 	; th_zt = th_zb + height
 	clc
@@ -3810,31 +3911,24 @@ get_sector_ceilingz:
 ; extension of 'thing_check_position'
 
 handle_failsafe:
+	; check projectile flag
+	lda	THMOVE_EFLAGS
+	and	#THING_EFLAG_PROJECTILE
+	beq	:+
+
+	; newsec = poscheck.fallback
+	lda	THMOVE_FALLBACK
+	sta	RET_THING_CHECK_NEWSEC
+
+	; done
+	clc
+	rts
+:
 	; check counter
 	ldx	THMOVE_FAIL_SAFE
 	beq	@no_fail_safe
 	dex
 	stx	THMOVE_FAIL_SAFE
-
-	; check fallback sector
-	ldy	THMOVE_FALLBACK
-	beq	@do_failsafe
-
-	; check projectile flag
-	lda	THMOVE_EFLAGS
-	and	#THING_EFLAG_PROJECTILE
-	beq	@do_failsafe
-
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
-	; change first portal
-	sty	MEM_PORTALS_SECTOR
-
-	; try again
-	sec
-	rts
 
 @do_failsafe:
 	; pick axis
@@ -4527,6 +4621,10 @@ projectile_death:
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
+	; alt radius
+	lda	THTYPE_STRUCT_ALT_RADIUS,x
+	sta	THMOVE_ALT_RADIUS
+
 	; new animation
 	lda	THTYPE_ANIM_DEATH_L,x
 	pha	; <next frame LO>
@@ -4537,10 +4635,19 @@ projectile_death:
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
-	; unflag
+	; unflag + noclip
 	lda	THING_STRUCT_EFLAGS,y
 	and	#~THING_EFLAG_PROJECTILE & $FF
+	ora	#THING_EFLAG_NOCLIP
 	sta	THING_STRUCT_EFLAGS,y
+
+	; radius
+	lda	THING_STRUCT_RADIUS,y
+	sta	THMOVE_RADIUS
+
+	; alt radius
+	lda	THMOVE_ALT_RADIUS
+	sta	THING_STRUCT_RADIUS,y
 
 	; set ticks
 	lda	#1
@@ -4753,16 +4860,6 @@ projectile_death:
 
 @no_ceil_hit:
 @skip_hit_checks:
-	; check wall or thing hit
-	lda	THMOVE_BLOCKED
-	and	#3
-	bne	:+
-
-	; done
-	rts
-:
-	;; fix position
-
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
@@ -4782,6 +4879,16 @@ projectile_death:
 	sta	ARG_THING_CHECK_Y_L
 	lda	THING_STRUCT_Y_H,y
 	sta	ARG_THING_CHECK_Y_H
+
+	; check wall or thing hit
+	lda	THMOVE_BLOCKED
+	and	#3
+	bne	:+
+
+	; plane hit
+	jmp	@skip_move
+:
+	;; fix position
 
 	; block check
 	lda	THMOVE_BLOCKED
@@ -4907,8 +5014,8 @@ projectile_death:
 	bcs	:+
 	dec	THMOVE_DIST_H
 :
-	; dist -= th->radius + 2
-	lda	THING_STRUCT_RADIUS,y
+	; dist -= radius + 2
+	lda	THMOVE_RADIUS
 	ina
 	ina
 	sta	MATH_TEMP_A
@@ -4921,14 +5028,22 @@ projectile_death:
 :
 	; if(dist > 0 && dist < 128)
 	lda	THMOVE_DIST_H
-	bmi	@done
+	bmi	@skip_move
 	ora	THMOVE_DIST_L
-	beq	@done
-	bpl	:+
+	beq	@skip_move
+	bpl	@do_move
+
+@skip_move:
+	; check radius change
+	lda	THMOVE_RADIUS
+	cmp	THMOVE_ALT_RADIUS
+	bne	@update
+
 @done:
 	; done
 	rts
-:
+
+@do_move:
 	;; nx += tab_sin[th->angle] * dist
 
 	; reset accumulator
@@ -4988,6 +5103,7 @@ projectile_death:
 	adc	VERA_DATA0
 	sta	ARG_THING_CHECK_Y_H
 
+@update:
 	; try new position
 	lda	#1
 	sta	ARG_THING_CHECK_ONFLOOR
