@@ -14,6 +14,7 @@ typedef struct
 	uint8_t angle;
 	uint8_t type;
 	uint8_t axis;
+	uint8_t link;
 	uint8_t radius;
 	uint8_t height;
 	uint8_t blockedby;
@@ -35,7 +36,7 @@ uint32_t cb_attack(wall_combo_t *wall, uint8_t tdx)
 	vertex_t d0;
 	vertex_t *vtx;
 	int32_t dist, dd, zz;
-	uint8_t angle;
+	uint8_t angle, texture;
 	sector_t *sec = map_sectors + hitscan.sector;
 
 	// V0 diff
@@ -78,8 +79,15 @@ uint32_t cb_attack(wall_combo_t *wall, uint8_t tdx)
 	// check floor
 	if(zz < sec->floor.height)
 	{
+		if(sec->floor.link)
+		{
+			hitscan.link = sec->floor.link;
+			return 0;
+		}
+
 		zz = sec->floor.height;
 		dd = sec->floor.height;
+		texture = sec->floor.texture;
 hit_plane:
 		dist = hitscan.z - dd;
 		dist *= hitscan.ptan;
@@ -94,23 +102,52 @@ hit_plane:
 	// check ceiling
 	if(zz > sec->ceiling.height)
 	{
+		if(sec->ceiling.link)
+		{
+			hitscan.link = sec->ceiling.link;
+			return 0;
+		}
+
 		zz = sec->ceiling.height - hitscan.height;
 		dd = sec->ceiling.height;
+		texture = sec->ceiling.texture;
+
 		goto hit_plane;
 	}
 
-	// check backsector
-	if(	wall->solid.angle & MARK_PORTAL &&
-		wall->portal.backsector
-	){
-		sector_t *bs = map_sectors + wall->portal.backsector;
+	// default texture
+	texture = wall->portal.texture_top;
 
-		// check blocking and heights
-		if(	!(wall->portal.blocking & hitscan.blockedby) &&
-			zz > bs->floor.height &&
-			zz < bs->ceiling.height
-		)
-			return 0;
+	// check wall type
+	if(wall->solid.angle & MARK_PORTAL)
+	{
+		// check backsector
+		if(wall->portal.backsector)
+		{
+			sector_t *bs = map_sectors + wall->portal.backsector;
+
+			// bottom
+			if(zz < bs->floor.height)
+			{
+				texture = wall->portal.texture_bot;
+				goto do_wall;
+			}
+
+			// top
+			if(zz > bs->ceiling.height)
+				goto do_wall;
+
+			// blocking
+			if(!(wall->portal.blocking & hitscan.blockedby))
+				return 0;
+
+			texture = 0x80;
+		}
+	} else
+	if((wall->solid.angle & MARK_MID_BITS) == MARK_SPLIT)
+	{
+		if(zz <= wall->split.height_split)
+			texture = wall->split.texture_bot;
 	}
 #if 0
 	// ceiling check
@@ -118,11 +155,15 @@ hit_plane:
 	if(zz > dd)
 		zz = dd;
 #endif
+do_wall:
 	// radius offset
 	d0.x -= (wall->solid.dist.y * hitscan.radius) >> 8;
 	d0.y += (wall->solid.dist.x * hitscan.radius) >> 8;
 
 do_hit:
+	if(texture == 0xFF)
+		return 1;
+
 	// spawn thing
 	thing_spawn((int32_t)d0.x << 8, (int32_t)d0.y << 8, zz << 8, hitscan.sector, hitscan.type, 0);
 
@@ -191,6 +232,13 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*,uint8_
 				if(cb(wall, 0))
 					return;
 
+				if(hitscan.link) // HAX
+				{
+					sdx = hitscan.link;
+					hitscan.link = 0;
+					break;
+				}
+
 				if(!(wall->solid.angle & MARK_PORTAL))
 					return;
 
@@ -248,6 +296,8 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, 
 	hitscan.ptan = tab_tan_hs[halfpitch];
 
 	hitscan.type = type;
+
+	hitscan.link = 0; // HAX
 
 	hitscan_func(tdx, hang, cb_attack);
 }

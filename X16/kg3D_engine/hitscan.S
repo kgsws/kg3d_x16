@@ -318,17 +318,36 @@ cb_hitscan:
 
 	; check floor
 	sec
-	lda	HITSCAN_ZZ_L
-	sbc	MATH_VAR_L
-	lda	HITSCAN_ZZ_H
-	sbc	MATH_VAR_H
-	bpl	@no_floor
+	lda	MATH_VAR_L
+	sbc	HITSCAN_ZZ_L
+	lda	MATH_VAR_H
+	sbc	HITSCAN_ZZ_H
+	bmi	@no_floor
 
+	; check link
+	lda	SECTOR_STRUCT_FLOOR_LINK,x
+	beq	:+
+
+@plane_link:
+	;; HAX
+	sta	ARG_THING_SPAWN_SECTOR
+
+	; remove return address from stack
+	pla
+	pla
+
+	; jump to special place
+	jmp	hs_sector_loop
+:
 	; zz = sec->floor.height
 	lda	MATH_VAR_L
 	sta	HITSCAN_ZZ_L
 	lda	MATH_VAR_H
 	sta	HITSCAN_ZZ_H
+
+	; floor texture
+	lda	SECTOR_STRUCT_FLOOR_TEXTURE,x
+	sta	HITSCAN_TEXTURE
 
 	bra	@in_plane
 
@@ -345,7 +364,12 @@ cb_hitscan:
 	sbc	HITSCAN_ZZ_L
 	lda	MATH_VAR_H
 	sbc	HITSCAN_ZZ_H
-	bpl	@no_ceiling
+	bmi	:+
+	jmp	@no_ceiling
+:
+	; check link
+	lda	SECTOR_STRUCT_CEILING_LINK,x
+	bne	@plane_link
 
 	; zz = sec->ceiling.height - hitscan.height
 	sec
@@ -355,6 +379,10 @@ cb_hitscan:
 	lda	MATH_VAR_H
 	sbc	#0
 	sta	HITSCAN_ZZ_H
+
+	; ceiling texture
+	lda	SECTOR_STRUCT_CEILING_TEXTURE,x
+	sta	HITSCAN_TEXTURE
 
 @in_plane:
 	; dist = hitscan.z - dd
@@ -437,53 +465,106 @@ cb_hitscan:
 	lda	WALL_PTR_B
 	sta	REG_RAM_BANK
 
-	; check backsector and blocking
+	; top texture
+	ldy	#WALL_STRUCT_TEX_TOP
+	lda	(WALL_PTR_L),y
+	sta	HITSCAN_TEXTURE
+
+	; if((wall->solid.angle & MARK_TYPE_BITS) != MARK_SPLIT)
 	ldy	#WALL_STRUCT_ANGLE+1
 	lda	(WALL_PTR_L),y
+	and	#WALL__MARK_MID_BITS
+	cmp	#WALL__MARK_SPLIT
+	bne	@check_bs
+
+	; if(zz < wall->split.height_split)
+	ldy	#WALL_STRUCT_HEIGHT_SPLIT
+	sec
+	lda	(WALL_PTR_L),y
+	sbc	HITSCAN_ZZ_L
+	iny
+	lda	(WALL_PTR_L),y
+	sbc	HITSCAN_ZZ_H
+	bmi	@do_wall
+
+	; bot texture
+	ldy	#WALL_STRUCT_TEX_BOT
+	lda	(WALL_PTR_L),y
+	sta	HITSCAN_TEXTURE
+
+	bra	@do_wall
+
+@check_bs:
+	; check backsector and blocking
 	and	#WALL__MARK_PORTAL
-	beq	@no_bs
+	beq	@do_wall
+
+	; save blocking
 	ldy	#WALL_STRUCT_BLOCKING
 	lda	(WALL_PTR_L),y
 	and	HITSCAN_BLOCKBY
-	bne	@no_bs
+	sta	MATH_TEMP
+
+	; check backsector
 	dey
 	lda	(WALL_PTR_L),y
-	beq	@no_bs
+	beq	@do_wall
 	tax
 
 	; sector bank
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	; zz > bs->floor.height
-	sec
-	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
-	sbc	HITSCAN_ZZ_L
-	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
-	sbc	HITSCAN_ZZ_H
-	bpl	@no_bs
-
-	; zz < bs->ceiling.height
+	; zz < bs->floor.height
 	sec
 	lda	HITSCAN_ZZ_L
-	sbc	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
 	lda	HITSCAN_ZZ_H
-	sbc	SECTOR_STRUCT_CEILING_HEIGHT_H,x
-	bpl	@no_bs
+	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	bpl	@no_bot
 
 	; wall bank
 	lda	WALL_PTR_B
 	sta	REG_RAM_BANK
+
+	; bot texture
+	ldy	#WALL_STRUCT_TEX_BOT
+	lda	(WALL_PTR_L),y
+	sta	HITSCAN_TEXTURE
+
+	bra	@do_wall
+
+@no_bot:
+	; zz > bs->ceiling.height
+	sec
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	sbc	HITSCAN_ZZ_L
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
+	sbc	HITSCAN_ZZ_H
+	bmi	@do_wall_bank
+
+	; no texture (blocking line)
+	lda	#$80
+	sta	HITSCAN_TEXTURE
+
+	; wall bank
+	lda	WALL_PTR_B
+	sta	REG_RAM_BANK
+
+	; blocking
+	lda	MATH_TEMP
+	bne	@do_wall
 
 	; no hit detected
 	clc
 	rts
 
-@no_bs:
+@do_wall_bank:
 	; wall bank
 	lda	WALL_PTR_B
 	sta	REG_RAM_BANK
 
+@do_wall:
 	;; d0.x -= (wall->solid.dist.y * hitscan.radius) >> 8
 
 	; hitscan.radius
@@ -538,6 +619,11 @@ cb_hitscan:
 	sta	HITSCAN_D0_Y_H
 
 @do_hit:
+	; check sky texture
+	lda	HITSCAN_TEXTURE
+	ina
+	beq	@skip
+
 	; spawn puff
 	stz	ARG_THING_SPAWN_X_S
 	lda	HITSCAN_D0_X_L
@@ -562,6 +648,7 @@ cb_hitscan:
 
 	jsr	thing_spawn
 
+@skip:
 	sec
 	rts
 
