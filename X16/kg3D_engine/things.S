@@ -641,6 +641,11 @@ thing_tick:
 	lda	THING_STRUCT_Z_H,y
 	sta	ARG_THING_CHECK_Z_H
 
+	; projectile double move
+	lda	THING_STRUCT_EFLAGS,y
+	and	#THING_EFLAG_PROJECTILE
+	sta	THMOVE_PROJ_MOVE
+
 	; make 'on floor' flag
 	stz	ARG_THING_CHECK_ONFLOOR
 	sec
@@ -1009,6 +1014,7 @@ thing_tick:
 	stz	G_VIEWDELTA
 :
 @skip_camera:
+@double_move:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
@@ -1107,7 +1113,7 @@ thing_tick:
 
 	; projectile death
 	jsr	projectile_death
-	jmp	@do_animation
+	jmp	@do_animation_proj
 
 @not_projectile:
 	; check sliding flag
@@ -1275,7 +1281,7 @@ thing_tick:
 
 	; explode
 	jsr	projectile_death
-	jmp	@do_animation
+	jmp	@do_animation_proj
 :
 @ceiling_ok:
 	; floor zdiff
@@ -1354,7 +1360,7 @@ thing_tick:
 
 	; explode
 	jsr	projectile_death
-	jmp	@do_animation
+	jmp	@do_animation_proj
 :
 @not_in_floor:
 	; get thing flags
@@ -1575,6 +1581,28 @@ thing_tick:
 @skip_links:
 
 @do_animation:
+	; check for double move for projectiles
+	lda	THMOVE_PROJ_MOVE
+	beq	:+
+
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; new thing Z for checks
+	lda	THING_STRUCT_Z_L,y
+	sta	ARG_THING_CHECK_Z_L
+	lda	THING_STRUCT_Z_H,y
+	sta	ARG_THING_CHECK_Z_H
+
+	; not on floor
+	stz	ARG_THING_CHECK_ONFLOOR
+
+	; move again
+	stz	THMOVE_PROJ_MOVE
+	jmp	@double_move
+:
+@do_animation_proj:
 	;;;
 	; animation
 
@@ -1709,7 +1737,7 @@ thing_tick:
 	lda	#$60	; RTS
 	sta	@stop_opcode
 	sty	TICK_IDX
-	jmp	@do_animation
+	jmp	@do_animation_proj
 
 @remove_thing:
 	; check if weapon
@@ -5111,8 +5139,8 @@ projectile_death:
 	jsr	thing_check_position
 
 	; check result
-	lda	THMOVE_BLOCKED
-	bne	@done
+	lda	RET_THING_CHECK_NEWSEC
+	beq	@done
 
 	; place to all sectors
 	jsr	thing_apply_position

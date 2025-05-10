@@ -1205,14 +1205,18 @@ void things_tick()
 	int16_t old_fz;
 	uint32_t on_floor;
 	sector_t *sec;
+	uint8_t move_again;
 
 	for(int32_t i = 127; i >= 0; i--)
 	{
 		thing_t *th = things + i;
 
 		if(!i)
+		{
 			// special case for local player weapon
+			move_again = 0;
 			goto do_animation;
+		}
 
 		if(th->type >= 128)
 			continue;
@@ -1391,6 +1395,10 @@ void things_tick()
 			old_fz = th->floorz;
 		}
 
+		// projectile double-move
+		move_again = THING_EFLAG_PROJECTILE;
+
+double_move:
 		// XY movement
 		if(th->mx || th->my)
 		{
@@ -1630,6 +1638,14 @@ skip_gravity_friction:
 skip_links:
 
 do_animation:
+		// projectile double move
+		if(th->eflags & move_again)
+		{
+			move_again = 0;
+			on_floor = 0;
+			goto double_move;
+		}
+
 		// animation
 		if(th->ticks)
 		{
