@@ -477,4 +477,22 @@ action_table:
 	.word	act_wpn_lower
 	.word	act_atk_projectile
 	.word	act_atk_hitscan
+	.word	act_TEST
+
+;;
+
+act_TEST:
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	lda	#$72
+	sta	THING_STRUCT_PITCH,y
+
+	clc
+	lda	THING_STRUCT_ANGLE,y
+	adc	#$22
+	sta	THING_STRUCT_ANGLE,y
+
+	clc
+	rts
 

@@ -719,6 +719,7 @@ cb_attack:
 	; if(hitscan.thing_pick)
 	lda	HITSCAN_PICK_TDX
 	beq	@no_things
+	tay
 
 	; hitscan.sector = hitscan.thing_sdx
 	lda	HITSCAN_PICK_SDX
@@ -785,13 +786,37 @@ cb_attack:
 	lda	HITSCAN_PICK_Z_H
 	sta	HITSCAN_ZZ_H
 
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; get thing type
+	ldx	THING_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; if(!(info->spawn[3] & 0x80))
+	lda	THTYPE_STRUCT_SPAWN_D,x
+	bmi	@do_spawn
+
+	; hitscan.type = info->spawn[3]
+	sta	ARG_THING_SPAWN_TYPE
+
+	bra	@do_spawn
+
 @no_things:
 	; check sky texture
 	lda	HITSCAN_TEXTURE
 	ina
 	beq	@skip
 
-	; spawn puff
+	; no origin
+	ldy	#0
+
+@do_spawn:
+	; spawn thing
 	stz	ARG_THING_SPAWN_X_S
 	lda	HITSCAN_D0_X_L
 	sta	ARG_THING_SPAWN_X_L
@@ -810,10 +835,20 @@ cb_attack:
 	lda	HITSCAN_ZZ_H
 	sta	ARG_THING_SPAWN_Z_H
 
-	lda	#110
-	sta	ARG_THING_SPAWN_TYPE
+	jsr	thing_spawn_org
 
-	jsr	thing_spawn
+	; check
+	ldy	RET_THING_SPAWN
+	beq	@skip
+
+	; th->target = hitscan.origin
+	lda	HITSCAN_ORIGIN
+	sta	THING_STRUCT_TH_TARGET,y
+
+	; th->angle = hitscan.angle ^ 0x80
+	lda	HITSCAN_HIT_ANGLE
+	eor	#$FF
+	sta	THING_STRUCT_ANGLE
 
 @skip:
 	sec

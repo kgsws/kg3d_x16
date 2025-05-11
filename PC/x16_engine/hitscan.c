@@ -268,6 +268,8 @@ do_hit:
 		scan_things(cb_attack_thing);
 		if(hitscan.thing_pick)
 		{
+			thing_type_t *info = thing_type + things[hitscan.thing_pick].type;
+
 			hitscan.sector = hitscan.thing_sdx;
 
 			d0.x = (hitscan.sin * (int32_t)hitscan.dist) >> 8;
@@ -277,9 +279,13 @@ do_hit:
 
 			zz = hitscan.thing_zz;
 
+			if(!(info->spawn[3] & 0x80))
+				hitscan.type = info->spawn[3];
+
 			goto do_spawn;
 		}
-	}
+	} else
+		hitscan.thing_pick = 0;
 
 	// check texture
 	if(texture == 0xFF)
@@ -287,12 +293,13 @@ do_hit:
 
 do_spawn:
 	// spawn thing
-	tdx = thing_spawn((int32_t)d0.x << 8, (int32_t)d0.y << 8, zz << 8, hitscan.sector, hitscan.type, 0);
+	tdx = thing_spawn((int32_t)d0.x << 8, (int32_t)d0.y << 8, zz << 8, hitscan.sector, hitscan.type, hitscan.thing_pick);
 	if(!tdx)
 		return 1;
 
 	th = things + tdx;
 	th->target = hitscan.origin;
+	th->angle = hitscan.angle ^ 0x80;
 
 	return 1;
 }

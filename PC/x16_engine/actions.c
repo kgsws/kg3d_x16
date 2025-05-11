@@ -119,6 +119,10 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 			hitscan_attack(tdx, thing_type[th->type].atk_height, th->angle, th->pitch >> 1, type);
 		}
 		break;
+		case 6: // TEST
+			th->pitch = 0x70;
+			th->angle += 0x22;
+		break;
 	}
 
 	return 0;

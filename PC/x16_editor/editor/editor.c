@@ -1529,6 +1529,7 @@ static void file_select_fill(uint32_t is_root)
 
 	for(uint32_t i = 0; i < count; i++)
 	{
+		text->base.custom = i;
 		text->base.click = file_select_click;
 		glui_set_text(text, file_names[i].name, glui_font_small_kfn, GLUI_ALIGN_CENTER_CENTER);
 

@@ -276,6 +276,10 @@ const state_action_def_t state_action_def[] =
 		.name = "attack: hitscan",
 		.flags = 3,
 	},
+	{
+		.name = "TEST ONLY",
+		.flags = 3,
+	},
 	// terminator
 	{}
 };
