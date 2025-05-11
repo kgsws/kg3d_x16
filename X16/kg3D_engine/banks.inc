@@ -40,10 +40,16 @@ BANK_PLAYER_START = BANK_THING_STATES
 BANK_THING_STRUCT = 53
 
 ; things in sectors
+; 256 sectors, each can hold 31 things
+; last slot is reserved for thing count
 BANK_SECTOR_THINGS = 52
 
 ; sectors in things
-BANK_THING_SECTORS = 51	; only first half is used
+; index 0 to 127 is used for 'thing id' [thingsec]
+; index 128 to 255 is used for 'offset in table above' [thingces]
+; only first half is used
+; entire bank is cleared on map reset
+BANK_THING_SECTORS = 51
 
 ; loaded map stuff
 BANK_MAPDATA = 48	; [4 banks] must be divisible by 4

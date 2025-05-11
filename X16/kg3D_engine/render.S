@@ -32,7 +32,7 @@ SPRITE_FIRST_PROP = $A0
 MASKED_FIRST_PROP = $F0
 
 ;;;
-; RAM layout
+; RAM tables
 ;;;
 ; specific interleaving of plane and clipping arrays is crucial
 ; plane ranges are 0 to 79, but -1 (= 255) is also used

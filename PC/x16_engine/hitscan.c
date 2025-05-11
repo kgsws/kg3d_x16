@@ -23,20 +23,120 @@ typedef struct
 	int16_t idiv;
 	int16_t wtan;
 	int16_t ptan;
+	//
+	int16_t dist;
+	int16_t ztmp;
+	//
+	uint8_t thing_pick;
+	uint8_t thing_sdx;
+	int16_t thing_zz;
 } hitscan_t;
 
-// hitscan stuff
-hitscan_t hitscan;
+//
+static hitscan_t hitscan;
+
+static uint8_t sector_list[256];
+static uint8_t sector_idx;
+
+static uint8_t thing_list[256];
+static uint8_t thing_idx;
+
+//
+// thing scan
+
+static uint32_t in_thing_list(uint8_t tdx)
+{
+	for(uint32_t i = 0; i < thing_idx; i++)
+		if(thing_list[i] == tdx)
+			return 1;
+
+	return 0;
+}
+
+static void scan_things(uint32_t (*cb)(thing_t*,int16_t))
+{
+	vertex_t d1;
+	int32_t dd, dt;
+
+	thing_idx = 0;
+	hitscan.thing_pick = 0;
+
+	// check sectors
+	for(uint32_t i = 0; i < sector_idx; i++)
+	{
+		uint8_t sdx = sector_list[i];
+
+		// things in this sector
+		for(uint32_t i = 0; i < 31; i++)
+		{
+			uint8_t tdx = sectorth[sdx][i];
+			thing_t *th = things + tdx;
+
+			if(	tdx &&
+				tdx != hitscan.origin &&
+				th->blocking & hitscan.blockedby &&
+				!in_thing_list(tdx)
+			){
+				thing_list[thing_idx] = tdx;
+
+				d1.x = (th->x >> 8) - hitscan.x;
+				d1.y = (th->y >> 8) - hitscan.y;
+
+				dd = (d1.x * hitscan.cos - d1.y * hitscan.sin) >> 8;
+				if(dd < 0)
+					dd = -dd;
+
+				dd -= th->radius;
+				if(dd <= 0)
+				{
+					dt = (d1.y * hitscan.cos + d1.x * hitscan.sin) >> 8;
+					if(dt >= 0)
+					{
+						dd += dt;
+						if(	dd < hitscan.dist &&
+							cb(th, dd)
+						){
+							hitscan.dist = dd;
+							hitscan.thing_pick = tdx;
+							hitscan.thing_sdx = sdx;
+							hitscan.thing_zz = hitscan.ztmp;
+						}
+					}
+				}
+
+				thing_idx++;
+			}
+		}
+	}
+}
 
 //
 // attack callback
 
-uint32_t cb_attack(wall_combo_t *wall, uint8_t tdx)
+static uint32_t cb_attack_thing(thing_t *th, int16_t dd)
+{
+	int32_t tz = th->z >> 8;
+
+	dd = (dd * (int32_t)hitscan.wtan) >> 8;
+	hitscan.ztmp = hitscan.z + dd;
+
+	if(hitscan.ztmp < tz)
+		return 0;
+
+	tz += th->height;
+	if(hitscan.ztmp > tz)
+		return 0;
+
+	return 1;
+}
+
+static uint32_t cb_attack(wall_combo_t *wall)
 {
 	vertex_t d0;
 	vertex_t *vtx;
+	thing_t *th;
 	int32_t dist, dd, zz;
-	uint8_t angle, texture;
+	uint8_t angle, texture, tdx;
 	sector_t *sec = map_sectors + hitscan.sector;
 
 	// V0 diff
@@ -73,8 +173,8 @@ uint32_t cb_attack(wall_combo_t *wall, uint8_t tdx)
 	dist >>= 8;
 
 	// get Z
-	dist *= hitscan.wtan;
-	zz = hitscan.z + (dist >> 8);
+	dd = (dist * hitscan.wtan) >> 8;
+	zz = hitscan.z + dd;
 
 	// check floor
 	if(zz < sec->floor.height)
@@ -161,11 +261,38 @@ do_wall:
 	d0.y += (wall->solid.dist.x * hitscan.radius) >> 8;
 
 do_hit:
+	hitscan.dist = dist;
+
+	if(hitscan.blockedby)
+	{
+		scan_things(cb_attack_thing);
+		if(hitscan.thing_pick)
+		{
+			hitscan.sector = hitscan.thing_sdx;
+
+			d0.x = (hitscan.sin * (int32_t)hitscan.dist) >> 8;
+			d0.x += hitscan.x;
+			d0.y = (hitscan.cos * (int32_t)hitscan.dist) >> 8;
+			d0.y += hitscan.y;
+
+			zz = hitscan.thing_zz;
+
+			goto do_spawn;
+		}
+	}
+
+	// check texture
 	if(texture == 0xFF)
 		return 1;
 
+do_spawn:
 	// spawn thing
-	thing_spawn((int32_t)d0.x << 8, (int32_t)d0.y << 8, zz << 8, hitscan.sector, hitscan.type, 0);
+	tdx = thing_spawn((int32_t)d0.x << 8, (int32_t)d0.y << 8, zz << 8, hitscan.sector, hitscan.type, 0);
+	if(!tdx)
+		return 1;
+
+	th = things + tdx;
+	th->target = hitscan.origin;
 
 	return 1;
 }
@@ -173,12 +300,15 @@ do_hit:
 //
 // generic hitscan
 
-void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*,uint8_t))
+void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 {
 	thing_t *th = things + tdx;
 	uint8_t sdx = thingsec[tdx][0];
 	int16_t x = th->x >> 8;
 	int16_t y = th->y >> 8;
+
+	sector_idx = 1;
+	sector_list[0] = sdx;
 
 	hitscan.angle = hang;
 
@@ -229,7 +359,7 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*,uint8_
 			if(!(hit & 0x80))
 			{
 				hitscan.sector = sdx;
-				if(cb(wall, 0))
+				if(cb(wall))
 					return;
 
 				if(hitscan.link) // HAX
@@ -246,6 +376,8 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*,uint8_
 					return;
 
 				sdx = wall->portal.backsector;
+
+				sector_list[sector_idx++] = sdx;
 
 				break;
 			}
@@ -269,6 +401,8 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, 
 {
 	thing_t *th = things + tdx;
 	thing_type_t *info = thing_type + type;
+
+	hitscan.origin = tdx;
 
 	hitscan.radius = info->alt_radius + 1;
 	hitscan.height = info->height;

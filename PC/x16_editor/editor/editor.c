@@ -1316,6 +1316,7 @@ static void thing_select_fill()
 {
 	glui_element_t **elm = ui_file_select.elements[1]->container.elements;
 	uint32_t idx = texsel_start;
+	uint32_t tdx;
 	uint32_t i;
 
 	for(i = 0; i < TEXTURE_LIST_MAX && idx < sizeof(internal_thing) / sizeof(internal_thing_t); idx++, i++)
@@ -1346,10 +1347,11 @@ static void thing_select_fill()
 		img->coord.t[1] = 1.0f;
 	}
 
-	for( ; i < TEXTURE_LIST_MAX && idx < MAX_X16_THING_TYPES - X16_NUM_UNLISTED_THINGS; idx++)
+	tdx = idx - sizeof(internal_thing) / sizeof(internal_thing_t);
+	for( ; i < TEXTURE_LIST_MAX && tdx < MAX_X16_THING_TYPES - X16_NUM_UNLISTED_THINGS; tdx++)
 	{
-		thing_def_t *ti = thing_info + idx;
-		thing_sprite_t *spr = x16_thing_sprite + idx;
+		thing_def_t *ti = thing_info + tdx;
+		thing_sprite_t *spr = x16_thing_sprite + tdx;
 		glui_image_t *img;
 		glui_text_t *txt;
 
@@ -1359,7 +1361,7 @@ static void thing_select_fill()
 		txt = (glui_text_t*)*elm;
 		elm++;
 
-		txt->base.custom = idx;
+		txt->base.custom = tdx;
 		txt->base.click = thing_select_click;
 		glui_set_text(txt, ti->name.text, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
 
@@ -1367,7 +1369,7 @@ static void thing_select_fill()
 		elm++;
 
 		img->shader = SHADER_FRAGMENT_PALETTE;
-		img->gltex = x16_thing_texture + idx;
+		img->gltex = x16_thing_texture + tdx;
 
 		if(spr->width > spr->height)
 		{
@@ -1395,10 +1397,10 @@ static void thing_select_fill()
 
 	if(i >= TEXTURE_LIST_MAX)
 	{
-		for(; idx < MAX_X16_THING_TYPES - X16_NUM_UNLISTED_THINGS; idx++)
+		for(; tdx < MAX_X16_THING_TYPES - X16_NUM_UNLISTED_THINGS; tdx++)
 		{
-			thing_def_t *ti = thing_info + idx;
-			thing_sprite_t *spr = x16_thing_sprite + idx;
+			thing_def_t *ti = thing_info + tdx;
+			thing_sprite_t *spr = x16_thing_sprite + tdx;
 			glui_image_t *img;
 			glui_text_t *txt;
 
