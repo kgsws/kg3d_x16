@@ -120,7 +120,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 		}
 		break;
 		case 6: // TEST
-			th->pitch = 0x70;
+			th->pitch = 0x72;
 			th->angle += 0x22;
 		break;
 	}

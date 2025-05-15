@@ -47,7 +47,6 @@
 #define VAR_CRC_XOR	0x4B3F46E2
 
 #define WPN_PART_FLAG_BRIGHT	0x80
-#define WPN_PART_FLAG_DISABLED	0x40
 #define WPN_PART_FLAG_MIRROR_X	1
 
 enum
@@ -184,7 +183,6 @@ enum
 	CBOR_WPN_PART_OY,
 	CBOR_WPN_PART_OFFSET,
 	CBOR_WPN_PART_BRIGHT,
-	CBOR_WPN_PART_DISABLED,
 	CBOR_WPN_PART_MIRROR_X,
 	//
 	NUM_CBOR_WPN_PART
@@ -466,7 +464,8 @@ static uint_fast8_t sprite_origin = 2;
 static variant_list_t x16_weapon[MAX_X16_WPNSPR];
 static wpnspr_part_t wpn_part_info[UI_WPN_PARTS];
 static glui_dummy_t *wpn_part_rect;
-static int32_t wpn_part_copy = -1;
+static wpnspr_part_t wpn_part_copy;
+static int32_t wpn_copy_origin = -1;
 
 editor_sprlink_t editor_sprlink[MAX_X16_THGSPR + MAX_X16_WPNSPR];
 uint32_t x16_num_sprlnk_thg;
@@ -1189,14 +1188,6 @@ static edit_cbor_obj_t cbor_wpn_part[] =
 		.u8 = &load_part.flags,
 		.extra = WPN_PART_FLAG_BRIGHT
 	},
-	[CBOR_WPN_PART_DISABLED] =
-	{
-		.name = "disabled",
-		.nlen = 8,
-		.type = EDIT_CBOR_TYPE_FLAG8,
-		.u8 = &load_part.flags,
-		.extra = WPN_PART_FLAG_DISABLED
-	},
 	[CBOR_WPN_PART_MIRROR_X] =
 	{
 		.name = "mirror x",
@@ -1845,7 +1836,12 @@ static int32_t cbor_gfx_wpn_part(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, 
 {
 	if(type == KGCBOR_TYPE_TERMINATOR_CB)
 	{
-		if(load_part.width)
+		if(	load_part.width &&
+			load_part.x > -64 &&
+			load_part.x < 160 + 64 &&
+			load_part.y > 0 &&
+			load_part.y < 120 + 64
+		)
 		{
 			if(!check_part_resolution(load_part.width))
 			{
@@ -2859,7 +2855,7 @@ static void update_gfx_mode(int32_t step)
 static void set_gfx_mode(uint32_t mode)
 {
 	stex_wpn_import = 0;
-	wpn_part_copy = -1;
+	wpn_copy_origin = -1;
 
 	gfx_mode = mode;
 
@@ -3965,9 +3961,6 @@ static int32_t swpn_count_valid(variant_list_t *ws, uint32_t *bitmap, int32_t *i
 			if(!part->width)
 				continue;
 
-			if(part->flags & WPN_PART_FLAG_DISABLED)
-				continue;
-
 			valid++;
 		}
 
@@ -4072,7 +4065,6 @@ static void vlist_var_new(uint8_t *name, variant_list_t *vl, ui_idx_t *idx)
 	variant_info_t *va;
 	uint32_t hash;
 	uint32_t is_sprite = idx == gfx_idx + GFX_MODE_SPRITES;
-	uint32_t is_weapon = idx == gfx_idx + GFX_MODE_WEAPONS;
 
 	if(!name)
 		return;
@@ -4087,10 +4079,6 @@ static void vlist_var_new(uint8_t *name, variant_list_t *vl, ui_idx_t *idx)
 			edit_status_printf("Invalid name!");
 			return;
 		}
-	} else
-	if(is_weapon)
-	{
-		hash = name[0] - 'a';
 	} else
 	{
 		if(edit_check_name(name, 0))
@@ -4121,8 +4109,7 @@ static void vlist_var_new(uint8_t *name, variant_list_t *vl, ui_idx_t *idx)
 	strcpy(va->name, name);
 	va->hash = hash;
 
-	if(!is_weapon)
-		update_gfx_mode(0);
+	update_gfx_mode(0);
 }
 
 static void vlist_var_ren(uint8_t *name, variant_list_t *vl, ui_idx_t *idx)
@@ -4213,7 +4200,7 @@ static void vlist_var_del(variant_list_t *vl, ui_idx_t *idx)
 static void gfx_cleanup()
 {
 	stex_wpn_import = 0;
-	wpn_part_copy = -1;
+	wpn_copy_origin = -1;
 
 	for(uint32_t i = 0; i < GFX_NUM_MODES; i++)
 	{
@@ -5080,9 +5067,6 @@ static void generate_wpn_part_rect(wpnspr_part_t *pr, uint32_t now)
 		if(!pr->width)
 			continue;
 
-		if(pr->flags & WPN_PART_FLAG_DISABLED)
-			continue;
-
 		if(i != now)
 		{
 			rect->base.disabled = 0;
@@ -5128,9 +5112,6 @@ static uint16_t *generate_wpn_preview(variant_info_t *va, uint8_t *source, int32
 		int32_t xx, yy;
 
 		if(!part->width)
-			continue;
-
-		if(part->flags & WPN_PART_FLAG_DISABLED)
 			continue;
 
 		if(part->flags & WPN_PART_FLAG_BRIGHT)
@@ -5215,6 +5196,8 @@ static const uint8_t *update_gfx_weapons(ui_idx_t *idx)
 	ui_gfx_wpn_part_btn1.base.disabled = 1;
 	ui_gfx_wpn_part_btn2.base.disabled = 1;
 
+	ui_gfx_wpn_dupl.base.disabled = 0;
+
 	ui_gfx_wpn_info.color[0] = 0xFF0000CC;
 	ui_gfx_wpn_info.color[1] = 0xFF0000CC;
 
@@ -5244,12 +5227,7 @@ static const uint8_t *update_gfx_weapons(ui_idx_t *idx)
 
 			if(part->width)
 			{
-				if(part->flags & WPN_PART_FLAG_DISABLED)
-				{
-					*txt++ = 'D';
-					*txt++ = ' ';
-				} else
-					empty = 0;
+				empty = 0;
 				txt += sprintf(txt, "%ux%u @\n", part->width, part->height);
 			} else
 				txt += sprintf(txt, "[Unu\n");
@@ -5289,6 +5267,7 @@ static const uint8_t *update_gfx_weapons(ui_idx_t *idx)
 			ui_gfx_wpn_info.color[1] = 0xFF00CCFF;
 			glui_set_text(&ui_gfx_wpn_info, "IMPORT MODE", glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
+			ui_gfx_wpn_dupl.base.disabled = 1;
 			ui_gfx_wpn_part_apply.base.disabled = 0;
 			ui_gfx_wpn_part_btn0.base.disabled = 0;
 
@@ -5326,12 +5305,14 @@ static const uint8_t *update_gfx_weapons(ui_idx_t *idx)
 					wpnspr_part_t *part = va->ws.part + va->ws.now;
 
 					ui_gfx_wpn_part_btn0.base.disabled = 0;
-					sprintf(text, "Enabled: %s", txt_yes_no[!!(part->flags & WPN_PART_FLAG_DISABLED)]);
+					sprintf(text, "Mirror: %s", txt_yes_no[!(part->flags & WPN_PART_FLAG_MIRROR_X)]);
 					glui_set_text(&ui_gfx_wpn_part_btn0, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
 					ui_gfx_wpn_part_btn1.base.disabled = 0;
-					sprintf(text, "Mirror: %s", txt_yes_no[!(part->flags & WPN_PART_FLAG_MIRROR_X)]);
-					glui_set_text(&ui_gfx_wpn_part_btn1, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+					glui_set_text(&ui_gfx_wpn_part_btn1, "LEFT        RIGHT", glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+
+					ui_gfx_wpn_part_btn2.base.disabled = 0;
+					glui_set_text(&ui_gfx_wpn_part_btn2, "UP            DN", glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
 					ui_gfx_wpn_texture.base.disabled = 0;
 					ui_gfx_wpn_texture.base.width = 160 * UI_WPN_IMG_SCALE;
@@ -5532,7 +5513,6 @@ int32_t uin_gfx_mode_click(glui_element_t *elm, int32_t x, int32_t y)
 int32_t uin_gfx_left(glui_element_t *elm, int32_t x, int32_t y)
 {
 	stex_wpn_import = 0;
-	wpn_part_copy = -1;
 	update_gfx_mode(-1);
 	return 1;
 }
@@ -5540,7 +5520,6 @@ int32_t uin_gfx_left(glui_element_t *elm, int32_t x, int32_t y)
 int32_t uin_gfx_right(glui_element_t *elm, int32_t x, int32_t y)
 {
 	stex_wpn_import = 0;
-	wpn_part_copy = -1;
 	update_gfx_mode(1);
 	return 1;
 }
@@ -7447,7 +7426,7 @@ static void fs_weapon(uint8_t *file)
 		return;
 	}
 
-	wpn_part_copy = -1;
+	wpn_copy_origin = -1;
 	stex_wpn_import = img->width | (img->height << 16);
 	memset(wpn_part_info, 0, sizeof(wpn_part_info));
 
@@ -7479,61 +7458,95 @@ static void fs_weapon(uint8_t *file)
 	update_gfx_mode(0);
 }
 
+static void generate_wspr_names(variant_info_t *va, uint32_t base, uint32_t frame, uint32_t count)
+{
+	va += base;
+	for(uint32_t i = 0; i < count; i++, va++)
+	{
+		uint8_t *name = va->name;
+
+		va->wpn.count = i ? 0xFF : count;
+		va->wpn.base = base;
+		va->wpn.frm = frame + i;
+
+		for(uint32_t j = 0; j < count; j++)
+		{
+			if(j == i)
+			{
+				*name++ = '[';
+				*name++ = 'A' + frame + j;
+				*name++ = ']';
+			} else
+				*name++ = 'a' + frame + j;
+		}
+		*name = 0;
+	}
+}
+
 static void te_weapon_variant_new(uint8_t *text)
 {
 	uint32_t count = 0;
 	uint8_t *ptr = text;
 	variant_list_t *vl = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
 	variant_info_t *va;
+	uint8_t first, last;
+	const char *err = "Variant with this name already exists!";
 	uint32_t base;
 
 	if(!text)
 		return;
 
-	while(1)
+	first = text[0];
+	if(!first)
+		return;
+
+	if(first >= 'a' && first <= 'z')
+		first -= 'a';
+	else
+	if(first >= 'A' && first <= 'Z')
+		first -= 'A';
+	else
+		goto invalid;
+
+	if(text[1] == '-')
 	{
-		uint8_t in = *ptr++;
+		last = text[2];
+		if(!last)
+			goto invalid;
 
-		if(count >= MAX_X16_WPNGROUP)
-		{
-			edit_status_printf("Invalid name!");
-			return;
-		}
-
-		if(!in)
-			break;
-
-		for(uint8_t *check = ptr - 2; check >= text; check--)
-		{
-			if(*check == in)
-			{
-				edit_status_printf("Invalid name!");
-				return;
-			}
-		}
-
-		if(in >= 'a' && in <= 'z')
-			in -= 'a';
+		if(last >= 'a' && last <= 'z')
+			last -= 'a';
 		else
-		if(in >= 'A' && in <= 'Z')
-			in -= 'A';
+		if(last >= 'A' && last <= 'Z')
+			last -= 'A';
 		else
-		{
-			edit_status_printf("Invalid name!");
-			return;
-		}
+			goto invalid;
 
+		err = "Variant in this range already exists!";
+	} else
+	if(text[1])
+	{
+invalid:
+		edit_status_printf("Invalid name!");
+		return;
+	} else
+		last = first;
+
+	count = first;
+	while(count <= last)
+	{
 		for(uint32_t i = 0; i < vl->max; i++)
 		{
-			if(vl->variant[i].wpn.frm == in)
+			if(vl->variant[i].wpn.frm == count)
 			{
-				edit_status_printf("Variant with this name already exists!");
+				edit_status_printf(err);
 				return;
 			}
 		}
-
 		count++;
 	}
+
+	count = 1 + last - first;
 
 	if(vl->max + count > MAX_X16_VARIANTS)
 	{
@@ -7541,34 +7554,11 @@ static void te_weapon_variant_new(uint8_t *text)
 		return;
 	}
 
-	base = vl->max;
-	ptr = text;
-	va = vl->variant + vl->max;
-	for(uint32_t i = 0; i < count; i++, va++, ptr++)
-	{
-		uint8_t *name = va->name;
+	memset(vl->variant + vl->max, 0, sizeof(variant_info_t) * count);
 
-		vlist_var_new(ptr, x16_weapon, gfx_idx + GFX_MODE_WEAPONS);
+	generate_wspr_names(vl->variant, vl->max, first, count);
 
-		va->wpn.count = i ? 0xFF : count;
-		va->wpn.base = base;
-
-		for(uint32_t j = 0; j < count; j++)
-		{
-			uint8_t in = text[j];
-
-			if(j == i)
-			{
-				*name++ = '[';
-				*name++ = in & 0xDF;
-				*name++ = ']';
-			} else
-				*name++ = in | 0x20;
-		}
-		*name = 0;
-	}
-
-	wpn_part_copy = -1;
+	vl->max += count;
 
 	update_gfx_mode(0);
 }
@@ -7577,7 +7567,10 @@ static void qe_delete_weapon(uint32_t res)
 {
 	if(!res)
 		return;
-	wpn_part_copy = -1;
+
+	if((wpn_copy_origin & 0xFFFF) == gfx_idx[GFX_MODE_WEAPONS].now)
+		wpn_copy_origin = -1;
+
 	vlist_delete(x16_weapon, gfx_idx + GFX_MODE_WEAPONS);
 }
 
@@ -7592,6 +7585,11 @@ static void qe_delete_weapon_variant(uint32_t res)
 
 	vl = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
 	va = vl->variant + vl->now;
+
+	if(	(wpn_copy_origin & 0xFFFF) == gfx_idx[GFX_MODE_WEAPONS].now &&
+		(wpn_copy_origin >> 16) == va->wpn.base
+	)
+		wpn_copy_origin = -1;
 
 	va = vl->variant + va->wpn.base;
 	vl->now = va->wpn.base;
@@ -7616,8 +7614,6 @@ static void qe_delete_weapon_variant(uint32_t res)
 			va->wpn.base = base;
 	}
 
-	wpn_part_copy = -1;
-
 	update_gfx_mode(0);
 }
 
@@ -7625,7 +7621,7 @@ static int32_t input_gfx_weapons(glui_element_t *elm, uint32_t magic)
 {
 	variant_list_t *ws;
 	variant_info_t *va;
-	wpnspr_part_t *src, *dst;
+	wpnspr_part_t *ptr, *dst;
 
 	if(stex_wpn_import)
 		return 1;
@@ -7645,23 +7641,27 @@ static int32_t input_gfx_weapons(glui_element_t *elm, uint32_t magic)
 
 	if(magic == EDIT_INPUT_COPY)
 	{
-		wpn_part_copy = va->ws.now;
-		edit_status_printf("Part copied.");
+		ptr = va->ws.part + va->ws.now;
+		//if(ptr->width)
+		{
+			wpn_part_copy = *ptr;
+			wpn_copy_origin = gfx_idx[GFX_MODE_WEAPONS].now | ((int32_t)va->wpn.base << 16);
+			edit_status_printf("Part copied.");
+		}
 		return 1;
 	}
 
 	if(magic == EDIT_INPUT_PASTE)
 	{
-		if(wpn_part_copy < 0)
+		if((wpn_copy_origin & 0xFFFF) != gfx_idx[GFX_MODE_WEAPONS].now)
 			return 1;
 
-		if(va->ws.now == wpn_part_copy)
+		if((wpn_copy_origin >> 16) != va->wpn.base)
 			return 1;
 
-		dst = va->ws.part + va->ws.now;
-		src = va->ws.part + wpn_part_copy;
+		ptr = va->ws.part + va->ws.now;
+		*ptr = wpn_part_copy;
 
-		*dst = *src;
 		update_gfx_mode(0);
 
 		edit_status_printf("Part pasted.");
@@ -7759,7 +7759,62 @@ int32_t uin_gfx_wpn_variant(glui_element_t *elm, int32_t x, int32_t y)
 		return 1;
 	}
 
-	edit_ui_textentry("Enter frame code.", MAX_X16_WPNGROUP + 1, te_weapon_variant_new);
+	edit_ui_textentry("Enter frame code or range.", MAX_X16_WPNGROUP + 1, te_weapon_variant_new);
+
+	return 1;
+}
+
+int32_t uin_gfx_wpn_dupl(glui_element_t *elm, int32_t x, int32_t y)
+{
+	variant_list_t *ws;
+	variant_info_t *va;
+	variant_info_t *vb;
+	variant_info_t *vn;
+	uint32_t idx, fdx;
+
+	if(!gfx_idx[GFX_MODE_WEAPONS].max)
+		return 1;
+
+	if(stex_wpn_import)
+		return 1;
+
+	ws = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
+
+	if(ws->max >= MAX_X16_VARIANTS)
+	{
+		edit_status_printf("Too many variants!");
+		return 1;
+	}
+
+	//
+
+	ws = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
+	va = ws->variant + ws->now;
+	vb = ws->variant + va->wpn.base;
+
+	idx = vb->wpn.base + vb->wpn.count;
+	fdx = vb->wpn.frm + vb->wpn.count;
+
+	vn = ws->variant + idx;
+
+	if(	idx < ws->max &&
+		vn->wpn.frm == fdx
+	){
+		edit_status_printf("Variant with new name already exists!");
+		return 1;
+	}
+
+	for(int32_t i = ws->max; i > idx; i--)
+		ws->variant[i] = ws->variant[i-1];
+
+	memcpy(vn, va, sizeof(variant_info_t));
+
+	vb->wpn.count++;
+
+	generate_wspr_names(ws->variant, vb->wpn.base, vb->wpn.frm, vb->wpn.count);
+
+	ws->max++;
+	update_gfx_mode(0);
 
 	return 1;
 }
@@ -7792,7 +7847,6 @@ int32_t uin_gfx_wpn_left(glui_element_t *elm, int32_t x, int32_t y)
 	variant_list_t *ws;
 
 	stex_wpn_import = 0;
-	wpn_part_copy = -1;
 
 	if(!gfx_idx[GFX_MODE_WEAPONS].max)
 		return 1;
@@ -7813,7 +7867,6 @@ int32_t uin_gfx_wpn_right(glui_element_t *elm, int32_t x, int32_t y)
 	variant_list_t *ws;
 
 	stex_wpn_import = 0;
-	wpn_part_copy = -1;
 
 	if(!gfx_idx[GFX_MODE_WEAPONS].max)
 		return 1;
@@ -7930,7 +7983,7 @@ int32_t uin_gfx_wpn_part_btn0(glui_element_t *elm, int32_t x, int32_t y)
 		part = va->ws.part + va->ws.now;
 
 		if(part->width)
-			part->flags ^= WPN_PART_FLAG_DISABLED;
+			part->flags ^= WPN_PART_FLAG_MIRROR_X;
 	}
 
 	update_gfx_mode(0);
@@ -7947,16 +8000,28 @@ int32_t uin_gfx_wpn_part_btn1(glui_element_t *elm, int32_t x, int32_t y)
 	if(stex_wpn_import)
 	{
 		part = wpn_part_info + va->ws.now;
-
 		part->height *= 2;
 		if(part->height > 64)
 			part->height = 8;
 	} else
 	{
-		part = va->ws.part + va->ws.now;
+		int32_t dir = x >= elm->base.width / 2 ? 1 : -1;
+		int32_t pos;
 
-		if(part->width)
-			part->flags ^= WPN_PART_FLAG_MIRROR_X;
+		for(uint32_t i = 0; i < UI_WPN_PARTS; i++)
+		{
+			part = va->ws.part + i;
+
+			if(!part->width)
+				continue;
+
+			pos = part->x + dir;
+			if(pos >= 160 + 63)
+				pos = 160 + 63;
+			if(pos < -63)
+				pos = -63;
+			part->x = pos;
+		}
 	}
 
 	update_gfx_mode(0);
@@ -7968,9 +8033,32 @@ int32_t uin_gfx_wpn_part_btn2(glui_element_t *elm, int32_t x, int32_t y)
 {
 	variant_list_t *ws = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
 	variant_info_t *va = ws->variant + ws->now;
-	wpnspr_part_t *part = wpn_part_info + va->ws.now;
+	wpnspr_part_t *part;
 
-	part->flags ^= WPN_PART_FLAG_BRIGHT;
+	if(stex_wpn_import)
+	{
+		part = wpn_part_info + va->ws.now;
+		part->flags ^= WPN_PART_FLAG_BRIGHT;
+	} else
+	{
+		int32_t dir = x >= elm->base.width / 2 ? 1 : -1;
+		int32_t pos;
+
+		for(uint32_t i = 0; i < UI_WPN_PARTS; i++)
+		{
+			part = va->ws.part + i;
+
+			if(!part->width)
+				continue;
+
+			pos = part->y + dir;
+			if(pos >= 120 + 63)
+				pos = 120 + 63;
+			if(pos < 0)
+				pos = 0;
+			part->y = pos;
+		}
+	}
 
 	update_gfx_mode(0);
 
@@ -8723,9 +8811,6 @@ void x16g_generate()
 				if(!part->width)
 					continue;
 
-				if(part->flags & WPN_PART_FLAG_DISABLED)
-					continue;
-
 				mask |= 1 << va->wpn.frm;
 				break;
 			}
@@ -9000,9 +9085,6 @@ void x16g_export()
 				if(!part->width)
 					continue;
 
-				if(part->flags & WPN_PART_FLAG_DISABLED)
-					continue;
-
 				switch(part->width)
 				{
 					case 8:
@@ -9272,9 +9354,6 @@ uint32_t x16g_generate_weapon_texture(uint32_t idx, uint32_t frm, int32_t *box)
 				wpnspr_part_t *part = va->ws.part + i;
 
 				if(!part->width)
-					continue;
-
-				if(part->flags & WPN_PART_FLAG_DISABLED)
 					continue;
 
 				pick = i;

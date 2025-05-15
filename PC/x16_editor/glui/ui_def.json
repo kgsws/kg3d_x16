@@ -1569,6 +1569,20 @@
 								"text align": "center center"
 							},
 							{
+								"click": "uin_gfx_wpn_dupl",
+								"name": "ui_gfx_wpn_dupl",
+								"x": 616,
+								"y": 144,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Duplicate frame",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
 								"name": "ui_gfx_wpn_info",
 								"x": 200,
 								"y": 96,
