@@ -206,10 +206,12 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	for(tdx = 1; tdx < 128; tdx++)
 	{
 		if(things[tdx].type >= 128)
+			// found one
 			break;
 	}
 
 	if(tdx >= 128)
+		// no free slots
 		return 0;
 
 	th = things + tdx;
@@ -1207,14 +1209,15 @@ void things_tick()
 	sector_t *sec;
 	uint8_t move_again;
 
-	for(int32_t i = 127; i >= 0; i--)
+	for(uint32_t i = 1; ; i++)
 	{
 		thing_t *th = things + i;
 
-		if(!i)
+		if(i >= 128)
 		{
 			// special case for local player weapon
-			move_again = 0;
+			i = 0;
+			th = things;
 			goto do_animation;
 		}
 
@@ -1637,7 +1640,6 @@ skip_gravity_friction:
 		}
 skip_links:
 
-do_animation:
 		// projectile double move
 		if(th->eflags & move_again)
 		{
@@ -1646,6 +1648,7 @@ do_animation:
 			goto double_move;
 		}
 
+do_animation:
 		// animation
 		if(th->ticks)
 		{
@@ -1695,6 +1698,10 @@ act_next:
 				}
 			}
 		}
+
+		// stop
+		if(!i)
+			break;
 	}
 }
 

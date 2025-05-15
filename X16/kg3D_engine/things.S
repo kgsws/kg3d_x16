@@ -1113,7 +1113,7 @@ thing_tick:
 
 	; projectile death
 	jsr	projectile_death
-	jmp	@do_animation_proj
+	jmp	@do_animation
 
 @not_projectile:
 	; check sliding flag
@@ -1281,7 +1281,7 @@ thing_tick:
 
 	; explode
 	jsr	projectile_death
-	jmp	@do_animation_proj
+	jmp	@do_animation
 :
 @ceiling_ok:
 	; floor zdiff
@@ -1360,7 +1360,7 @@ thing_tick:
 
 	; explode
 	jsr	projectile_death
-	jmp	@do_animation_proj
+	jmp	@do_animation
 :
 @not_in_floor:
 	; get thing flags
@@ -1580,7 +1580,6 @@ thing_tick:
 @skip_ceiling_link:
 @skip_links:
 
-@do_animation:
 	; check for double move for projectiles
 	lda	THMOVE_PROJ_MOVE
 	beq	:+
@@ -1602,7 +1601,7 @@ thing_tick:
 	stz	THMOVE_PROJ_MOVE
 	jmp	@double_move
 :
-@do_animation_proj:
+@do_animation:
 	;;;
 	; animation
 
@@ -1737,7 +1736,7 @@ thing_tick:
 	lda	#$60	; RTS
 	sta	@stop_opcode
 	sty	TICK_IDX
-	jmp	@do_animation_proj
+	jmp	@do_animation
 
 @remove_thing:
 	; check if weapon
