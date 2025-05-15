@@ -1115,6 +1115,7 @@ static edit_cbor_obj_t cbor_var_spr[] =
 };
 
 static uint32_t load_ndata, load_bdata;
+static uint8_t load_frame_base;
 static edit_cbor_obj_t cbor_wpn_vgrp[] =
 {
 	[CBOR_WPN_VGRP_NDATA] =
@@ -1135,7 +1136,7 @@ static edit_cbor_obj_t cbor_wpn_vgrp[] =
 	{
 		.name = "variants",
 		.nlen = 8,
-		.type = EDIT_CBOR_TYPE_OBJECT,
+		.type = EDIT_CBOR_TYPE_ARRAY,
 		.handler = cbor_gfx_wpn_variant
 	},
 	// terminator
@@ -1892,13 +1893,7 @@ static int32_t cbor_gfx_wpn_variant(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t typ
 	if(type != KGCBOR_TYPE_ARRAY)
 		return 1;
 
-	if(ctx->key_len != 1)
-		return 1;
-
-	if(cbor_entry_index >= MAX_X16_VARIANTS)
-		return 1;
-
-	frm = key[0] - 'A';
+	frm = load_frame_base + ctx->index;
 	if(frm >= MAX_X16_SPRITE_FRAMES)
 		return 1;
 
@@ -2036,6 +2031,13 @@ static int32_t cbor_gfx_swpn_entry(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type
 
 	if(type == KGCBOR_TYPE_OBJECT)
 	{
+		if(ctx->key_len != 1)
+			return 1;
+
+		load_frame_base = key[0] - 'A';
+		if(load_frame_base >= MAX_X16_SPRITE_FRAMES)
+			return 1;
+
 		if(cbor_entry_index >= MAX_X16_VARIANTS)
 			return 1;
 
@@ -2063,7 +2065,7 @@ static int32_t cbor_gfx_weapon(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kg
 		return 0;
 	}
 
-	if(type == KGCBOR_TYPE_ARRAY)
+	if(type == KGCBOR_TYPE_OBJECT)
 	{
 		variant_list_t *ws = x16_weapon + cbor_main_index;
 
@@ -9604,17 +9606,20 @@ const uint8_t *x16g_save(const uint8_t *file)
 		}
 
 		kgcbor_put_string(&gen, vl->name, -1);
-		kgcbor_put_array(&gen, count);
+		kgcbor_put_object(&gen, count);
 
 		if(!count)
 			continue;
 
-		/// one variant group
+		/// variant groups
 
 		for(uint32_t j = 0; j < vl->max; )
 		{
 			variant_info_t *vi = vl->variant + j;
 			uint32_t top = j + vi->wpn.count;
+			uint8_t ftxt = vi->wpn.frm + 'A';
+
+			kgcbor_put_string(&gen, &ftxt, 1);
 
 			cbor_wpn_vgrp[CBOR_WPN_VGRP_NDATA].ptr = vl->data + vi->ws.dstart;
 			cbor_wpn_vgrp[CBOR_WPN_VGRP_NDATA].extra = vi->ws.dbright;
@@ -9625,13 +9630,10 @@ const uint8_t *x16g_save(const uint8_t *file)
 			edit_cbor_export(cbor_wpn_vgrp, NUM_CBOR_WPN_VGRP, &gen);
 
 			kgcbor_put_string(&gen, cbor_wpn_vgrp[CBOR_WPN_VGRP_VARIANTS].name, cbor_wpn_vgrp[CBOR_WPN_VGRP_VARIANTS].nlen);
-			kgcbor_put_object(&gen, vi->wpn.count);
+			kgcbor_put_array(&gen, vi->wpn.count);
 
 			for( ; j < top; j++, vi++)
 			{
-				uint8_t frm = 'A' + vi->wpn.frm;
-
-				kgcbor_put_string(&gen, &frm, 1);
 				kgcbor_put_array(&gen, UI_WPN_PARTS);
 
 				for(uint32_t k = 0; k < UI_WPN_PARTS; k++)
