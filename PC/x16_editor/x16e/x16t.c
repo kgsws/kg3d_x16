@@ -54,6 +54,20 @@ enum
 
 enum
 {
+	AFLG_THING = 1,
+	AFLG_WEAPON = 2,
+};
+
+enum
+{
+	ARGT_NONE,
+	ARGT_U8,
+	ARGT_SPAWN_SLOT,
+	ARGT_XY_SPREAD,
+};
+
+enum
+{
 	CBOR_ROOT_THINGS,
 	//
 	NUM_CBOR_ROOT
@@ -81,6 +95,12 @@ enum
 	//
 	NUM_CBOR_STATE
 };
+
+typedef struct
+{
+	const uint8_t *text;
+	void (*func)(uint8_t*);
+} arg_parse_t;
 
 typedef union
 {
@@ -158,8 +178,11 @@ static thing_def_t load_thing;
 
 static uint8_t load_state_sprite[LEN_X16_TEXTURE_NAME];
 static uint8_t load_action[MAX_ACTION_NAME];
-static int32_t load_args[3];
+static uint8_t load_args[3];
 static thing_st_t load_state;
+
+static uint8_t *spawn_dst;
+static uint8_t *arg_dst;
 
 // default player
 static const export_type_t default_player_info =
@@ -254,34 +277,85 @@ const state_action_def_t state_action_def[] =
 {
 	{
 		.name = "\t", // no action
-		.flags = 3,
+		.flags = AFLG_THING | AFLG_WEAPON
 	},
 	{
 		.name = "weapon: ready",
-		.flags = 2,
+		.flags = AFLG_WEAPON
 	},
 	{
 		.name = "weapon: raise",
-		.flags = 2,
+		.flags = AFLG_WEAPON,
+		.arg[0] =
+		{
+			.name = "speed",
+			.type = ARGT_U8,
+			.def = 10
+		}
 	},
 	{
 		.name = "weapon: lower",
-		.flags = 2,
+		.flags = AFLG_WEAPON,
+		.arg[0] =
+		{
+			.name = "speed",
+			.type = ARGT_U8,
+			.def = 10
+		}
 	},
 	{
 		.name = "attack: projectile",
-		.flags = 3,
+		.flags = AFLG_THING | AFLG_WEAPON,
+		.arg[0] =
+		{
+			.name = "spawn",
+			.type = ARGT_SPAWN_SLOT,
+			.def = 0
+		},
+		.arg[1] =
+		{
+			.name = "spread",
+			.type = ARGT_XY_SPREAD,
+			.def = 0
+		},
 	},
 	{
 		.name = "attack: hitscan",
-		.flags = 3,
-	},
-	{
-		.name = "TEST ONLY",
-		.flags = 3,
+		.flags = AFLG_THING | AFLG_WEAPON,
+		.arg[0] =
+		{
+			.name = "spawn",
+			.type = ARGT_SPAWN_SLOT,
+			.def = 0
+		},
+		.arg[1] =
+		{
+			.name = "spread",
+			.type = ARGT_XY_SPREAD,
+			.def = 0
+		},
+		.arg[2] =
+		{
+			.name = "count",
+			.type = ARGT_U8,
+			.def = 1
+		},
 	},
 	// terminator
 	{}
+};
+
+// state argument type parsers
+
+static void te_arg_u8(uint8_t*);
+static void te_arg_spawn(uint8_t*);
+static void te_arg_spread(uint8_t*);
+
+const arg_parse_t arg_parse[] =
+{
+	[ARGT_U8 - 1] = {"Enter a value (0 - 255).", te_arg_u8},
+	[ARGT_SPAWN_SLOT - 1] = {"Enter spawn slot (A - D).", te_arg_spawn},
+	[ARGT_XY_SPREAD - 1] = {"Enter two values (0, 1, 2, 4, 8, 16, 32, 64).", te_arg_spread},
 };
 
 //
@@ -294,9 +368,7 @@ static int32_t uin_state_frame(glui_element_t*, int32_t, int32_t);
 static int32_t uin_state_ticks(glui_element_t*, int32_t, int32_t);
 static int32_t uin_state_next(glui_element_t*, int32_t, int32_t);
 static int32_t uin_state_action(glui_element_t*, int32_t, int32_t);
-static int32_t uin_state_arg0(glui_element_t*, int32_t, int32_t);
-static int32_t uin_state_arg1(glui_element_t*, int32_t, int32_t);
-static int32_t uin_state_arg2(glui_element_t*, int32_t, int32_t);
+static int32_t uin_state_arg(glui_element_t*, int32_t, int32_t);
 
 // CBOR
 static int32_t cbor_cb_thing(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
@@ -394,7 +466,7 @@ static edit_cbor_obj_t cbor_state[] =
 	{
 		.name = "args",
 		.nlen = 4,
-		.type = EDIT_CBOR_TYPE_OBJECT,
+		.type = EDIT_CBOR_TYPE_ARRAY,
 		.handler = cbor_cb_args
 	},
 	// terminator
@@ -409,10 +481,10 @@ static int32_t cbor_cb_args(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbo
 	if(type != KGCBOR_TYPE_VALUE)
 		return 1;
 
-	if(ctx->index >= sizeof(load_args) / sizeof(uint32_t))
+	if(ctx->index >= 3)
 		return 1;
 
-	load_args[ctx->index] = value->s32;
+	load_args[ctx->index] = value->u8;
 
 	return 0;
 }
@@ -436,6 +508,10 @@ static int32_t cbor_cb_state(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 			if(!strcmp(load_action, sa->name))
 			{
 				load_state.action = sa - state_action_def;
+
+				for(uint32_t i = 0; i < 3; i++)
+					load_state.arg[i] = load_args[i];
+
 				break;
 			}
 			sa++;
@@ -473,6 +549,7 @@ static int32_t cbor_cb_states(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 		return 1;
 
 	memset(&load_state, 0, sizeof(load_state));
+	memset(&load_args, 0, sizeof(load_args));
 
 	load_action[0] = '\t';
 	cbor_state[CBOR_STATE_ACTION].ptr = load_action;
@@ -774,6 +851,61 @@ static uint32_t parse_animation_link(const uint8_t *name, uint32_t *tdx, uint32_
 //
 // update
 
+static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const state_action_def_t *sa, int32_t slot)
+{
+	static uint8_t text[32];
+	const state_arg_def_t *sd;
+	uint8_t *val;
+	uint32_t temp;
+
+	if(slot < 0)
+	{
+		slot = -slot - 1;
+		sd = sa->arg + slot;
+		if(!sd->name)
+		{
+			sprintf(text, "arg[%u]", slot);
+			return text;
+		} else
+			return sd->name;
+	}
+
+	if(sa == state_action_def)
+		return "---";
+
+	sd = sa->arg + slot;
+	val = st->arg + slot;
+
+	switch(sd->type)
+	{
+		case ARGT_NONE:
+			return "---";
+		case ARGT_U8:
+			sprintf(text, "%u", *val);
+		break;
+		case ARGT_SPAWN_SLOT:
+			if(*val >= THING_MAX_SPAWN_TYPES)
+				return "---";
+
+			temp = ti->spawn[*val];
+
+			if(temp >= MAX_X16_THING_TYPES)
+				return "---";
+
+			if(thing_info[temp].name.text[0])
+				sprintf(text, "%s", thing_info[temp].name.text);
+			else
+				sprintf(text, "#%u", temp);
+		break;
+		case ARGT_XY_SPREAD:
+			temp = *val;
+			sprintf(text, "X(%u) Y(%u)", (1 << (temp & 15)) >> 1, (1 << (temp >> 4)) >> 1);
+		break;
+	}
+
+	return text;
+}
+
 void x16t_update_thing_view(uint32_t force_show_state)
 {
 	thing_def_t *ti = thing_info + show_thing;
@@ -785,8 +917,6 @@ void x16t_update_thing_view(uint32_t force_show_state)
 	uint32_t i;
 
 	anim_name_tab = THING_CHECK_WEAPON_SPRITE(NUM_THING_ANIMS, show_thing) ? weapon_anim : thing_anim;
-
-	// ui_thing_state_lnk.base.disabled = THING_CHECK_WEAPON_SPRITE(show_anim, show_thing);
 
 	ui_thing_state_preview.base.disabled = 1;
 	ui_thing_state_origin.base.disabled = 1;
@@ -851,9 +981,9 @@ void x16t_update_thing_view(uint32_t force_show_state)
 					if(to->name.text[0])
 						sprintf(text, "%s", to->name.text);
 					else
-						sprintf(text, "%u", src->u8);
+						sprintf(text, "#%u", src->u8);
 				} else
-					text[0] = 0;
+					*(uint16_t*)text = '\t';
 			break;
 			case ATTR_TYPE_SCALE:
 				sprintf(text, "=%.3f", ((float)src->u8 * 2.0f + 64.0f) / 256.0f);
@@ -1024,6 +1154,7 @@ u8:
 		uint32_t ii = i + top_state;
 		thing_st_t *st = ta->state + ii;
 		const state_action_def_t *sa = state_action_def + st->action;
+		void *arg_func = is_link ? uin_state_idx : uin_state_arg;
 		uint32_t color;
 
 		if(ii >= ta->count)
@@ -1088,25 +1219,37 @@ u8:
 		txt++;
 
 		// arg 0
-		glui_set_text(txt, "---", glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-		txt->base.click = is_link ? uin_state_idx : uin_state_arg0;
+		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 0), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
+		txt->base.click = arg_func;
 		txt->color[0] = color;
 		txt->color[1] = color;
 		txt++;
 
 		// arg 1
-		glui_set_text(txt, "---", glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-		txt->base.click = is_link ? uin_state_idx : uin_state_arg1;
+		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 1), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
+		txt->base.click = arg_func;
+		txt->base.custom |= 0x100;
 		txt->color[0] = color;
 		txt->color[1] = color;
 		txt++;
 
 		// arg 2
-		glui_set_text(txt, "---", glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-		txt->base.click = is_link ? uin_state_idx : uin_state_arg2;
+		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 2), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
+		txt->base.click = arg_func;
+		txt->base.custom |= 0x200;
 		txt->color[0] = color;
 		txt->color[1] = color;
 		txt++;
+	}
+
+	// action args
+	{
+		thing_st_t *st = ta->state + show_state;
+		const state_action_def_t *sa = state_action_def + st->action;
+
+		glui_set_text(&ui_thing_state_arg0, make_arg_text(&ti->info, st, sa, -1), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
+		glui_set_text(&ui_thing_state_arg1, make_arg_text(&ti->info, st, sa, -2), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
+		glui_set_text(&ui_thing_state_arg2, make_arg_text(&ti->info, st, sa, -3), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
 	}
 
 	ui_thing_states.elements[0]->container.count = i * NUM_STATE_COLS;
@@ -1198,26 +1341,6 @@ static void te_set_attr(uint8_t *text)
 
 	type = ta->type;
 
-	if(type == ATTR_TYPE_TT)
-	{
-		value = 0x100;
-		type = x16c_crc(text, -1, THING_CRC_XOR);
-
-		for(uint32_t i = 0; i < MAX_X16_THING_TYPES; i++)
-		{
-			if(thing_info[i].name.hash == type)
-			{
-				value = i;
-				break;
-			}
-		}
-
-		if(value >= MAX_X16_THING_TYPES)
-			if(sscanf(text, "%u", &value) != 1 || value >= MAX_X16_THING_TYPES)
-				goto invalid;
-
-		type = ATTR_TYPE_U8;
-	} else
 	if(type == ATTR_TYPE_U7F)
 	{
 		if(text[0] < '0' || text[0] > '9')
@@ -1446,7 +1569,7 @@ int32_t uin_thing_input(glui_element_t *elm, uint32_t magic)
 			uin_thing_right(elm, 0, 0);
 		return 1;
 		case EDIT_INPUT_UP:
-			if(input_ctrl)
+			if(input_alt)
 			{
 				show_angle--;
 				show_angle &= 7;
@@ -1459,7 +1582,7 @@ int32_t uin_thing_input(glui_element_t *elm, uint32_t magic)
 			}
 		return 1;
 		case EDIT_INPUT_DOWN:
-			if(input_ctrl)
+			if(input_alt)
 			{
 				show_angle++;
 				show_angle &= 7;
@@ -1522,7 +1645,9 @@ int32_t uin_thing_input(glui_element_t *elm, uint32_t magic)
 
 int32_t uin_thing_select(glui_element_t *elm, int32_t x, int32_t y)
 {
-	edit_ui_textentry("Enter thing ID or thing name.", LEN_X16_THING_NAME, te_select);
+	spawn_dst = NULL;
+	x16t_generate();
+	edit_ui_thing_select(NULL);
 	return 1;
 }
 
@@ -1540,6 +1665,17 @@ int32_t uin_thing_attr(glui_element_t *elm, int32_t x, int32_t y)
 
 	switch(ta->type)
 	{
+		case ATTR_TYPE_TT:
+			spawn_dst = (uint8_t*)&thing_info[show_thing].info + ta->offs;
+			if(!input_ctrl && !input_alt && !input_shift)
+			{
+				x16t_generate();
+				edit_ui_thing_select(NULL);
+				return 1;
+			}
+			*spawn_dst = 0xFF;
+			x16t_update_thing_view(0);
+		return 1;
 		case ATTR_TYPE_BLOCK_FLAGS:
 			edit_ui_blocking_select(ta->offs == offsetof(export_type_t, blocking) ? "Bits which this thing will block." : "Bits by which this thing is blocked.", src, 0);
 		return 1;
@@ -1698,6 +1834,88 @@ int32_t uin_thing_state_origin(glui_element_t *elm, int32_t x, int32_t y)
 //
 // input for state table
 
+static void te_arg_u8(uint8_t *text)
+{
+	uint32_t temp;
+
+	if(!text)
+		return;
+
+	if(!text[0])
+		return;
+
+	if(sscanf(text, "%u", &temp) != 1 || temp > 255)
+	{
+		edit_status_printf("Invalid value!");
+		return;
+	}
+
+	*arg_dst = temp;
+	x16t_update_thing_view(0);
+}
+
+static void te_arg_spawn(uint8_t *text)
+{
+	uint32_t temp;
+
+	if(!text)
+		return;
+
+	if(!text[0])
+		return;
+
+	text[0] |= 0x20;
+	if(text[0] >= 'a' && text[0] <= 'd')
+		temp = text[0] - 'a';
+	else
+	{
+		edit_status_printf("Invalid value!");
+		return;
+	}
+
+	*arg_dst = temp;
+	x16t_update_thing_view(0);
+}
+
+static uint32_t check_spread(uint32_t *val)
+{
+	uint32_t vv = *val;
+
+	if(!vv)
+		return 0;
+
+	for(uint32_t i = 0; i < 7; i++)
+	{
+		if(vv == (1 << i))
+		{
+			*val = i + 1;
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static void te_arg_spread(uint8_t *text)
+{
+	uint32_t x, y;
+
+	if(!text)
+		return;
+
+	if(!text[0])
+		return;
+
+	if(sscanf(text, "%u %u", &x, &y) != 2 || check_spread(&x) || check_spread(&y))
+	{
+		edit_status_printf("Invalid value!");
+		return;
+	}
+
+	*arg_dst = x | (y << 4);
+	x16t_update_thing_view(0);
+}
+
 static uint32_t select_state(uint32_t idx)
 {
 	idx += top_state;
@@ -1804,21 +2022,32 @@ static int32_t uin_state_action(glui_element_t *elm, int32_t x, int32_t y)
 	return 1;
 }
 
-static int32_t uin_state_arg0(glui_element_t *elm, int32_t x, int32_t y)
+static int32_t uin_state_arg(glui_element_t *elm, int32_t x, int32_t y)
 {
-	select_state(elm->base.custom);
-	return 1;
-}
+	thing_def_t *ti = thing_info + show_thing;
+	uint32_t arg = elm->base.custom >> 8;
+	const state_action_def_t *sa;
+	const arg_parse_t *ap;
+	thing_anim_t *ta;
+	thing_st_t *st;
+	int32_t si;
 
-static int32_t uin_state_arg1(glui_element_t *elm, int32_t x, int32_t y)
-{
-	select_state(elm->base.custom);
-	return 1;
-}
+	si = select_state(elm->base.custom & 0xFF);
 
-static int32_t uin_state_arg2(glui_element_t *elm, int32_t x, int32_t y)
-{
-	select_state(elm->base.custom);
+	ta = ti->anim + show_anim;
+	st = ta->state + si;
+	sa = state_action_def + st->action;
+
+	arg_dst = st->arg + arg;
+
+	arg = sa->arg[arg].type;
+	if(!arg)
+		return 1;
+
+	ap = arg_parse + arg - 1;
+
+	edit_ui_textentry(ap->text, 16, ap->func);
+
 	return 1;
 }
 
@@ -2007,11 +2236,8 @@ const uint8_t *x16t_save(const uint8_t *file)
 					kgcbor_put_string(&gen, cbor_state[CBOR_STATE_ARGS].name, cbor_state[CBOR_STATE_ARGS].nlen);
 					kgcbor_put_array(&gen, ac);
 
-					while(arg->name)
-					{
-						kgcbor_put_s32(&gen, load_state.arg[i]);
-						arg++;
-					}
+					for(uint32_t l = 0; l < ac; l++)
+						kgcbor_put_u32(&gen, load_state.arg[l]);
 				}
 			}
 		}
@@ -2365,6 +2591,15 @@ void x16t_mode_set()
 	shader_buffer.lightmap = LIGHTMAP_IDX(0);
 
 	x16t_update_thing_view(1);
+}
+
+void x16t_thing_select(uint32_t type)
+{
+	if(spawn_dst)
+		*spawn_dst = type;
+	else
+		show_thing = type;
+	x16t_update_thing_view(!spawn_dst);
 }
 
 void x16t_generate()

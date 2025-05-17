@@ -199,3 +199,6 @@ extern const uint32_t wall_size_tab[];
 int32_t load_file(const char *name, void *data, uint32_t size);
 
 uint16_t point_to_angle();
+
+uint8_t rng_get();
+

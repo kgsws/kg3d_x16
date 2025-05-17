@@ -2028,31 +2028,28 @@
 												"color": "black"
 											},
 											{
+												"name": "ui_thing_state_arg0",
 												"x": 404,
 												"width": 116,
 												"height": 180,
-												"text": "arg[0]",
-												"font": "small",
-												"text align": "center",
+												"text": true,
 												"color": "black"
 											},
 											{
+												"name": "ui_thing_state_arg1",
 												"x": 520,
 												"width": 116,
 												"height": 180,
 												"background": "column",
-												"text": "arg[1]",
-												"font": "small",
-												"text align": "center",
+												"text": true,
 												"color": "black"
 											},
 											{
+												"name": "ui_thing_state_arg2",
 												"x": 636,
 												"width": 116,
 												"height": 180,
-												"text": "arg[2]",
-												"font": "small",
-												"text align": "center",
+												"text": true,
 												"color": "black"
 											},
 											{

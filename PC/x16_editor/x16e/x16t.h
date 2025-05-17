@@ -42,6 +42,8 @@ enum
 
 typedef struct
 {
+	uint8_t spawn[THING_MAX_SPAWN_TYPES];
+	//
 	uint8_t radius;
 	uint8_t height;
 	uint8_t blocking;
@@ -59,8 +61,6 @@ typedef struct
 	uint8_t alt_radius;
 	//
 	uint8_t jump_pwr;
-	//
-	uint8_t spawn[THING_MAX_SPAWN_TYPES];
 } __attribute((packed)) export_type_t;
 
 typedef struct thing_st_s
@@ -117,13 +117,15 @@ typedef struct
 typedef struct
 {
 	const char *name;
-	uint32_t type;
+	uint16_t type;
+	uint16_t def;
 } state_arg_def_t;
 
 typedef struct
 {
 	const char *name;
 	uint32_t flags;
+	uint32_t (*validate)(thing_st_t*);
 	state_arg_def_t arg[3];
 } state_action_def_t;
 
@@ -141,6 +143,8 @@ extern const state_action_def_t state_action_def[];
 uint32_t x16t_init();
 
 void x16t_mode_set();
+
+void x16t_thing_select(uint32_t);
 
 void x16t_new_thg();
 

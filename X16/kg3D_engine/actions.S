@@ -15,8 +15,9 @@
 ;;;
 ; NOTES: action callback
 ;;;
-; Y is current thing; 0 = player weapon
+; Y is current thing; 0 = player weapon; does not have to be preserved
 ; THANIM_PTR_* points to current frame
+; ARG_THING_SPAWN_SECTOR is current thing sector; invalid for weapons
 ; BANK_THING_STATES is active bank
 ; use 'clc + rts' to continue
 ; use 'sec + rts' for frame change; active bank must be 'BANK_THING_STRUCT'
@@ -59,6 +60,19 @@ action_get_XY:
 ;;;
 
 handle_base_info:
+	; args
+	phy
+	ldy	#THSTATE_STRUCT_ARG0
+	lda	(THANIM_PTR_L),y
+	sta	TMP_STACT_ARG_0
+	iny
+	lda	(THANIM_PTR_L),y
+	sta	TMP_STACT_ARG_1
+	iny
+	lda	(THANIM_PTR_L),y
+	sta	TMP_STACT_ARG_2
+	ply
+
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
@@ -97,8 +111,12 @@ handle_base_info:
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; spawn type	; TODO: spawn slot
-	lda	THTYPE_STRUCT_SPAWN_A,y
+	; spawn type
+	lda	TMP_STACT_ARG_0
+	ora	#>THTYPE_STRUCT_SPAWN_A
+	sta	@opcode+2
+@opcode:
+	lda	THTYPE_STRUCT_SPAWN_A,y	; modified address
 	sta	ARG_THING_SPAWN_TYPE
 
 	; attack height
@@ -396,10 +414,12 @@ act_atk_projectile:
 	ldx	RET_THING_SPAWN
 	beq	:+
 
-	; copy angle and pitch
-	lda	THING_STRUCT_ANGLE,y
+	; angle + pitch
+	jsr	aim_rng
+	lda	ARG_HITSCAN_ANGLE
 	sta	THING_STRUCT_ANGLE,x
-	lda	THING_STRUCT_PITCH,y
+	lda	ARG_HITSCAN_HALF_PITCH
+	asl
 	sta	THING_STRUCT_PITCH,x
 
 	; launch
@@ -427,28 +447,8 @@ act_atk_hitscan:
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
-	; angle
-	lda	THING_STRUCT_ANGLE,y
-	sta	ARG_HITSCAN_ANGLE
-
-	; random	; TODO
-	lda	#$87
-	sta	MATH_COUNTER
-	jsr	randomize
-	adc	ARG_HITSCAN_ANGLE
-	sta	ARG_HITSCAN_ANGLE
-
-	; pitch
-	lda	THING_STRUCT_PITCH,y
-	lsr
-	sta	ARG_HITSCAN_HALF_PITCH
-
-	; random	; TODO
-	lda	#$81
-	sta	MATH_COUNTER
-	jsr	randomize
-	adc	ARG_HITSCAN_HALF_PITCH
-	sta	ARG_HITSCAN_HALF_PITCH
+	; angle + pitch
+	jsr	aim_rng
 
 	; attack
 	jsr	hitscan_attack
@@ -480,21 +480,63 @@ apply_animation_ex:
 ;;;
 ; randomize
 ;;;
-; MATH_COUNTER is randomizer mask
-; set MSB to enable negative numbers
+; X is randomizer index to table
 ; randomizer will never pick zero
 ; result is in A
 
 randomize:
 	jsr	rng_get
-	lda	MATH_TEMP
-	and	MATH_COUNTER
+	lda	rng_aim_tab-1,x
+	and	MATH_TEMP
 	inc
 	bpl	:+
 	eor	#$7F
 	inc
 :
 	clc
+	rts
+
+;;;
+; angle and pitch with RNG from ARG1
+;;;
+
+aim_rng:
+	phx
+
+	; angle
+	lda	THING_STRUCT_ANGLE,y
+	sta	ARG_HITSCAN_ANGLE
+
+	; random
+	lda	TMP_STACT_ARG_1
+	and	#$07
+	beq	:+
+	tax
+	lda	rng_aim_tab-1,x
+	sta	MATH_COUNTER
+	jsr	randomize
+	adc	ARG_HITSCAN_ANGLE
+	sta	ARG_HITSCAN_ANGLE
+:
+	; pitch
+	lda	THING_STRUCT_PITCH,y
+	lsr
+	sta	ARG_HITSCAN_HALF_PITCH
+
+	; random
+	lda	TMP_STACT_ARG_1
+	and	#$70
+	beq	:+
+	tax
+	lda	TAB_SWAP,x
+	tax
+	lda	rng_aim_tab-1,x
+	sta	MATH_COUNTER
+	jsr	randomize
+	adc	ARG_HITSCAN_HALF_PITCH
+	sta	ARG_HITSCAN_HALF_PITCH
+:
+	plx
 	rts
 
 ;;;
@@ -512,22 +554,17 @@ action_table:
 	.word	act_wpn_lower
 	.word	act_atk_projectile
 	.word	act_atk_hitscan
-	.word	act_TEST
 
-;;
+;;;
+; extra tables
+;;;
 
-act_TEST:
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-	lda	#$72
-	sta	THING_STRUCT_PITCH,y
-
-	clc
-	lda	THING_STRUCT_ANGLE,y
-	adc	#$22
-	sta	THING_STRUCT_ANGLE,y
-
-	clc
-	rts
+rng_aim_tab:
+	.byte	$80
+	.byte	$81
+	.byte	$83
+	.byte	$87
+	.byte	$8F
+	.byte	$9F
+	.byte	$BF
 

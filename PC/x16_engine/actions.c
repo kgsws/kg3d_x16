@@ -7,10 +7,35 @@
 #include "hitscan.h"
 #include "actions.h"
 
+static const uint8_t rng_mask[] = {0, 0, 1, 3, 7, 15, 31, 63};
+
+//
+// stuff
+
+static uint8_t randomize(uint32_t mdx)
+{
+	uint8_t rng = rng_get();
+	uint8_t val = (rng & rng_mask[mdx]) + 1;
+	if(rng & 0x80)
+		return -val;
+	return val;
+}
+
+static void aim_rng(thing_t *th, uint8_t *res, uint32_t arg)
+{
+	res[0] = th->angle;
+	if(arg & 0x07)
+		res[0] += randomize(arg & 7);
+
+	res[1] = th->pitch >> 1;
+	if(arg & 0x70)
+		res[1] += randomize((arg & 0x70) >> 4);
+}
+
 //
 // run actions
 
-uint32_t action_func(uint8_t tdx, uint32_t act)
+uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 {
 	thing_t *th = things + tdx;
 
@@ -61,7 +86,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 		}
 		break;
 		case 2: // weapon: raise
-			th->height -= 8; // TODO: arg[0]
+			th->height -= st->arg[0];
 			if(th->height & 0x80)
 				th->height = 0;
 			if(!th->height)
@@ -71,7 +96,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 			}
 		break;
 		case 3: // weapon: lower
-			th->height += 8; // TODO: arg[0]
+			th->height += st->arg[0];
 			if(th->height >= 64)
 			{
 				th->height = 64;
@@ -82,7 +107,8 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 		break;
 		case 4: // attack: projectile
 		{
-			uint32_t type = thing_type[th->type].spawn[0]; // TODO
+			uint32_t type = thing_type[th->type].spawn[st->arg[0]];
+			uint8_t aim[2];
 			thing_t *ph;
 			uint32_t tdx, pdx;
 			uint8_t diff;
@@ -99,8 +125,10 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 			{
 				ph = things + pdx;
 
-				ph->angle = th->angle;
-				ph->pitch = th->pitch;
+				aim_rng(th, aim, st->arg[1]);
+
+				ph->angle = aim[0];
+				ph->pitch = aim[1] << 1;
 
 				thing_launch(pdx, thing_type[ph->type].speed);
 			}
@@ -109,19 +137,18 @@ uint32_t action_func(uint8_t tdx, uint32_t act)
 		case 5: // attack: hitscan
 		{
 			uint32_t tdx;
-			uint32_t type = thing_type[th->type].spawn[0]; // TODO
+			uint32_t type = thing_type[th->type].spawn[st->arg[0]];
+			uint8_t aim[2];
 
 			if(th == things)
 				th += player_thing;
 
 			tdx = th - things;
 
-			hitscan_attack(tdx, thing_type[th->type].atk_height, th->angle, th->pitch >> 1, type);
+			aim_rng(th, aim, st->arg[1]);
+
+			hitscan_attack(tdx, thing_type[th->type].atk_height, aim[0], aim[1], type);
 		}
-		break;
-		case 6: // TEST
-			th->pitch = 0x72;
-			th->angle += 0x22;
 		break;
 	}
 

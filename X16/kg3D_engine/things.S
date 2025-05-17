@@ -649,6 +649,9 @@ thing_tick:
 	; thing type
 	ldx	THMOVE_THING_TYPE
 
+	; on_floor = 1
+	sty	ARG_THING_CHECK_ONFLOOR
+
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
@@ -1609,8 +1612,8 @@ thing_tick:
 	lda	THING_STRUCT_Z_H,y
 	sta	ARG_THING_CHECK_Z_H
 
-	; not on floor
-	stz	ARG_THING_CHECK_ONFLOOR
+	; on floor
+	sty	ARG_THING_CHECK_ONFLOOR
 
 	; move again
 	dec	THMOVE_MOVE_AGAIN
@@ -1682,7 +1685,7 @@ thing_tick:
 
 @no_action:
 	; next (lo)
-	ldy	#1
+	ldy	#THSTATE_STRUCT_NEXT
 	lda	(THANIM_PTR_L),y
 	sta	TMP_THING_NXTFRM_L
 

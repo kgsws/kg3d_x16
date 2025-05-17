@@ -51,6 +51,8 @@ enum
 
 typedef struct
 {
+	uint8_t spawn[THING_MAX_SPAWN_TYPES];
+	//
 	uint8_t radius;
 	uint8_t height;
 	uint8_t blocking;
@@ -68,8 +70,6 @@ typedef struct
 	uint8_t alt_radius;
 	//
 	uint8_t jump_pwr;
-	//
-	uint8_t spawn[THING_MAX_SPAWN_TYPES];
 } __attribute((packed)) thing_type_t;
 
 typedef struct

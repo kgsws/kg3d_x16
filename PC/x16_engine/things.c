@@ -1400,7 +1400,10 @@ void things_tick()
 
 		// projectile multi-move
 		if(th->eflags & THING_EFLAG_PROJECTILE)
+		{
 			move_again = thing_type[th->type].jump_pwr;
+			on_floor = 1;
+		}
 
 multi_move:
 		// XY movement
@@ -1644,11 +1647,11 @@ skip_gravity_friction:
 		}
 skip_links:
 
-		// projectile double move
+		// projectile multi move
 		if(move_again)
 		{
 			move_again--;
-			on_floor = 0;
+			on_floor = 1;
 			goto multi_move;
 		}
 
@@ -1666,7 +1669,7 @@ act_next:
 
 					st = thing_state + decode_state(th->next_state);
 
-					if(action_func(i, st->action))
+					if(action_func(i, st->action, st))
 						goto act_next;
 
 					th->next_state = st->next | ((st->frm_nxt & 0xE0) << 8);

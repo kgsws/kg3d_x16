@@ -427,6 +427,7 @@ const uint32_t wall_size_tab[] =
 
 // random
 uint8_t tab_rng[2048];
+static uint32_t rng_idx;
 
 // sin / cos
 int16_t tab_sin[256];
@@ -3857,6 +3858,17 @@ static uint32_t precache()
 	printf("precache: %u sinfo; %u sfrm; %u wfrm; %u RAM\n", num_sprites, num_sframes, num_wframes, wram_used);
 
 	return 0;
+}
+
+//
+// random
+
+uint8_t rng_get()
+{
+	uint32_t ret = rng_idx;
+	rng_idx++;
+	rng_idx &= 2047;
+	return tab_rng[ret];
 }
 
 //

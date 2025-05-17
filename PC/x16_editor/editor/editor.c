@@ -1316,39 +1316,46 @@ static void thing_select_fill()
 {
 	glui_element_t **elm = ui_file_select.elements[1]->container.elements;
 	uint32_t idx = texsel_start;
-	uint32_t tdx;
-	uint32_t i;
+	uint32_t tdx = texsel_start;
+	uint32_t i = 0;
+	uint32_t top = MAX_X16_THING_TYPES;
+	uint8_t tnam[16];
 
-	for(i = 0; i < TEXTURE_LIST_MAX && idx < sizeof(internal_thing) / sizeof(internal_thing_t); idx++, i++)
+	if(selector_dest.thing)
 	{
-		internal_thing_t *it = internal_thing + idx;
-		glui_image_t *img;
-		glui_text_t *txt;
+		for( ; i < TEXTURE_LIST_MAX && idx < sizeof(internal_thing) / sizeof(internal_thing_t); idx++, i++)
+		{
+			internal_thing_t *it = internal_thing + idx;
+			glui_image_t *img;
+			glui_text_t *txt;
 
-		txt = (glui_text_t*)*elm;
-		elm++;
+			txt = (glui_text_t*)*elm;
+			elm++;
 
-		txt->base.custom = it->type;
-		txt->base.click = thing_select_click;
-		glui_set_text(txt, it->name, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
+			txt->base.custom = it->type;
+			txt->base.click = thing_select_click;
+			glui_set_text(txt, it->name, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
 
-		img = (glui_image_t*)*elm;
-		elm++;
+			img = (glui_image_t*)*elm;
+			elm++;
 
-		x16g_set_thingsel_texture(img, it->tidx);
+			x16g_set_thingsel_texture(img, it->tidx);
 
-		img->base.x = txt->base.x + (TEXTURE_ENTRY_W - img->base.width) / 2;
-		img->base.y = txt->base.y + (TEXTURE_ENTRY_W - img->base.height) / 2;
+			img->base.x = txt->base.x + (TEXTURE_ENTRY_W - img->base.width) / 2;
+			img->base.y = txt->base.y + (TEXTURE_ENTRY_W - img->base.height) / 2;
 
-		img->coord.s[0] = 0.0f;
-		img->coord.s[1] = 1.0f;
+			img->coord.s[0] = 0.0f;
+			img->coord.s[1] = 1.0f;
 
-		img->coord.t[0] = 0.0f;
-		img->coord.t[1] = 1.0f;
+			img->coord.t[0] = 0.0f;
+			img->coord.t[1] = 1.0f;
+		}
+
+		tdx = idx - sizeof(internal_thing) / sizeof(internal_thing_t);
+		top = MAX_X16_THING_TYPES - X16_NUM_UNLISTED_THINGS;
 	}
 
-	tdx = idx - sizeof(internal_thing) / sizeof(internal_thing_t);
-	for( ; i < TEXTURE_LIST_MAX && tdx < MAX_X16_THING_TYPES - X16_NUM_UNLISTED_THINGS; tdx++)
+	for( ; i < TEXTURE_LIST_MAX && tdx < top; tdx++)
 	{
 		thing_def_t *ti = thing_info + tdx;
 		thing_sprite_t *spr = x16_thing_sprite + tdx;
@@ -1363,7 +1370,13 @@ static void thing_select_fill()
 
 		txt->base.custom = tdx;
 		txt->base.click = thing_select_click;
-		glui_set_text(txt, ti->name.text, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
+
+		if(!ti->name.text[0])
+		{
+			sprintf(tnam, "#%u", tdx);
+			glui_set_text(txt, tnam, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
+		} else
+			glui_set_text(txt, ti->name.text, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
 
 		img = (glui_image_t*)*elm;
 		elm++;
@@ -1397,7 +1410,7 @@ static void thing_select_fill()
 
 	if(i >= TEXTURE_LIST_MAX)
 	{
-		for(; tdx < MAX_X16_THING_TYPES - X16_NUM_UNLISTED_THINGS; tdx++)
+		for(; tdx < top; tdx++)
 		{
 			thing_def_t *ti = thing_info + tdx;
 			thing_sprite_t *spr = x16_thing_sprite + tdx;
@@ -1780,10 +1793,17 @@ int32_t uin_block_bit_tgl(glui_element_t *elm, int32_t x, int32_t y)
 
 static int32_t thing_select_click(glui_element_t *elm, int32_t x, int32_t y)
 {
-	selector_dest.thing->prop.type = elm->base.custom;
-	edit_update_thing_type(selector_dest.thing);
-
 	ui_file_select.base.disabled = 1;
+
+	if(edit_x16_mode == EDIT_XMODE_THG)
+	{
+		x16t_thing_select(elm->base.custom);
+		return 1;
+	}
+
+	selector_dest.thing->prop.type = elm->base.custom;
+
+	edit_update_thing_type(selector_dest.thing);
 
 	if(mode_2d3d == EDIT_MODE_3D)
 	{
@@ -1897,10 +1917,11 @@ static int32_t action_select_click(glui_element_t *elm, int32_t x, int32_t y)
 
 	if(selector_dest.state->action != idx)
 	{
+		const state_action_def_t *sd = state_action_def + idx;
 		selector_dest.state->action = idx;
-		selector_dest.state->arg[0] = 0;
-		selector_dest.state->arg[1] = 0;
-		selector_dest.state->arg[2] = 0;
+		selector_dest.state->arg[0] = sd->arg[0].def;
+		selector_dest.state->arg[1] = sd->arg[1].def;
+		selector_dest.state->arg[2] = sd->arg[2].def;
 	}
 
 	ui_file_select.base.disabled = 1;
