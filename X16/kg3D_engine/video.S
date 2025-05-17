@@ -929,11 +929,13 @@ video_copy_remap:
 	clc
 	lda	G_WPN_NOW_LIGHT
 	beq	video_copy_normal_x
-	lsr
-	lsr
-	and	#$1C
+	phx
+	tax
+	lda	TAB_SWAP,x
+	and	#$07
 	adc	#>TAB_LIGHTMAPS
 	sta	LIGHTMAP_H
+	plx
 
 	; ADDR1 = 0x001E00, increment = 1
 	lda	#%00000001

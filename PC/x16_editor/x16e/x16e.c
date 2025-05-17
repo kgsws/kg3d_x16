@@ -10,7 +10,7 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	17
+#define MAP_VERSION	18
 #define MAP_MAGIC	0x36315870614D676B
 
 #define MAX_BANKS	4
@@ -814,12 +814,12 @@ void x16_export_map()
 
 	// count lights and make remap table
 	map_head.count_lights = 0;
-	for(uint32_t i = 0; i < x16_num_lights; i++)
+	for(uint32_t i = 1; i < x16_num_lights; i++)
 	{
 		if(!(marked_lights & (1 << i)))
 			continue;
 
-		if(map_head.count_lights + 1 >= MAX_LIGHTS)
+		if(map_head.count_lights >= MAX_LIGHTS)
 		{
 			error_light_count();
 			return;
@@ -892,8 +892,8 @@ void x16_export_map()
 		write(fd, temp_data, 160 * 120);
 	}
 
-	// write light list
-	for(uint32_t i = 0; i < x16_num_lights; i++)
+	// write light list; skip white light
+	for(uint32_t i = 1; i < x16_num_lights; i++)
 	{
 		if(!(marked_lights & (1 << i)))
 			continue;

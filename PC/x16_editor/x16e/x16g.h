@@ -3,7 +3,6 @@
 
 #define MAX_X16_PALETTE	16	// 4 palettes with 4 damage levels
 #define MAX_X16_LIGHTS	32	// forced by LIGHTMAP_IDX macro, limited by exporter
-#define MAX_X16_REMAPS	3	// engine limit
 #define MAX_X16_PLANES	256
 #define MAX_X16_WALLS	256
 #define MAX_X16_THGSPR	112	// engine limit; (128 total, shared with weapons)

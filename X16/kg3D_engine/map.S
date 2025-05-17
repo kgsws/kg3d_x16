@@ -114,7 +114,7 @@ MAP_TEMP_PLANE8_EFFECT = $B000
 ;;;
 
 MAP_HEAD__SIZE = $20
-MAP_HEAD__VERSION = 17
+MAP_HEAD__VERSION = 18
 MAP_CMAP__SIZE = 4
 MAP_PLANE__SIZE = 5
 MAP_WALL__SIZE = 5
@@ -386,8 +386,9 @@ ex_map_load:
 
 	; check light count
 	lda	MAP_HEAD_COUNT_LIGHTS
-	cmp	#9
+	cmp	#8
 	bcs	@verify_error
+	ina
 	sta	MAP_TEMP_COUNT_LIGHTS
 
 	; check sector count
@@ -493,8 +494,17 @@ ex_map_load:
 	ldx	#(type_light-txt_types)
 	jsr	copy_name_type
 
-	; load lights
-	stz	MAP_LOAD_IDX
+	; generate white light
+	lda	#0
+@loop_white:
+	tay
+	sta	TAB_LIGHTMAPS,y
+	dea
+	bne	@loop_white
+
+	; load other lights
+	lda	#1
+	sta	MAP_LOAD_IDX
 @loop_light:
 	lda	MAP_LOAD_IDX
 	cmp	MAP_TEMP_COUNT_LIGHTS
@@ -516,10 +526,8 @@ ex_map_load:
 	jsr	make_hash
 
 	; get destination
-	lda	MAP_LOAD_IDX
-	asl
-	asl
 	clc
+	lda	MAP_LOAD_IDX
 	adc	#>TAB_LIGHTMAPS
 	sta	TAB_FILE_DEST+1
 	stz	TAB_FILE_DEST+0
@@ -1365,12 +1373,8 @@ load_plane4:
 	bne	@loop_expand
 
 	; generate this light
-	lda	MAP_LOAD_XDI
-
-	; light pointer (source)
-	asl
-	asl
 	clc
+	lda	MAP_LOAD_XDI
 	adc	#>TAB_LIGHTMAPS
 	sta	HI_PTR_H
 
@@ -2355,10 +2359,8 @@ load_sprite_pixels:
 
 convert_pixels:
 	; get light pointer
-	lda	MAP_LOAD_XDI
-	asl
-	asl
 	clc
+	lda	MAP_LOAD_XDI
 	adc	#>TAB_LIGHTMAPS
 	sta	WALL_PTR_H
 

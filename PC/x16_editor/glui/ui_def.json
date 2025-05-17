@@ -541,164 +541,6 @@
 						]
 					},
 					{
-						"name": "ui_gfx_remaps",
-						"elements":
-						[
-							{
-								"x": 512,
-								"y": 496,
-								"width": 408,
-								"height": 210,
-								"align": "center",
-								"background": "back",
-								"elements":
-								[
-									{
-										"name": "ui_gfx_remap_table",
-										"x": 8,
-										"y": 8,
-										"width": 392,
-										"height": 164,
-										"background": "white",
-										"elements":
-										[
-											{
-												"x": 0,
-												"width": 60,
-												"height": 162,
-												"text": "first",
-												"font": "small",
-												"text align": "center",
-												"color": "black"
-											},
-											{
-												"x": 60,
-												"width": 60,
-												"height": 162,
-												"background": "column",
-												"text": "last",
-												"font": "small",
-												"text align": "center",
-												"color": "black"
-											},
-											{
-												"x": 120,
-												"width": 136,
-												"height": 162,
-												"text": "start",
-												"font": "small",
-												"text align": "center",
-												"color": "black"
-											},
-											{
-												"x": 256,
-												"width": 136,
-												"height": 162,
-												"background": "column",
-												"text": "stop",
-												"font": "small",
-												"text align": "center",
-												"color": "black"
-											},
-											{
-												"x": 0,
-												"y": 19,
-												"width": 392,
-												"height": 1,
-												"background": "back"
-											},
-											{
-												"x": 0,
-												"y": 20,
-												"width": 392,
-												"height": 18,
-												"background": "row"
-											},
-											{
-												"x": 0,
-												"y": 56,
-												"width": 392,
-												"height": 18,
-												"background": "row"
-											},
-											{
-												"x": 0,
-												"y": 92,
-												"width": 392,
-												"height": 18,
-												"background": "row"
-											},
-											{
-												"x": 0,
-												"y": 128,
-												"width": 392,
-												"height": 18,
-												"background": "row"
-											},
-											{
-												"click": "uin_gfx_remaps_new",
-												"x": 100,
-												"y": 172,
-												"width": 128,
-												"height": 24,
-												"align": "center",
-												"background": ["btnbg", "gray"],
-												"text": "New range",
-												"font": "small",
-												"color": ["bright", "white"],
-												"text align": "center center"
-											},
-											{
-												"click": "uin_gfx_remaps_del",
-												"x": 292,
-												"y": 172,
-												"width": 128,
-												"height": 24,
-												"align": "center",
-												"background": ["btnbg", "gray"],
-												"text": "Delete range",
-												"font": "small",
-												"color": ["bright", "white"],
-												"text align": "center center"
-											},
-											{
-												"name": "ui_gfx_remaps_ranges",
-												"y": 20,
-												"elements": 1
-											}
-										]
-									}
-								]
-							},
-							{
-								"click": "uin_gfx_remap_color",
-								"x": 256,
-								"y": 96,
-								"width": 384,
-								"height": 384,
-								"align": "center",
-								"image": "&x16_gl_tex[X16G_GLTEX_PALETTE]",
-								"coords": [0, 0, 1, 0.0625]
-							},
-							{
-								"x": 768,
-								"y": 96,
-								"width": 384,
-								"height": 384,
-								"align": "center",
-								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
-								"shader": "palette"
-							},
-							{
-								"name": "ui_gfx_remap_color",
-								"x": 256,
-								"y": 80,
-								"text": true,
-								"color": "gray"
-							}
-						]
-					},
-					{
 						"name": "ui_gfx_planes",
 						"elements":
 						[
@@ -1868,7 +1710,7 @@
 					{
 						"x": 512,
 						"y": 735,
-						"width": 867,
+						"width": 865,
 						"height": 48,
 						"align": "center",
 						"background": "back",
@@ -1878,9 +1720,9 @@
 							{
 								"name": "ui_gfx_palette_txt",
 								"click": "uin_gfx_mode_click",
-								"x": 48,
+								"x": 54,
 								"y": 1,
-								"width": 96,
+								"width": 108,
 								"height": 32,
 								"align": "center",
 								"text": "Palette",
@@ -1892,9 +1734,9 @@
 							{
 								"name": "ui_gfx_lights_txt",
 								"click": "uin_gfx_mode_click",
-								"x": 144,
+								"x": 162,
 								"y": 1,
-								"width": 96,
+								"width": 108,
 								"height": 32,
 								"align": "center",
 								"text": "Lights",
@@ -1904,25 +1746,11 @@
 								"background": ["none", "main_item_s_back"]
 							},
 							{
-								"name": "ui_gfx_remaps_txt",
-								"click": "uin_gfx_mode_click",
-								"x": 240,
-								"y": 1,
-								"width": 96,
-								"height": 32,
-								"align": "center",
-								"text": "Remaps",
-								"font": "medium",
-								"text align": "center center",
-								"color": ["main_item_u_text", "main_item_s_text"],
-								"background": ["none", "main_item_s_back"]
-							},
-							{
 								"name": "ui_gfx_planes_txt",
 								"click": "uin_gfx_mode_click",
-								"x": 336,
+								"x": 270,
 								"y": 1,
-								"width": 96,
+								"width": 108,
 								"height": 32,
 								"align": "center",
 								"text": "Planes",
@@ -1934,9 +1762,9 @@
 							{
 								"name": "ui_gfx_walls_txt",
 								"click": "uin_gfx_mode_click",
-								"x": 432,
+								"x": 378,
 								"y": 1,
-								"width": 96,
+								"width": 108,
 								"height": 32,
 								"align": "center",
 								"text": "Walls",
@@ -1948,9 +1776,9 @@
 							{
 								"name": "ui_gfx_sprites_txt",
 								"click": "uin_gfx_mode_click",
-								"x": 528,
+								"x": 486,
 								"y": 1,
-								"width": 96,
+								"width": 108,
 								"height": 32,
 								"align": "center",
 								"text": "Sprites",
@@ -1962,9 +1790,9 @@
 							{
 								"name": "ui_gfx_weapons_txt",
 								"click": "uin_gfx_mode_click",
-								"x": 624,
+								"x": 594,
 								"y": 1,
-								"width": 96,
+								"width": 108,
 								"height": 32,
 								"align": "center",
 								"text": "Weapons",
@@ -1976,9 +1804,9 @@
 							{
 								"name": "ui_gfx_skies_txt",
 								"click": "uin_gfx_mode_click",
-								"x": 720,
+								"x": 702,
 								"y": 1,
-								"width": 96,
+								"width": 108,
 								"height": 32,
 								"align": "center",
 								"text": "Skies",
@@ -1990,9 +1818,9 @@
 							{
 								"name": "ui_gfx_hud_txt",
 								"click": "uin_gfx_mode_click",
-								"x": 818,
+								"x": 810,
 								"y": 1,
-								"width": 96,
+								"width": 108,
 								"height": 32,
 								"align": "center",
 								"text": "HUD",

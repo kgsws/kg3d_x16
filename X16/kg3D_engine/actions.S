@@ -432,17 +432,17 @@ act_atk_hitscan:
 	sta	ARG_HITSCAN_ANGLE
 
 	; random	; TODO
-	jsr	rng_get
-	lda	MATH_TEMP
-	and	#$87
-	inc
-	bpl	:+
-	eor	#$7F
-	inc
-:
-	clc
-	adc	ARG_HITSCAN_ANGLE
-	sta	ARG_HITSCAN_ANGLE
+;	jsr	rng_get
+;	lda	MATH_TEMP
+;	and	#$87
+;	inc
+;	bpl	:+
+;	eor	#$7F
+;	inc
+;:
+;	clc
+;	adc	ARG_HITSCAN_ANGLE
+;	sta	ARG_HITSCAN_ANGLE
 
 	; pitch
 	lda	THING_STRUCT_PITCH,y

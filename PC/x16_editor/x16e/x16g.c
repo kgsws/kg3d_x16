@@ -26,10 +26,6 @@
 #define FONT_CHAR_COUNT	96
 #define NUMS_CHAR_COUNT	16
 
-#define NUM_RANGES_COLS	4
-#define NUM_RANGES_ROWS	8
-#define UI_RANGE_HEIGHT	18
-
 #define UI_WPN_PART_HEIGHT	23
 
 #define UI_WPN_IMG_SCALE	4
@@ -53,7 +49,6 @@ enum
 {
 	GFX_MODE_PALETTE,
 	GFX_MODE_LIGHTS,
-	GFX_MODE_REMAPS,
 	GFX_MODE_PLANES,
 	GFX_MODE_WALLS,
 	GFX_MODE_SPRITES,
@@ -86,7 +81,6 @@ enum
 {
 	CBOR_ROOT_PALETTES,
 	CBOR_ROOT_LIGHTS,
-	CBOR_ROOT_REMAPS,
 	CBOR_ROOT_PLANES,
 	CBOR_ROOT_WALLS,
 	CBOR_ROOT_SPRITES,
@@ -224,34 +218,6 @@ typedef struct hud_element_s
 	void (*import)(uint8_t*);
 	void *(*texgen)(const struct hud_element_s *);
 } hud_element_t;
-
-typedef union
-{
-	uint8_t raw[9];
-	struct
-	{
-		uint8_t t, s, e;
-		union
-		{
-			struct
-			{
-				uint8_t rs, gs, bs;
-				uint8_t re, ge, be;
-			} rgb;
-			struct
-			{
-				uint8_t s, e;
-			} pal;
-		};
-	};
-} remap_entry_t;
-
-typedef struct
-{
-	uint32_t count;
-	uint32_t now;
-	remap_entry_t entry[NUM_RANGES_ROWS];
-} color_remap_t;
 
 typedef union
 {
@@ -435,11 +401,6 @@ uint32_t x16_palette_data[256 * MAX_X16_PALETTE];
 uint16_t x16_palette_bright[16];
 static uint32_t palette_clipboard[256];
 
-static uint8_t remap_temp_data[256];
-static color_remap_t x16_color_remap[MAX_X16_REMAPS];
-static glui_text_t *text_ranges;
-static uint32_t remap_entry_dst;
-
 uint8_t x16_light_data[256 * MAX_X16_LIGHTS];
 
 uint8_t x16_colormap_data[32 * MAX_X16_GL_CMAPS];
@@ -530,7 +491,6 @@ static const uint8_t *update_gfx_palette(ui_idx_t *idx);
 static int32_t input_gfx_palette(glui_element_t*,uint32_t);
 static int32_t input_gfx_weapons(glui_element_t*,uint32_t);
 static const uint8_t *update_gfx_lights(ui_idx_t *idx);
-static const uint8_t *update_gfx_remaps(ui_idx_t *idx);
 static const uint8_t *update_gfx_planes(ui_idx_t *idx);
 static const uint8_t *update_gfx_walls(ui_idx_t *idx);
 static const uint8_t *update_gfx_sprites(ui_idx_t *idx);
@@ -569,12 +529,6 @@ static const ui_set_t ui_set[GFX_NUM_MODES] =
 		&ui_gfx_lights,
 		&ui_gfx_lights_txt,
 		update_gfx_lights,
-	},
-	[GFX_MODE_REMAPS] =
-	{
-		&ui_gfx_remaps,
-		&ui_gfx_remaps_txt,
-		update_gfx_remaps,
 	},
 	[GFX_MODE_PLANES] =
 	{
@@ -637,8 +591,6 @@ const uint8_t *const x16g_palette_name[MAX_X16_PALETTE] =
 	"custom C damage 1",
 	"custom C damage 2",
 };
-
-static uint8_t remap_name[] = "Remap #";
 
 static const uint8_t *const plane_effect_name[8] =
 {
@@ -822,7 +774,6 @@ static gltex_info_t gltex_info[NUM_X16G_GLTEX] =
 
 static int32_t cbor_gfx_palette(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_gfx_light(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
-static int32_t cbor_gfx_remap(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_gfx_plane(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_gfx_wall(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_gfx_sprite(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
@@ -849,13 +800,6 @@ static const edit_cbor_obj_t cbor_root[] =
 		.nlen = 6,
 		.type = EDIT_CBOR_TYPE_OBJECT,
 		.handler = cbor_gfx_light
-	},
-	[CBOR_ROOT_REMAPS] =
-	{
-		.name = "remaps",
-		.nlen = 6,
-		.type = EDIT_CBOR_TYPE_ARRAY,
-		.handler = cbor_gfx_remap
 	},
 	[CBOR_ROOT_PLANES] =
 	{
@@ -1400,47 +1344,6 @@ static int32_t cbor_gfx_light(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 	}
 
 	return 1;
-}
-
-static int32_t cbor_gfx_remap_entry(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
-{
-	remap_entry_t *ent;
-
-	if(type != KGCBOR_TYPE_BINARY)
-		return 1;
-
-	if(cbor_entry_index >= NUM_RANGES_ROWS)
-		return 1;
-
-	if(ctx->val_len != 9/*sizeof(remap_entry_t)*/)
-		return 1;
-
-	ent = (remap_entry_t*)value->ptr;
-
-	if(ent->s > ent->e)
-		return 1;
-
-	memcpy(x16_color_remap[cbor_main_index].entry + cbor_entry_index, value->ptr, ctx->val_len);
-	cbor_entry_index++;
-
-	x16_color_remap[cbor_main_index].count = cbor_entry_index;
-
-	return 0;
-}
-
-static int32_t cbor_gfx_remap(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
-{
-	if(type != KGCBOR_TYPE_ARRAY)
-		return 1;
-
-	if(ctx->index >= MAX_X16_REMAPS)
-		return 1;
-
-	cbor_main_index = ctx->index;
-	cbor_entry_index = 0;
-
-	ctx->entry_cb = cbor_gfx_remap_entry;
-	return 0;
 }
 
 static int32_t cbor_gfx_plane_variant_stuff(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
@@ -2223,79 +2126,6 @@ static void negpos_offset(float *val)
 		*val -= 1.0f;
 }
 
-static void generate_remap(uint32_t idx)
-{
-	color_remap_t *cr;
-
-	for(uint32_t i = 0; i < 256; i++)
-		remap_temp_data[i] = i;
-
-	if(idx >= MAX_X16_REMAPS)
-		return;
-
-	cr = x16_color_remap + idx;
-
-	for(uint32_t i = 0; i < cr->count; i++)
-	{
-		remap_entry_t *ent = cr->entry + i;
-
-		if(ent->t)
-		{
-			// RGB
-			float div = 1.0f + (float)ent->e - (float)ent->s;
-			float value[3] = {ent->rgb.rs, ent->rgb.gs, ent->rgb.bs};
-			float step[3] =
-			{
-				(float)ent->rgb.re - (float)ent->rgb.rs,
-				(float)ent->rgb.ge - (float)ent->rgb.gs,
-				(float)ent->rgb.be - (float)ent->rgb.bs,
-			};
-
-			negpos_offset(step + 0);
-			negpos_offset(step + 1);
-			negpos_offset(step + 2);
-
-			step[0] /= div;
-			step[1] /= div;
-			step[2] /= div;
-
-			for(uint32_t j = ent->s; j <= ent->e; j++)
-			{
-				if(!(x16_palette_bright[j >> 4] & (1 << (j & 15))))
-				{
-					uint32_t color;
-
-					color = value[0];
-					color |= (uint32_t)value[1] << 8;
-					color |= (uint32_t)value[2] << 16;
-
-					remap_temp_data[j] = x16g_palette_match(color | 0xFF000000, 0);
-				}
-
-				value[0] += step[0];
-				value[1] += step[1];
-				value[2] += step[2];
-			}
-		} else
-		{
-			// palette
-			float value = ent->pal.s;
-			float step = (float)ent->pal.e - (float)ent->pal.s;
-
-			negpos_offset(&step);
-
-			step /= (1.0f + (float)ent->e - (float)ent->s);
-
-			for(uint32_t j = ent->s; j <= ent->e; j++)
-			{
-				if(!(x16_palette_bright[j >> 4] & (1 << (j & 15))))
-					remap_temp_data[j] = value;
-				value += step;
-			}
-		}
-	}
-}
-
 static void generate_colormap(uint32_t idx, uint8_t *data, uint16_t bright)
 {
 	uint8_t *dst;
@@ -2524,7 +2354,7 @@ static uint32_t color_drgb_process(uint32_t src, float des, float *mul, float *a
 	return src;
 }
 
-static void make_light_data(uint32_t idx, uint32_t rdx)
+static void make_light_data(uint32_t idx)
 {
 	editor_light_t *el = editor_light + idx;
 	uint8_t *dst = x16_light_data + idx * 256;
@@ -2536,12 +2366,10 @@ static void make_light_data(uint32_t idx, uint32_t rdx)
 	float *dmul = NULL;
 	float *drgb = NULL;
 
-	generate_remap(rdx - 1);
-
 	if(!el->des && el->r == 100 && el->g == 100 && el->b == 100)
 	{
-		for(uint32_t i = 1; i < 256; i++)
-			dst[i] = remap_temp_data[i];
+		for(uint32_t i = 0; i < 256; i++)
+			dst[i] = i;
 		return;
 	}
 
@@ -2572,7 +2400,7 @@ static void make_light_data(uint32_t idx, uint32_t rdx)
 
 		if(!(x16_palette_bright[i >> 4] & (1 << (i & 15))))
 		{
-			tmp = x16_palette_data[remap_temp_data[i]];
+			tmp = x16_palette_data[i];
 			tmp = color_drgb_process(tmp, des, dmul, NULL, dhsv, drgb);
 			dst[i] = x16g_palette_match(tmp | 0xFF000000, 0);
 		} else
@@ -2681,14 +2509,14 @@ static void pal_dmg(uint32_t all)
 
 static void light_recalc()
 {
-	make_light_data(gfx_idx[GFX_MODE_LIGHTS].now, 0);
+	make_light_data(gfx_idx[GFX_MODE_LIGHTS].now);
 	x16g_update_texture(X16G_GLTEX_LIGHTS);
 }
 
 static void recalc_lights()
 {
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_LIGHTS].max; i++)
-		make_light_data(i, 0);
+		make_light_data(i);
 }
 
 //
@@ -4211,7 +4039,6 @@ static void gfx_cleanup()
 	}
 
 	gfx_idx[GFX_MODE_PALETTE].max = MAX_X16_PALETTE;
-	gfx_idx[GFX_MODE_REMAPS].max = MAX_X16_REMAPS;
 	gfx_idx[GFX_MODE_HUD].max = NUM_HUD_ELM;
 
 	for(uint32_t i = 0; i < 256 * MAX_X16_PALETTE; i++)
@@ -4231,7 +4058,6 @@ static void gfx_cleanup()
 	}
 
 	memset(x16_palette_bright, 0, sizeof(x16_palette_bright));
-	memset(x16_color_remap, 0, sizeof(x16_color_remap));
 	memset(x16_plane, 0, sizeof(x16_plane));
 	memset(x16_wall, 0, sizeof(x16_wall));
 	memset(x16_sprite, 0, sizeof(x16_sprite));
@@ -4451,7 +4277,7 @@ static const uint8_t *update_gfx_lights(ui_idx_t *idx)
 	if(!idx)
 		return NULL;
 
-	make_light_data(idx->now, 0);
+	make_light_data(idx->now);
 
 	el = editor_light + idx->now;
 
@@ -4467,89 +4293,6 @@ static const uint8_t *update_gfx_lights(ui_idx_t *idx)
 	x16g_update_texture(X16G_GLTEX_SHOW_LIGHT);
 
 	return editor_light[idx->now].name;
-}
-
-//
-// update: remaps
-
-static const uint8_t *update_gfx_remaps(ui_idx_t *idx)
-{
-	uint8_t text[32];
-	color_remap_t *cr;
-	glui_text_t *txt;
-	gltex_info_t *gi;
-
-	if(!idx)
-		return NULL;
-
-	cr = x16_color_remap + idx->now;
-	txt = text_ranges;
-	for(uint32_t i = 0; i < cr->count; i++)
-	{
-		remap_entry_t *ce = cr->entry + i;
-		uint32_t color = i == cr->now ? 0xFFFF0000 : 0xFF000000;
-
-		// first
-		sprintf(text, "%u", ce->s);
-		glui_set_text(txt, text, glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-		txt->color[0] = color;
-		txt->color[1] = color;
-		txt++;
-
-		// last
-		sprintf(text, "%u", ce->e);
-		glui_set_text(txt, text, glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-		txt->color[0] = color;
-		txt->color[1] = color;
-		txt++;
-
-		if(ce->t)
-		{
-			// start
-			sprintf(text, "r: %u g: %u b:%u", ce->rgb.rs, ce->rgb.gs, ce->rgb.bs);
-			glui_set_text(txt, text, glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-			txt->color[0] = color;
-			txt->color[1] = color;
-			txt++;
-
-			// stop
-			sprintf(text, "r: %u g: %u b:%u", ce->rgb.re, ce->rgb.ge, ce->rgb.be);
-			glui_set_text(txt, text, glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-			txt->color[0] = color;
-			txt->color[1] = color;
-			txt++;
-		} else
-		{
-			// start
-			sprintf(text, "p: %u", ce->pal.s);
-			glui_set_text(txt, text, glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-			txt->color[0] = color;
-			txt->color[1] = color;
-			txt++;
-
-			// stop
-			sprintf(text, "p: %u", ce->pal.e);
-			glui_set_text(txt, text, glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
-			txt->color[0] = color;
-			txt->color[1] = color;
-			txt++;
-		}
-	}
-
-	ui_gfx_remaps_ranges.elements[0]->container.count = cr->count * NUM_RANGES_COLS;
-
-	generate_remap(idx->now);
-
-	gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
-	gi->width = 16;
-	gi->height = 16;
-	gi->format = GL_LUMINANCE;
-	gi->data = remap_temp_data;
-	x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
-
-	remap_name[sizeof(remap_name)-2] = 'A' + idx->now;
-
-	return remap_name;
 }
 
 //
@@ -6024,298 +5767,6 @@ int32_t uin_gfx_light_b(glui_element_t *elm, int32_t x, int32_t y)
 	value_cb = light_recalc;
 	value_ptr.u8 = &editor_light[gfx_idx[GFX_MODE_LIGHTS].now].b;
 	edit_ui_textentry("Enter value between 0 and 200.", 4, te_numeric_normal);
-	return 1;
-}
-
-//
-// input: remaps
-
-static uint32_t decode_range(remap_entry_t *ent, uint8_t *text)
-{
-	uint32_t s, e, t;
-	uint32_t rs, gs, bs;
-	uint32_t re, ge, be;
-	uint32_t nrd = 0;
-
-	if(sscanf(text, "%u:%u=%n", &s, &e, &nrd) != 2 || !nrd || s > 255 || e > 255 || s > e)
-		return 1;
-
-	text += nrd;
-
-	if(text[0] == '[')
-	{
-		// RGB
-		if(sscanf(text, "[%u,%u,%u]:[%u,%u,%u]", &rs, &gs, &bs, &re, &ge, &be) != 6)
-			return 1;
-
-		if(rs > 255)
-			return 1;
-
-		if(re > 255)
-			return 1;
-
-		if(gs > 255)
-			return 1;
-
-		if(bs > 255)
-			return 1;
-
-		if(ge > 255)
-			return 1;
-
-		if(be > 255)
-			return 1;
-
-		ent->rgb.rs = rs;
-		ent->rgb.gs = gs;
-		ent->rgb.bs = bs;
-		ent->rgb.re = re;
-		ent->rgb.ge = ge;
-		ent->rgb.be = be;
-
-		t = 1;
-	} else
-	{
-		// palette
-		if(sscanf(text, "%u:%u", &rs, &re) != 2)
-			return 1;
-
-		if(rs > 255)
-			return 1;
-
-		if(re > 255)
-			return 1;
-
-		ent->pal.s = rs;
-		ent->pal.e = re;
-
-		t = 0;
-	}
-
-	ent->s = s;
-	ent->e = e;
-	ent->t = t;
-
-	return 0;
-}
-
-static void te_range_new(uint8_t *text)
-{
-	color_remap_t *cr;
-	remap_entry_t *ent;
-
-	if(!text)
-		return;
-
-	cr = x16_color_remap + gfx_idx[GFX_MODE_REMAPS].now;
-	ent = cr->entry + cr->count;
-
-	if(text[0])
-	{
-		if(decode_range(ent, text))
-		{
-			edit_status_printf("Invalid remap range!");
-			return;
-		}
-	} else
-		memset(ent, 0, sizeof(remap_entry_t));
-
-	cr->now = cr->count;
-	cr->count++;
-
-	update_gfx_mode(0);
-}
-
-static void te_range_src(uint8_t *text)
-{
-	color_remap_t *cr;
-	remap_entry_t *ent;
-	uint32_t value;
-
-	if(!text)
-		return;
-
-	if(sscanf(text, "%u", &value) != 1 || value > 255)
-	{
-invalid:
-		edit_status_printf("Invalid remap range!");
-		return;
-	}
-
-	cr = x16_color_remap + gfx_idx[GFX_MODE_REMAPS].now;
-	ent = cr->entry + cr->now;
-
-	if(remap_entry_dst)
-	{
-		if(value < ent->s)
-			goto invalid;
-		ent->e = value;
-	} else
-	{
-		if(value > ent->e)
-			goto invalid;
-		ent->s = value;
-	}
-
-	update_gfx_mode(0);
-}
-
-static void te_range_dst(uint8_t *text)
-{
-	color_remap_t *cr;
-	remap_entry_t *ent;
-	uint32_t vr, vg, vb;
-	uint32_t set;
-
-	if(!text)
-		return;
-
-	cr = x16_color_remap + gfx_idx[GFX_MODE_REMAPS].now;
-	ent = cr->entry + cr->now;
-
-	switch(sscanf(text, "%u,%u,%u", &vr, &vg, &vb))
-	{
-		case 1:
-			if(vr > 255)
-				goto invalid;
-
-			if(ent->t)
-				set = 3;
-			else
-				set = remap_entry_dst ? 2 : 1;
-
-			ent->t = 0;
-
-			if(set & 2)
-				ent->pal.e = vr;
-			if(set & 1)
-				ent->pal.s = vr;
-		break;
-		case 3:
-			if(vr > 255)
-				goto invalid;
-			if(vg > 255)
-				goto invalid;
-			if(vb > 255)
-				goto invalid;
-
-			if(ent->t)
-				set = remap_entry_dst ? 2 : 1;
-			else
-				set = 3;
-
-			ent->t = 1;
-
-			if(set & 2)
-			{
-				ent->rgb.re = vr;
-				ent->rgb.ge = vg;
-				ent->rgb.be = vb;
-			}
-
-			if(set & 1)
-			{
-				ent->rgb.rs = vr;
-				ent->rgb.gs = vg;
-				ent->rgb.bs = vb;
-			}
-		break;
-		default:
-invalid:
-			edit_status_printf("Invalid remap range!");
-		return;
-	}
-
-	update_gfx_mode(0);
-}
-
-static void qe_delete_range(uint32_t res)
-{
-	color_remap_t *cr;
-	remap_entry_t *ent;
-	uint32_t count;
-
-	if(!res)
-		return;
-
-	cr = x16_color_remap + gfx_idx[GFX_MODE_REMAPS].now;
-
-	count = cr->count - cr->now - 1;
-	if(!count)
-	{
-		if(cr->now)
-			cr->now--;
-	} else
-		memcpy(cr->entry + cr->now, cr->entry + cr->now + 1, count * sizeof(remap_entry_t));
-
-	cr->count--;
-
-	update_gfx_mode(0);
-}
-
-int32_t uin_gfx_remap_color(glui_element_t *elm, int32_t x, int32_t y)
-{
-	uint8_t text[24];
-
-	x /= 24;
-	y /= 24;
-
-	sprintf(text, "Color index: %u", x + y * 16);
-	glui_set_text(&ui_gfx_remap_color, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-
-	return 1;
-}
-
-static int32_t uin_remap_range_click(glui_element_t *elm, int32_t x, int32_t y)
-{
-	color_remap_t *cr = x16_color_remap + gfx_idx[GFX_MODE_REMAPS].now;
-	uint32_t row = elm->base.custom & 0xFF;
-
-	if(row == cr->now)
-	{
-		uint32_t col = elm->base.custom >> 8;
-		const uint8_t *text;
-
-		remap_entry_dst = col & 1;
-
-		if(col & 2)
-			edit_ui_textentry("Enter remap color.", 14, te_range_dst);
-		else
-			edit_ui_textentry("Enter palette index.", 4, te_range_src);
-
-		return 1;
-	}
-
-	cr->now = row;
-	update_gfx_mode(0);
-
-	return 1;
-}
-
-int32_t uin_gfx_remaps_new(glui_element_t *elm, int32_t x, int32_t y)
-{
-	color_remap_t *cr = x16_color_remap + gfx_idx[GFX_MODE_REMAPS].now;
-
-	if(cr->count >= NUM_RANGES_ROWS)
-	{
-		edit_status_printf("Too many ranges!");
-		return 1;
-	}
-
-	edit_ui_textentry("Enter remap range.", 48, te_range_new);
-
-	return 1;
-}
-
-int32_t uin_gfx_remaps_del(glui_element_t *elm, int32_t x, int32_t y)
-{
-	color_remap_t *cr = x16_color_remap + gfx_idx[GFX_MODE_REMAPS].now;
-
-	if(cr->now >= cr->count)
-		return 1;
-
-	edit_ui_question("Delete range?", "Do you really want to delete this range?\nThis operation is irreversible!", qe_delete_range);
-
 	return 1;
 }
 
@@ -8426,11 +7877,9 @@ uint32_t x16g_init()
 		ui_set[i].text->base.custom = i;
 
 	// UI stuff
-	tcnt = NUM_RANGES_COLS * NUM_RANGES_ROWS;
-	size = sizeof(glui_container_t); // ranges
+	tcnt = UI_WPN_PARTS;
+	size = sizeof(glui_container_t); // weapon part container
 	size += tcnt * (sizeof(glui_text_t*) + sizeof(glui_text_t)); // text elements and container slots
-
-	size += sizeof(glui_container_t); // weapon part container
 	size += (sizeof(glui_dummy_t*) + sizeof(glui_dummy_t)) * UI_WPN_PARTS; // weapon part container
 
 	ptr = calloc(size, 1);
@@ -8449,45 +7898,6 @@ uint32_t x16g_init()
 		glBindTexture(GL_TEXTURE_2D, tmptex[i]);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	}
-
-	// remap ranges list
-	cont = ptr;
-	ui_gfx_remaps_ranges.elements[0] = ptr;
-	ptr += sizeof(glui_container_t) + NUM_RANGES_COLS * NUM_RANGES_ROWS * sizeof(glui_text_t*);
-	cont->base.draw = glui_df_container;
-	cont->count = NUM_RANGES_COLS * NUM_RANGES_ROWS;
-
-	text_ranges = ptr;
-
-	tcnt = 0;
-	for(uint32_t i = 0; i < NUM_RANGES_ROWS; i++)
-	{
-		for(uint32_t j = 0; j < NUM_RANGES_COLS; j++)
-		{
-			glui_text_t *tt = &ui_gfx_remap_table.elements[j]->text;
-			glui_text_t *txt = ptr;
-
-			ptr += sizeof(glui_text_t);
-
-			cont->elements[tcnt++] = (glui_element_t*)txt;
-
-			txt->base.draw = glui_df_text;
-			txt->base.click = uin_remap_range_click;
-			txt->base.custom = i | (j << 8);
-
-			txt->base.x = tt->base.x;
-			txt->base.y = i * UI_RANGE_HEIGHT;
-			txt->base.width = tt->base.width;
-			txt->base.height = UI_RANGE_HEIGHT;
-
-			txt->base.color[1] = 0x11000000;
-
-			txt->color[0] = 0xFF000000;
-			txt->color[1] = 0xFF000000;
-
-			txt->gltex = *tmptex++;
-		}
 	}
 
 	// weapon parts
@@ -8941,16 +8351,13 @@ void x16g_export()
 
 	/// lights
 
-	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_LIGHTS].max; i++)
+	for(uint32_t i = 1; i < gfx_idx[GFX_MODE_LIGHTS].max; i++) // skip white light
 	{
 		uint8_t *src = x16_light_data + i * 256;
-		uint8_t dst[256 * (MAX_X16_REMAPS+1)];
+		uint8_t dst[256];
 
-		for(uint32_t j = 0; j <= MAX_X16_REMAPS; j++)
-		{
-			make_light_data(i, j);
-			memcpy(dst + j * 256, src, 256);
-		}
+		make_light_data(i);
+		memcpy(dst, src, 256);
 
 		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.LIT", editor_light[i].hash);
 
@@ -9505,23 +8912,6 @@ const uint8_t *x16g_save(const uint8_t *file)
 
 		kgcbor_put_string(&gen, editor_light[i].name, -1);
 		edit_cbor_export(cbor_light, NUM_CBOR_LIGHT, &gen);
-	}
-
-	/// remaps
-	kgcbor_put_string(&gen, cbor_root[CBOR_ROOT_REMAPS].name, cbor_root[CBOR_ROOT_REMAPS].nlen);
-	kgcbor_put_array(&gen, MAX_X16_REMAPS);
-
-	for(uint32_t i = 0; i < MAX_X16_REMAPS; i++)
-	{
-		color_remap_t *cr = x16_color_remap + i;
-
-		kgcbor_put_array(&gen, cr->count);
-
-		for(uint32_t j = 0; j < cr->count; j++)
-		{
-			remap_entry_t *ent = cr->entry + j;
-			kgcbor_put_binary(&gen, ent->raw, 9/*sizeof(remap_entry_t)*/);
-		}
 	}
 
 	/// planes

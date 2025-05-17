@@ -13,7 +13,7 @@
 #define VRAM_TEXTURE_START	0x0A000
 #define VRAM_TEXTURE_END	0x1C000
 
-#define LIGHTMAP_SIZE	(MAX_REMAPS * 256)
+#define LIGHTMAP_SIZE	256
 
 #define MAX_SPRITES	255
 #define MAX_SPRITE_FRAMES	512
@@ -476,8 +476,7 @@ static uint8_t vram[128 * 1024];
 static uint8_t vram_4bpp;
 static uint8_t vram_8bpp;
 
-static uint32_t lightmap_idx;
-static uint8_t lightmaps[MAX_LIGHTS * MAX_REMAPS * 256];
+static uint8_t lightmaps[MAX_LIGHTS * 256];
 static uint8_t *lightmap;
 
 static uint8_t *colormap;
@@ -3702,6 +3701,7 @@ static uint32_t load_map()
 	if(map_head.version != MAP_VERSION)
 		goto error;
 
+	map_head.count_lights++;
 	if(map_head.count_lights >= MAX_LIGHTS)
 		goto error;
 
@@ -3733,19 +3733,20 @@ static uint32_t load_map()
 	}
 
 	// lights
-	for(uint32_t i = 0; i < map_head.count_lights; i++)
+	for(uint32_t i = 0; i < 256; i++)
+		lightmaps[i] = i;
+
+	for(uint32_t i = 1; i < map_head.count_lights; i++)
 	{
 		if(read(fd, &temp, sizeof(temp)) != sizeof(temp))
 			goto error;
 
 		sprintf(text, "DATA/%08X.LIT", temp);
-		if(load_file(text, lightmaps + lightmap_idx * LIGHTMAP_SIZE, LIGHTMAP_SIZE) != LIGHTMAP_SIZE)
+		if(load_file(text, lightmaps + i * LIGHTMAP_SIZE, LIGHTMAP_SIZE) != LIGHTMAP_SIZE)
 		{
 			printf("Unable to load %s!\n", text);
 			goto error;
 		}
-
-		lightmap_idx++;
 	}
 
 	// planes

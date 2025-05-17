@@ -5110,10 +5110,6 @@ render_sprite:
 	; spr->light
 	iny
 	lda	(HI_PTR_L),y
-	asl
-	asl
-
-	; TODO: add remap index, check for player
 
 	; check for fullbright + no remap
 	bne	:+
@@ -7267,10 +7263,8 @@ texture_set:
 	bcc	:+
 
 	; get lightmap (8bpp)
-	lda	PROJECTION_LIGHT
-	asl
-	asl
 	clc
+	lda	PROJECTION_LIGHT
 	adc	#>TAB_LIGHTMAPS
 	sta	COLORMAP_H
 
