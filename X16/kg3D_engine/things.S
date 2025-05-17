@@ -644,8 +644,23 @@ thing_tick:
 	; projectile double move
 	lda	THING_STRUCT_EFLAGS,y
 	and	#THING_EFLAG_PROJECTILE
-	sta	THMOVE_PROJ_MOVE
+	beq	:+
 
+	; thing type
+	ldx	THMOVE_THING_TYPE
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; read jumpz
+	lda	THTYPE_STRUCT_JUMPZ,x
+	sta	THMOVE_MOVE_AGAIN
+
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+:
 	; make 'on floor' flag
 	stz	ARG_THING_CHECK_ONFLOOR
 	sec
@@ -1014,7 +1029,7 @@ thing_tick:
 	stz	G_VIEWDELTA
 :
 @skip_camera:
-@double_move:
+@multi_move:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
@@ -1581,7 +1596,7 @@ thing_tick:
 @skip_links:
 
 	; check for double move for projectiles
-	lda	THMOVE_PROJ_MOVE
+	lda	THMOVE_MOVE_AGAIN
 	beq	:+
 
 	; thing structure bank
@@ -1598,8 +1613,8 @@ thing_tick:
 	stz	ARG_THING_CHECK_ONFLOOR
 
 	; move again
-	stz	THMOVE_PROJ_MOVE
-	jmp	@double_move
+	dec	THMOVE_MOVE_AGAIN
+	jmp	@multi_move
 :
 @do_animation:
 	;;;

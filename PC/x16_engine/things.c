@@ -1398,10 +1398,11 @@ void things_tick()
 			old_fz = th->floorz;
 		}
 
-		// projectile double-move
-		move_again = THING_EFLAG_PROJECTILE;
+		// projectile multi-move
+		if(th->eflags & THING_EFLAG_PROJECTILE)
+			move_again = thing_type[th->type].jump_pwr;
 
-double_move:
+multi_move:
 		// XY movement
 		if(th->mx || th->my)
 		{
@@ -1421,6 +1422,7 @@ apply_position:
 				if(th->eflags & THING_EFLAG_PROJECTILE)
 				{
 					projectile_death(th);
+					move_again = 0;
 				} else
 				if(poscheck.blocked > 0 && th->eflags & THING_EFLAG_SLIDING)
 				{
@@ -1536,6 +1538,7 @@ apply_position:
 			{
 				poscheck.blocked = 8;
 				projectile_death(th);
+				move_again = 0;
 			}
 		}
 
@@ -1571,6 +1574,7 @@ apply_position:
 			{
 				poscheck.blocked = 4;
 				projectile_death(th);
+				move_again = 0;
 			}
 		}
 
@@ -1641,11 +1645,11 @@ skip_gravity_friction:
 skip_links:
 
 		// projectile double move
-		if(th->eflags & move_again)
+		if(move_again)
 		{
-			move_again = 0;
+			move_again--;
 			on_floor = 0;
-			goto double_move;
+			goto multi_move;
 		}
 
 do_animation:

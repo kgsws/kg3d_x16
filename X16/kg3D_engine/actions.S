@@ -432,21 +432,22 @@ act_atk_hitscan:
 	sta	ARG_HITSCAN_ANGLE
 
 	; random	; TODO
-;	jsr	rng_get
-;	lda	MATH_TEMP
-;	and	#$87
-;	inc
-;	bpl	:+
-;	eor	#$7F
-;	inc
-;:
-;	clc
-;	adc	ARG_HITSCAN_ANGLE
-;	sta	ARG_HITSCAN_ANGLE
+	lda	#$87
+	sta	MATH_COUNTER
+	jsr	randomize
+	adc	ARG_HITSCAN_ANGLE
+	sta	ARG_HITSCAN_ANGLE
 
 	; pitch
 	lda	THING_STRUCT_PITCH,y
 	lsr
+	sta	ARG_HITSCAN_HALF_PITCH
+
+	; random	; TODO
+	lda	#$81
+	sta	MATH_COUNTER
+	jsr	randomize
+	adc	ARG_HITSCAN_HALF_PITCH
 	sta	ARG_HITSCAN_HALF_PITCH
 
 	; attack
@@ -474,6 +475,26 @@ apply_animation_ex:
 
 	; apply
 	sec
+	rts
+
+;;;
+; randomize
+;;;
+; MATH_COUNTER is randomizer mask
+; set MSB to enable negative numbers
+; randomizer will never pick zero
+; result is in A
+
+randomize:
+	jsr	rng_get
+	lda	MATH_TEMP
+	and	MATH_COUNTER
+	inc
+	bpl	:+
+	eor	#$7F
+	inc
+:
+	clc
 	rts
 
 ;;;
