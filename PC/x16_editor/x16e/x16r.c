@@ -14,16 +14,15 @@
 #include "x16t.h"
 #include "x16r.h"
 
-//#define USE_ANGLE_CLIPPING
 #define USE_SPECDIV_CLIPPING
 
 #define H_FOV	0x0200
 
-#define PLX_CODE_BASE	(offsetof(tables_2900_t, pxloop) + 0x2900 + 0x0000)
-#define PHX_CODE_BASE	(offsetof(tables_2900_t, pxloop) + 0x2900 + 0x0220)
-#define PVX_CODE_BASE	(offsetof(tables_2900_t, pxloop) + 0x2900 + 0x0640)
-#define PSX_CODE_BASE	(offsetof(tables_2900_t, pxloop) + 0x2900 + 0x0A01)
-#define PTX_CODE_BASE	(offsetof(tables_2900_t, pxloop) + 0x2900 + 0x0FD2)
+#define PLX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0000)
+#define PHX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0220)
+#define PVX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0640)
+#define PSX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0A01)
+#define PTX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0FD2)
 #define COLORMAP_ZP	0x22
 #define LIGHTMAP_ZP	0x24
 #define VIDEO_PAGE_L	0x50
@@ -39,33 +38,33 @@ typedef union
 	uint8_t raw[256];
 	struct
 	{
-		uint8_t idiv_h[256];	// @ 0x2900
-		uint8_t ydepth_h[256];	// @ 0x2A00
-		uint8_t x2a_l[256];	// @ 0x2B00
-		uint8_t x2a_h[256];	// @ 0x2C00
-		uint8_t swap[256];	// @ 0x2D00
-		uint8_t bank[256];	// @ 0x2E00
-		uint8_t pvxjmp_l[128];	// @ 0x2F00
-		uint8_t pvxjmp_h[128];	// @ 0x2F80
-		uint8_t phxjmp_l[84];	// @ 0x3000
-		uint8_t plxjmp_l[88];	// @ 0x3054
-		uint8_t phxjmp_h[84];	// @ 0x30AC
-		uint8_t plxjmp_h[88];	// @ 0x3100
-		uint8_t xoffs_h[168];	// @ 0x3158
-		uint8_t psxjmp_l[256];	// @ 0x3200
-		uint8_t psxjmp_h[256];	// @ 0x3300
-		uint8_t ptxjmp_l[128];	// @ 0x3400
-		uint8_t ptxjmp_h[128];	// @ 0x3480
-		uint8_t yoffs_l[128];	// @ 0x3500
-		uint8_t yoffs_h[128];	// @ 0x3580
-		uint8_t htan_l[128];	// @ 0x3600
-		uint8_t htan_h[128];	// @ 0x3680
-		uint8_t sin_l[320];	// @ 0x3700
-		uint8_t sin_h[320];	// @ 0x3840
-		uint8_t pxloop[0x1553];	// @ 0x3980
-		// 0x4ED3
+		uint8_t idiv_h[256];	// @ 0x1100
+		uint8_t ydepth_h[256];	// @ 0x1200
+		uint8_t x2a_l[256];	// @ 0x1300
+		uint8_t x2a_h[256];	// @ 0x1400
+		uint8_t swap[256];	// @ 0x1500
+		uint8_t bank[256];	// @ 0x1600
+		uint8_t pvxjmp_l[128];	// @ 0x1700
+		uint8_t pvxjmp_h[128];	// @ 0x1780
+		uint8_t phxjmp_l[84];	// @ 0x1800
+		uint8_t plxjmp_l[88];	// @ 0x1854
+		uint8_t phxjmp_h[84];	// @ 0x18AC
+		uint8_t plxjmp_h[88];	// @ 0x1900
+		uint8_t xoffs_h[168];	// @ 0x1958
+		uint8_t psxjmp_l[256];	// @ 0x1A00
+		uint8_t psxjmp_h[256];	// @ 0x1B00
+		uint8_t ptxjmp_l[128];	// @ 0x1C00
+		uint8_t ptxjmp_h[128];	// @ 0x1C80
+		uint8_t yoffs_l[128];	// @ 0x1D00
+		uint8_t yoffs_h[128];	// @ 0x1D80
+		uint8_t htan_l[128];	// @ 0x1E00
+		uint8_t htan_h[128];	// @ 0x1E80
+		uint8_t sin_l[320];	// @ 0x1F00
+		uint8_t sin_h[320];	// @ 0x2040
+		uint8_t pxloop[0x1553];	// @ 0x2180
+		// 0x36D3
 	};
-} tables_2900_t;
+} tables_1100_t;
 
 typedef union
 {
@@ -160,11 +159,6 @@ static uint32_t *palette_data;
 static int16_t tab_sin[256];
 static int16_t tab_cos[256];
 
-#ifdef USE_ANGLE_CLIPPING
-// clipping
-static int16_t tab_clip[4096];
-#endif
-
 // inverse division
 static int16_t inv_div_raw[65536];
 static int16_t *const inv_div = inv_div_raw + 32768;
@@ -242,7 +236,7 @@ static uint32_t tex_swap_xy;
 static uint32_t tex_is_sky;
 
 // export
-static tables_2900_t tables_2900;
+static tables_1100_t tables_1100;
 static tables_A000_t tables_A000;
 
 static const uint8_t pxloop[] =
@@ -1720,7 +1714,7 @@ static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 
 		// project Y1
 		p1.y = (d1.x * projection.sin + d1.y * projection.cos) >> 8;
-#ifndef USE_ANGLE_CLIPPING
+
 		// clipping
 		if(do_left_clip || do_right_clip)
 		{
@@ -1774,53 +1768,7 @@ static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 			if(r > 0 && r < 32768)
 				p1.y -= (dc.y * r) >> 15;
 		}
-#else
-		// clipping
-		if(do_left_clip || do_right_clip)
-		{
-			if(ld.y < 6)
-			{
-				p0.y = 0;
-				p1.y = 0;
-				do_left_clip = 0;
-				do_right_clip = 0;
-			} else
-			{
-				// project X0
-				p0.x = (d0.x * projection.cos - d0.y * projection.sin) >> 8;
 
-				// project X1
-				p1.x = (d1.x * projection.cos - d1.y * projection.sin) >> 8;
-
-				// backup
-				dc.y = p0.y;
-			}
-		}
-
-		// left clip
-		if(do_left_clip)
-		{
-			int16_t dist;
-
-			dist = p1.y + p1.x;
-
-			p0.y = -p1.x;
-
-			p0.y += (tab_clip[projection.lca] * dist) >> 8;
-		}
-
-		// right clip
-		if(do_right_clip)
-		{
-			int16_t dist;
-
-			dist = dc.y - p0.x;
-
-			p1.y = p0.x;
-
-			p1.y += (tab_clip[(0-projection.lca) & 4095] * dist) >> 8;
-		}
-#endif
 		// extra step on PC
 		if(p0.y > 4095)
 			p0.y = 4095;
@@ -1926,23 +1874,6 @@ uint32_t x16r_init()
 		tab_sin[i] = sinf(a) * 256.0f;
 		tab_cos[i] = cosf(a) * 256.0f;
 	}
-
-#ifdef USE_ANGLE_CLIPPING
-	// line clip
-	for(uint32_t i = 0; i < 4096; i++)
-	{
-		float angle = M_PI * ((float)i / 2048.0f);
-		float ang, dist, res;
-
-		ang = M_PI * 0.75f - angle;
-		dist = sinf(M_PI * 0.25f) * (1.0f / sinf(ang));
-
-		ang = M_PI * 0.5f - angle;
-		res = 1.0f - sinf(ang) * dist;
-
-		tab_clip[i] = res * 256;
-	}
-#endif
 
 	// inverse division
 	for(int32_t i = -32768; i < 32768; i++)
@@ -2209,59 +2140,59 @@ void x16r_generate()
 	for(uint32_t i = 0; i < 256; i++)
 	{
 		int16_t val = tab_sin[i];
-		tables_2900.sin_l[i] = val;
-		tables_2900.sin_h[i] = val >> 8;
+		tables_1100.sin_l[i] = val;
+		tables_1100.sin_h[i] = val >> 8;
 	}
 	for(uint32_t i = 0; i < 64; i++)
 	{
 		uint32_t ii = i + 256;
 		int16_t val = tab_sin[i];
-		tables_2900.sin_l[ii] = val;
-		tables_2900.sin_h[ii] = val >> 8;
+		tables_1100.sin_l[ii] = val;
+		tables_1100.sin_h[ii] = val >> 8;
 	}
 
 	// inverse division (hi)
 	for(uint32_t i = 0; i < 256; i++)
 	{
 		int16_t val = inv_div[i];
-		tables_2900.idiv_h[i] = val >> 8;
+		tables_1100.idiv_h[i] = val >> 8;
 	}
 
 	// Y depth projection (hi)
 	for(uint32_t i = 0; i < 256; i++)
 	{
 		int16_t val = tab_depth[i];
-		tables_2900.ydepth_h[i] = val >> 8;
+		tables_1100.ydepth_h[i] = val >> 8;
 	}
 
 	// X to angle
 	for(uint32_t i = 0; i < 160; i++)
 	{
 		uint16_t val = x2angle[i];
-		tables_2900.x2a_l[i] = val;
-		tables_2900.x2a_h[i] = val >> 8;
+		tables_1100.x2a_l[i] = val;
+		tables_1100.x2a_h[i] = val >> 8;
 	}
 
 	// nibble swap
 	for(uint32_t i = 0; i < 256; i++)
 	{
 		uint8_t val = (i << 4) | (i >> 4);
-		tables_2900.swap[i] = val;
+		tables_1100.swap[i] = val;
 	}
 
 	// 8k bank lookup
 	for(uint32_t i = 0; i < 256; i++)
 	{
 		uint8_t val = i / 32;
-		tables_2900.bank[i] = val;
+		tables_1100.bank[i] = val;
 	}
 
 	// Y lookup
 	for(uint32_t i = 0; i < 128; i++)
 	{
 		uint16_t offs = i * 64;
-		tables_2900.yoffs_l[i] = offs;
-		tables_2900.yoffs_h[i] = offs >> 8;
+		tables_1100.yoffs_l[i] = offs;
+		tables_1100.yoffs_h[i] = offs >> 8;
 	}
 
 	// hitscan tan
@@ -2269,15 +2200,15 @@ void x16r_generate()
 	{
 		float rad = (float)(i - 64) * (M_PI / 128.0f);
 		int16_t val = tanf(rad) * 256.0f;
-		tables_2900.htan_l[i] = val;
-		tables_2900.htan_h[i] = val >> 8;
+		tables_1100.htan_l[i] = val;
+		tables_1100.htan_h[i] = val >> 8;
 	}
-	tables_2900.htan_l[0] = tables_2900.htan_l[1];
-	tables_2900.htan_h[0] = tables_2900.htan_h[1];
+	tables_1100.htan_l[0] = tables_1100.htan_l[1];
+	tables_1100.htan_h[0] = tables_1100.htan_h[1];
 
 	// X lookup
 	for(uint32_t i = 0; i < 160; i++)
-		tables_2900.xoffs_h[i] = (i & 0xC0) >> 1;
+		tables_1100.xoffs_h[i] = (i & 0xC0) >> 1;
 
 	// pixel jump offsets (vertical)
 	// this uses line length as offset
@@ -2287,8 +2218,8 @@ void x16r_generate()
 		uint32_t idx = i <= 120 ? i : 0;
 
 		jmp = PVX_CODE_BASE + (120 - idx) * sizeof(pxloop);
-		tables_2900.pvxjmp_l[i] = jmp;
-		tables_2900.pvxjmp_h[i] = jmp >> 8;
+		tables_1100.pvxjmp_l[i] = jmp;
+		tables_1100.pvxjmp_h[i] = jmp >> 8;
 	}
 
 	// pixel jump offsets (horizontal, full detail)
@@ -2307,8 +2238,8 @@ void x16r_generate()
 			extra = sizeof(pxaddA) + sizeof(pxaddB);
 
 		jmp = PHX_CODE_BASE + idx * sizeof(pxloop) + extra;
-		tables_2900.phxjmp_l[i] = jmp;
-		tables_2900.phxjmp_h[i] = jmp >> 8;
+		tables_1100.phxjmp_l[i] = jmp;
+		tables_1100.phxjmp_h[i] = jmp >> 8;
 	}
 
 	// pixel jump offsets (horizontal, low detail)
@@ -2326,8 +2257,8 @@ void x16r_generate()
 			extra = sizeof(pxaddA) + sizeof(pxaddB);
 
 		jmp = PLX_CODE_BASE + i * sizeof(pxloop) + extra;
-		tables_2900.plxjmp_l[i] = jmp;
-		tables_2900.plxjmp_h[i] = jmp >> 8;
+		tables_1100.plxjmp_l[i] = jmp;
+		tables_1100.plxjmp_h[i] = jmp >> 8;
 	}
 
 	// pixel jump offsets (sky)
@@ -2338,8 +2269,8 @@ void x16r_generate()
 		uint32_t idx = (119 - i) & 0xFF;
 
 		jmp = PSX_CODE_BASE + idx * sizeof(pxsky);
-		tables_2900.psxjmp_l[i] = jmp;
-		tables_2900.psxjmp_h[i] = jmp >> 8;
+		tables_1100.psxjmp_l[i] = jmp;
+		tables_1100.psxjmp_h[i] = jmp >> 8;
 	}
 
 	// pixel jump offsets (thing sprites)
@@ -2350,14 +2281,14 @@ void x16r_generate()
 		uint32_t idx = i <= 120 ? i : 0;
 
 		jmp = PTX_CODE_BASE + ((120 - idx) + 8) * sizeof(pxspr);
-		tables_2900.ptxjmp_l[i] = jmp;
-		tables_2900.ptxjmp_h[i] = jmp >> 8;
+		tables_1100.ptxjmp_l[i] = jmp;
+		tables_1100.ptxjmp_h[i] = jmp >> 8;
 	}
-	tables_2900.ptxjmp_l[127] = PTX_CODE_BASE & 0xFF;
-	tables_2900.ptxjmp_h[127] = PTX_CODE_BASE >> 8;
+	tables_1100.ptxjmp_l[127] = PTX_CODE_BASE & 0xFF;
+	tables_1100.ptxjmp_h[127] = PTX_CODE_BASE >> 8;
 
 	// pixel loop (horizontal low detail)
-	ptr = tables_2900.pxloop;
+	ptr = tables_1100.pxloop;
 	for(uint32_t i = 0; i < 64; i++)
 	{
 		if(i == 32)
@@ -2366,7 +2297,7 @@ void x16r_generate()
 		ptr = put_code(ptr, pxloop, sizeof(pxloop));
 	}
 	ptr = put_code(ptr, pxaddB, sizeof(pxaddB));
-//	printf("plloop end 0x%04X\n", ptr - tables_2900.pxloop);
+//	printf("plloop end 0x%04X\n", ptr - tables_1100.pxloop);
 
 	// pixel loop (horizontal and vertical)
 	for(uint32_t i = 0; i < 248; i++)
@@ -2378,12 +2309,12 @@ void x16r_generate()
 			ptr = put_code(ptr, pxaddB, sizeof(pxaddB));
 
 //		if(i == 128)
-//			printf("px split 0x%04X\n", ptr - tables_2900.pxloop);
+//			printf("px split 0x%04X\n", ptr - tables_1100.pxloop);
 
 		ptr = put_code(ptr, pxloop, sizeof(pxloop));
 	}
 	*ptr++ = 0x60; // RTS
-//	printf("pxloop end 0x%04X\n", ptr - tables_2900.pxloop);
+//	printf("pxloop end 0x%04X\n", ptr - tables_1100.pxloop);
 
 	// pixel loop (sky)
 	for(uint32_t i = 0; i < 248; i++)
@@ -2393,16 +2324,16 @@ void x16r_generate()
 			ptr[-1] = 0xC8; // INY
 	}
 	*ptr++ = 0x60; // RTS
-//	printf("psky end 0x%04X\n", ptr - tables_2900.pxloop);
+//	printf("psky end 0x%04X\n", ptr - tables_1100.pxloop);
 
 	// pixel loop (thing sprite)
 	for(uint32_t i = 0; i < 128; i++)
 		ptr = put_code(ptr, pxspr, sizeof(pxspr));
 	*ptr++ = 0x60; // RTS
-//	printf("pthg end 0x%04X\n", ptr - tables_2900.pxloop);
+//	printf("pthg end 0x%04X\n", ptr - tables_1100.pxloop);
 
 	// EXPORT
-	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES0.BIN", tables_2900.raw, sizeof(tables_2900));
+	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES0.BIN", tables_1100.raw, sizeof(tables_1100));
 
 	// inverse division (lo)
 	for(uint32_t i = 0; i < 8192; i++)

@@ -5,10 +5,17 @@
 .include "banks.inc"
 .include "tables.inc"
 
+LOADER_BLOCK_COUNT = $0D
+LOADER_PRG_ADDR = $080D
+LOADER_DST_ADDR = $7900
+
 COLORS_TITLE = $67
 COLORS_STATUS = $0F
 COLORS_ERROR = $0A
 COLORS_INFO = $05
+
+VAR_COPY_L = $02
+VAR_COPY_H = $03
 
 VAR_FILE_BUF_SIZE = $E0
 VAR_FILE_DEST = $E2
@@ -20,8 +27,9 @@ FILE_DEST_WRAM = 0
 FILE_DEST_VRAM0 = 2
 FILE_DEST_VRAM1 = 3
 
-.org $080D
-; NOTE:	loader code size limited
+.org LOADER_DST_ADDR
+; NOTE:
+; Loader is loaded at LOADER_PRG_ADDR and copies itself to LOADER_DST_ADDR.
 
 .segment "STARTUP"
 .segment "INIT"
@@ -33,6 +41,24 @@ FILE_DEST_VRAM1 = 3
 ;;;
 
 start:
+	;;;;
+	;; copy self
+
+	ldx	#LOADER_BLOCK_COUNT
+@loop_copy:
+	ldy	#0
+@loop_row:
+	lda	LOADER_PRG_ADDR,y
+	sta	LOADER_DST_ADDR,y
+	dey
+	bne	@loop_row
+	inc	@loop_row+2-LOADER_DST_ADDR+LOADER_PRG_ADDR
+	inc	@loop_row+5-LOADER_DST_ADDR+LOADER_PRG_ADDR
+	dex
+	bne	@loop_row
+
+	jmp	entry
+entry:
 	;;;;
 	;; setup video RAM
 
