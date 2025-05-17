@@ -18,10 +18,16 @@
 .export func_jsr
 .export load_mapfs
 .export load_render
+.export rng_get
 
 .segment "CODE"
 
 start:
+	; RNG
+	lda	#>TAB_RANDOM
+	sta	G_RNG_H
+	stz	G_RNG_L
+
 	; init
 	jsr	map_init
 	jsr	input_init
@@ -214,6 +220,37 @@ copy_loop:
 	inc	copy_loop+5
 	dey
 	bne	copy_loop
+
+	rts
+
+;;;
+; return RNG byte and advance pointer
+;;;
+; result is in MATH_TEMP
+
+rng_get:
+	lda	REG_RAM_BANK
+	pha
+
+	lda	#BANK_RANDOM
+	sta	REG_RAM_BANK
+
+	lda	(G_RNG_L)
+	sta	MATH_TEMP
+
+	inc	G_RNG_L
+	bne	:+
+
+	inc	G_RNG_H
+	lda	G_RNG_H
+	cmp	#>TAB_RNG_END
+	bcc	:+
+
+	lda	#>TAB_RANDOM
+	sta	G_RNG_H
+:
+	pla
+	sta	REG_RAM_BANK
 
 	rts
 

@@ -25,6 +25,8 @@ INBIT_GO_DOWN = %00100000
 INBIT_USE = %01000000
 
 ; input key bits H
+INBIT_ALTACK = %00010000
+INBIT_ATTACK = %00100000
 INBIT_TLEFT = %01000000
 INBIT_TRIGHT = %10000000
 
@@ -92,9 +94,7 @@ ex_input_process:
 	;;;;;;;;;;;;;;;;;;;;;;;;
 	; read input device(s)
 
-	lda	TICK_CMD_BITS_L
-	lsr
-	and	#3
+	lda	INPUT_MOUSE_BTN
 	sta	INPUT_MOUSE_A
 
 	stz	INPUT_MOUSE_TMP_X
@@ -144,25 +144,19 @@ ex_input_process:
 
 	; unset
 	lda	TAB_INPUT_BITS,y
-	eor	#$FF
-	and	INPUT_STATE_L
-	sta	INPUT_STATE_L
+	trb	INPUT_STATE_L
 	iny
 	lda	TAB_INPUT_BITS,y
-	eor	#$FF
-	and	INPUT_STATE_H
-	sta	INPUT_STATE_H
+	trb	INPUT_STATE_H
 
 	bra	@skip_keys
 :
 	; set
 	lda	TAB_INPUT_BITS,y
-	ora	INPUT_STATE_L
-	sta	INPUT_STATE_L
+	tsb	INPUT_STATE_L
 	iny
 	lda	TAB_INPUT_BITS,y
-	ora	INPUT_STATE_H
-	sta	INPUT_STATE_H
+	tsb	INPUT_STATE_H
 
 @skip_keys:
 	; check mouse
@@ -406,6 +400,7 @@ ex_input_process:
 :
 	;; (mouse) buttons
 	lda	INPUT_MOUSE_A
+	sta	INPUT_MOUSE_BTN
 	and	#3
 	asl
 	tsb	TICK_CMD_BITS_L
@@ -431,6 +426,20 @@ ex_input_process:
 	and	#INBIT_USE
 	beq	:+
 	lda	#TCMD_USE
+	tsb	TICK_CMD_BITS_L
+:
+	; attack
+	lda	INPUT_STATE_H
+	and	#INBIT_ATTACK
+	beq	:+
+	lda	#TCMD_ATK
+	tsb	TICK_CMD_BITS_L
+:
+	; altack
+	lda	INPUT_STATE_H
+	and	#INBIT_ALTACK
+	beq	:+
+	lda	#TCMD_ALT
 	tsb	TICK_CMD_BITS_L
 :
 	;; weapon changes
@@ -510,9 +519,19 @@ ex_input_init:
 	lda	#INBIT_GO_UP
 	sta	TAB_INPUT_BITS,y
 
-	; $3A lctrl
-	ldy	#$74
+	; $30 'C'
+	ldy	#$60
 	lda	#INBIT_GO_DOWN
+	sta	TAB_INPUT_BITS,y
+
+	; $3A lctrl
+	ldy	#$75
+	lda	#INBIT_ATTACK
+	sta	TAB_INPUT_BITS,y
+
+	; $3C lalt
+	ldy	#$79
+	lda	#INBIT_ALTACK
 	sta	TAB_INPUT_BITS,y
 
 	; $13 'E'

@@ -148,12 +148,12 @@ video_setup:
 	jsr	video_palette
 
 	;; set video scale
-	ldx	#5*4
+	ldx	#0
 	lda	REG_VIDEO_MODE
 	and	#3
 	cmp	#1
 	beq	:+
-	ldx	#5*3
+	ldx	#6
 :
 	jsr	video_set_scale
 
@@ -191,6 +191,7 @@ video_set_scale:
 	; video scale
 	lda	scale_table+4,x
 	sta	VERA_DC_HSCALE
+	lda	scale_table+5,x
 	sta	VERA_DC_VSCALE
 
 	; enable sprites
@@ -956,33 +957,18 @@ video_copy_remap:
 ;;;
 
 scale_table:
-	; 1x
-	.byte	60
-	.byte	100
-	.byte	90
-	.byte	150
-	.byte	128
-	; 2x
-	.byte	40
-	.byte	120
-	.byte	60
-	.byte	180
-	.byte	64
-	; ~2.976744186x
-	.byte	20
-	.byte	139
-	.byte	31
-	.byte	210
-	.byte	43
-	; ~3.047619048x
-	.byte	19
-	.byte	141
-	.byte	28
-	.byte	211
-	.byte	42
 	; 4x
 	.byte	0
 	.byte	160
 	.byte	0
 	.byte	240
 	.byte	32
+	.byte	32
+	; composite test
+	.byte	9
+	.byte	155
+	.byte	7
+	.byte	230
+	.byte	35
+	.byte	34
+

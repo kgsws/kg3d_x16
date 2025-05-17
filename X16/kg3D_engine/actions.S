@@ -3,6 +3,7 @@
 .include "banks.inc"
 .include "tables.inc"
 .include "math.inc"
+.include "main.inc"
 .include "zeropage.inc"
 .include "engine.inc"
 .include "things.inc"
@@ -428,6 +429,19 @@ act_atk_hitscan:
 
 	; angle
 	lda	THING_STRUCT_ANGLE,y
+	sta	ARG_HITSCAN_ANGLE
+
+	; random	; TODO
+	jsr	rng_get
+	lda	MATH_TEMP
+	and	#$87
+	inc
+	bpl	:+
+	eor	#$7F
+	inc
+:
+	clc
+	adc	ARG_HITSCAN_ANGLE
 	sta	ARG_HITSCAN_ANGLE
 
 	; pitch

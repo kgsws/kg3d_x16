@@ -285,7 +285,7 @@ const state_action_def_t state_action_def[] =
 };
 
 //
-uint32_t parse_animation_link(const uint8_t *name, uint32_t *tdx, uint32_t *adx);
+static uint32_t parse_animation_link(const uint8_t *name, uint32_t *tdx, uint32_t *adx, uint32_t is_weapon);
 
 // state click functions
 static int32_t uin_state_idx(glui_element_t*, int32_t, int32_t);
@@ -548,19 +548,16 @@ static int32_t cbor_cb_anims(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 
 	if(type == KGCBOR_TYPE_STRING)
 	{
-		if(anim_tab == thing_anim)
+		thing_anim_t *ta = load_thing.anim + cbor_entry_index;
+		uint32_t tdx, adx;
+
+		ta->count = 0;
+
+		if(ctx->val_len && ctx->val_len < LEN_X16_THING_NAME + 12)
 		{
-			thing_anim_t *ta = load_thing.anim + cbor_entry_index;
-			uint32_t tdx, adx;
-
-			ta->count = 0;
-
-			if(ctx->val_len && ctx->val_len < LEN_X16_THING_NAME + 12)
-			{
-				ta->count = -1;
-				memcpy(ta->load_link, value->ptr, ctx->val_len);
-				ta->load_link[ctx->val_len] = 0;
-			}
+			ta->count = -1;
+			memcpy(ta->load_link, value->ptr, ctx->val_len);
+			ta->load_link[ctx->val_len] = 0;
 		}
 
 		return 0;
@@ -615,14 +612,18 @@ static int32_t cbor_cb_thing_single(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t typ
 			thing_anim_t *ta = ti->anim + i;
 			thing_anim_t *tao;
 			uint32_t tdx, adx;
+			uint32_t is_weapon;
 
 			if(ta->count >= 0)
 				continue;
 
 			ta->count = 0;
 
-			if(!parse_animation_link(ta->load_link, &tdx, &adx))
-			{
+			is_weapon = THING_CHECK_WEAPON_SPRITE(i, cbor_main_index);
+
+			if(	!parse_animation_link(ta->load_link, &tdx, &adx, is_weapon) &&
+				is_weapon == THING_CHECK_WEAPON_SPRITE(adx, tdx)
+			){
 				tao = thing_info[tdx].anim + adx;
 				if(tao->count >= 0 || tao == ta)
 				{
@@ -716,7 +717,7 @@ static uint32_t type_by_name(const uint8_t *name)
 	return THING_TYPE_UNKNOWN;
 }
 
-uint32_t parse_animation_link(const uint8_t *name, uint32_t *tdx, uint32_t *adx)
+static uint32_t parse_animation_link(const uint8_t *name, uint32_t *tdx, uint32_t *adx, uint32_t is_weapon)
 {
 	uint32_t nlen = strlen(name);
 	uint32_t i = 0;
@@ -729,12 +730,24 @@ uint32_t parse_animation_link(const uint8_t *name, uint32_t *tdx, uint32_t *adx)
 
 	alen = i++;
 
-	for(ai = 0; ai < NUM_THING_ANIMS; ai++)
+	if(is_weapon)
 	{
-		if(thing_anim[ai].nlen != alen)
-			continue;
-		if(!memcmp(thing_anim[ai].name, name, alen))
-			break;
+		for(ai = 0; ai < NUM_THING_ANIMS; ai++)
+		{
+			if(weapon_anim[ai].nlen != alen)
+				continue;
+			if(!memcmp(weapon_anim[ai].name, name, alen))
+				break;
+		}
+	} else
+	{
+		for(ai = 0; ai < NUM_THING_ANIMS; ai++)
+		{
+			if(thing_anim[ai].nlen != alen)
+				continue;
+			if(!memcmp(thing_anim[ai].name, name, alen))
+				break;
+		}
 	}
 
 	if(ai >= NUM_THING_ANIMS)
@@ -751,9 +764,6 @@ uint32_t parse_animation_link(const uint8_t *name, uint32_t *tdx, uint32_t *adx)
 
 	if(!hash || ti >= MAX_X16_THING_TYPES)
 		return 2;
-
-	if(THING_CHECK_WEAPON_SPRITE(ai, ti))
-		return 3;
 
 	*tdx = ti;
 	*adx = ai;
@@ -776,7 +786,7 @@ void x16t_update_thing_view(uint32_t force_show_state)
 
 	anim_name_tab = THING_CHECK_WEAPON_SPRITE(NUM_THING_ANIMS, show_thing) ? weapon_anim : thing_anim;
 
-	ui_thing_state_lnk.base.disabled = THING_CHECK_WEAPON_SPRITE(show_anim, show_thing);
+	// ui_thing_state_lnk.base.disabled = THING_CHECK_WEAPON_SPRITE(show_anim, show_thing);
 
 	ui_thing_state_preview.base.disabled = 1;
 	ui_thing_state_origin.base.disabled = 1;
@@ -1298,6 +1308,7 @@ static void te_anim_link(uint8_t *name)
 	thing_anim_t *ta;
 	thing_anim_t *tax;
 	uint32_t changed = 0;
+	uint32_t is_weapon = THING_CHECK_WEAPON_SPRITE(show_anim, show_thing);
 
 	if(!name)
 		return;
@@ -1311,7 +1322,7 @@ static void te_anim_link(uint8_t *name)
 		return;
 	}
 
-	switch(parse_animation_link(name, &tdx, &adx))
+	switch(parse_animation_link(name, &tdx, &adx, is_weapon))
 	{
 		case 0:
 		break;
@@ -1324,6 +1335,12 @@ static void te_anim_link(uint8_t *name)
 		default:
 			edit_status_printf("Invalid value!");
 			return;
+	}
+
+	if(is_weapon != THING_CHECK_WEAPON_SPRITE(adx, tdx))
+	{
+		edit_status_printf("Invalid weapon-thing animation link!");
+		return;
 	}
 
 	if(tdx == show_thing && adx == show_anim)

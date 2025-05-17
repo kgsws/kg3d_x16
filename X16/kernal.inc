@@ -69,6 +69,10 @@ k_KEYHDL = $032E
 	stz	$9FB8
 .endmacro
 
+.macro	dbg_rate_clr
+	stz	$9FB8
+.endmacro
+
 DBG_BYTE0 = $9FB9
 DBG_BYTE1 = $9FBA
 DBG_VERA = $9FB1

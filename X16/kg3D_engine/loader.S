@@ -394,7 +394,7 @@ start:
 	.word	$0A0A
 	.word	text_demo_wait4
 	jsr	write_text
-	.word	$0B06
+	.word	$0B08
 	.word	text_demo_wait5
 	jsr	write_text
 	.word	$0C08
@@ -1064,7 +1064,7 @@ text_demo_wait3:
 text_demo_wait4:
 	.asciiz	"Use MOUSE to aim and attack."
 text_demo_wait5:
-	.asciiz	"Use SPACE to jump CTRL to crouch."
+	.asciiz	"Use SPACE to jump C to crouch."
 text_demo_wait6:
 	.asciiz	"Use numbers to switch weapons."
 text_demo_start:
