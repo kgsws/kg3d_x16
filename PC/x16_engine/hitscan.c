@@ -299,7 +299,7 @@ do_spawn:
 
 	th = things + tdx;
 	th->target = hitscan.origin;
-	th->angle = hitscan.angle ^ 0x80;
+	th->angle = hitscan.angle;
 
 	return 1;
 }

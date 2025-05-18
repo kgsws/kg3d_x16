@@ -117,8 +117,9 @@ typedef struct
 typedef struct
 {
 	const char *name;
-	uint16_t type;
-	uint16_t def;
+	uint8_t type;
+	uint8_t def;
+	int16_t lim[2];
 } state_arg_def_t;
 
 typedef struct

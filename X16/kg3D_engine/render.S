@@ -6557,7 +6557,6 @@ plane_set_angle:
 
 update_weapon_gfx:
 	; sprite info pointer
-	lda	TMP_REND_WPN_IDX
 	sta	TMP_PTR_H
 	stz	TMP_PTR_L
 	lsr	TMP_PTR_H
@@ -6606,8 +6605,8 @@ update_weapon_gfx:
 	; check bright count
 	ldy	#1
 	lda	(TMP_PTR_L),y
-	pha
 	beq	@wspr_no_copy
+	pha
 
 	; ADDR0 = 0x1C000+offs, increment = 1
 	clc

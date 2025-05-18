@@ -4916,6 +4916,8 @@ static uint16_t *generate_wpn_preview(variant_info_t *va, uint8_t *source, int32
 
 	if(box)
 	{
+		if(y1 >= 68 + 120)
+			y1 = 68 + 120;
 		box[0] = x0;
 		box[1] = y0;
 		box[2] = x1;
@@ -7011,6 +7013,7 @@ invalid:
 
 	generate_wspr_names(vl->variant, vl->max, first, count);
 
+	vl->now = vl->max;
 	vl->max += count;
 
 	update_gfx_mode(0);
@@ -7266,6 +7269,7 @@ int32_t uin_gfx_wpn_dupl(glui_element_t *elm, int32_t x, int32_t y)
 
 	generate_wspr_names(ws->variant, vb->wpn.base, vb->wpn.frm, vb->wpn.count);
 
+	ws->now = ws->max;
 	ws->max++;
 	update_gfx_mode(0);
 

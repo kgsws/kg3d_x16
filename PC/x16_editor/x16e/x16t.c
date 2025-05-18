@@ -62,6 +62,8 @@ enum
 {
 	ARGT_NONE,
 	ARGT_U8,
+	ARGT_S8,
+	ARGT_CHANCE,
 	ARGT_SPAWN_SLOT,
 	ARGT_XY_SPREAD,
 };
@@ -183,6 +185,7 @@ static thing_st_t load_state;
 
 static uint8_t *spawn_dst;
 static uint8_t *arg_dst;
+static const int16_t *arg_lim;
 
 // default player
 static const export_type_t default_player_info =
@@ -290,7 +293,8 @@ const state_action_def_t state_action_def[] =
 		{
 			.name = "speed",
 			.type = ARGT_U8,
-			.def = 10
+			.def = 10,
+			.lim = {1, 64}
 		}
 	},
 	{
@@ -300,9 +304,11 @@ const state_action_def_t state_action_def[] =
 		{
 			.name = "speed",
 			.type = ARGT_U8,
-			.def = 10
+			.def = 10,
+			.lim = {1, 64}
 		}
 	},
+///
 	{
 		.name = "attack: projectile",
 		.flags = AFLG_THING | AFLG_WEAPON,
@@ -310,13 +316,22 @@ const state_action_def_t state_action_def[] =
 		{
 			.name = "spawn",
 			.type = ARGT_SPAWN_SLOT,
-			.def = 0
+			.def = 0,
+			.lim = {0, 3}
 		},
 		.arg[1] =
 		{
 			.name = "spread",
 			.type = ARGT_XY_SPREAD,
-			.def = 0
+			.def = 0,
+			.lim = {0, 255}
+		},
+		.arg[2] =
+		{
+			.name = "angle",
+			.type = ARGT_S8,
+			.def = 0,
+			.lim = {-128, 127}
 		},
 	},
 	{
@@ -326,20 +341,49 @@ const state_action_def_t state_action_def[] =
 		{
 			.name = "spawn",
 			.type = ARGT_SPAWN_SLOT,
-			.def = 0
+			.def = 0,
+			.lim = {0, 3}
 		},
 		.arg[1] =
 		{
 			.name = "spread",
 			.type = ARGT_XY_SPREAD,
-			.def = 0
+			.def = 0,
+			.lim = {0, 255}
 		},
 		.arg[2] =
 		{
 			.name = "count",
 			.type = ARGT_U8,
-			.def = 1
+			.def = 1,
+			.lim = {1, 12}
 		},
+	},
+///
+	{
+		.name = "effect: blood splat",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "power",
+			.type = ARGT_U8,
+			.def = 5,
+			.lim = {0, 32}
+		},
+		.arg[1] =
+		{
+			.name = "boost power",
+			.type = ARGT_U8,
+			.def = 12,
+			.lim = {0, 96}
+		},
+		.arg[2] =
+		{
+			.name = "boost chance",
+			.type = ARGT_CHANCE,
+			.def = 64,
+			.lim = {0, 128}
+		}
 	},
 	// terminator
 	{}
@@ -347,14 +391,16 @@ const state_action_def_t state_action_def[] =
 
 // state argument type parsers
 
-static void te_arg_u8(uint8_t*);
+static void te_arg_us8(uint8_t*);
 static void te_arg_spawn(uint8_t*);
 static void te_arg_spread(uint8_t*);
 
 const arg_parse_t arg_parse[] =
 {
-	[ARGT_U8 - 1] = {"Enter a value (0 - 255).", te_arg_u8},
-	[ARGT_SPAWN_SLOT - 1] = {"Enter spawn slot (A - D).", te_arg_spawn},
+	[ARGT_U8 - 1] = {"Enter a value (%d to %d).", te_arg_us8},
+	[ARGT_S8 - 1] = {"Enter a value (%d to %d).", te_arg_us8},
+	[ARGT_CHANCE - 1] = {"Enter a value (%d to %d).", te_arg_us8},
+	[ARGT_SPAWN_SLOT - 1] = {"Enter spawn slot (A to D).", te_arg_spawn},
 	[ARGT_XY_SPREAD - 1] = {"Enter two values (0, 1, 2, 4, 8, 16, 32, 64).", te_arg_spread},
 };
 
@@ -510,7 +556,23 @@ static int32_t cbor_cb_state(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 				load_state.action = sa - state_action_def;
 
 				for(uint32_t i = 0; i < 3; i++)
-					load_state.arg[i] = load_args[i];
+				{
+					const state_arg_def_t *arg = sa->arg + i;
+					int32_t val = load_args[i];
+
+					if(arg->type == ARGT_S8)
+						val = (int8_t)load_args[i];
+					else
+						val = load_args[i];
+
+					if(val < arg->lim[0])
+						val = arg->lim[0];
+					else
+					if(val > arg->lim[1])
+						val = arg->lim[1];
+
+					load_state.arg[i] = val;
+				}
 
 				break;
 			}
@@ -855,8 +917,12 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 {
 	static uint8_t text[32];
 	const state_arg_def_t *sd;
-	uint8_t *val;
 	uint32_t temp;
+	union
+	{
+		uint8_t u8;
+		int8_t s8;
+	} *val;
 
 	if(slot < 0)
 	{
@@ -874,20 +940,26 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 		return "---";
 
 	sd = sa->arg + slot;
-	val = st->arg + slot;
+	val = (void*)st->arg + slot;
 
 	switch(sd->type)
 	{
 		case ARGT_NONE:
 			return "---";
 		case ARGT_U8:
-			sprintf(text, "%u", *val);
+			sprintf(text, "%u", (uint32_t)val->u8);
+		break;
+		case ARGT_S8:
+			sprintf(text, "%d", (int32_t)val->s8);
+		break;
+		case ARGT_CHANCE:
+			sprintf(text, "%u / 128", (uint32_t)val->u8);
 		break;
 		case ARGT_SPAWN_SLOT:
-			if(*val >= THING_MAX_SPAWN_TYPES)
+			if(val->u8 >= THING_MAX_SPAWN_TYPES)
 				return "---";
 
-			temp = ti->spawn[*val];
+			temp = ti->spawn[val->u8];
 
 			if(temp >= MAX_X16_THING_TYPES)
 				return "---";
@@ -898,7 +970,7 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 				sprintf(text, "#%u", temp);
 		break;
 		case ARGT_XY_SPREAD:
-			temp = *val;
+			temp = val->u8;
 			sprintf(text, "X(%u) Y(%u)", (1 << (temp & 15)) >> 1, (1 << (temp >> 4)) >> 1);
 		break;
 	}
@@ -1834,9 +1906,9 @@ int32_t uin_thing_state_origin(glui_element_t *elm, int32_t x, int32_t y)
 //
 // input for state table
 
-static void te_arg_u8(uint8_t *text)
+static void te_arg_us8(uint8_t *text)
 {
-	uint32_t temp;
+	int32_t temp;
 
 	if(!text)
 		return;
@@ -1844,7 +1916,7 @@ static void te_arg_u8(uint8_t *text)
 	if(!text[0])
 		return;
 
-	if(sscanf(text, "%u", &temp) != 1 || temp > 255)
+	if(sscanf(text, "%d", &temp) != 1 || temp < arg_lim[0] || temp > arg_lim[1])
 	{
 		edit_status_printf("Invalid value!");
 		return;
@@ -2027,7 +2099,9 @@ static int32_t uin_state_arg(glui_element_t *elm, int32_t x, int32_t y)
 	thing_def_t *ti = thing_info + show_thing;
 	uint32_t arg = elm->base.custom >> 8;
 	const state_action_def_t *sa;
+	const state_arg_def_t *ar;
 	const arg_parse_t *ap;
+	uint8_t text[64];
 	thing_anim_t *ta;
 	thing_st_t *st;
 	int32_t si;
@@ -2039,14 +2113,18 @@ static int32_t uin_state_arg(glui_element_t *elm, int32_t x, int32_t y)
 	sa = state_action_def + st->action;
 
 	arg_dst = st->arg + arg;
+	ar = sa->arg + arg;
 
-	arg = sa->arg[arg].type;
+	arg = ar->type;
 	if(!arg)
 		return 1;
 
+	arg_lim = ar->lim;
+
 	ap = arg_parse + arg - 1;
 
-	edit_ui_textentry(ap->text, 16, ap->func);
+	sprintf(text, ap->text, (int32_t)arg_lim[0], (int32_t)arg_lim[1]);
+	edit_ui_textentry(text, 16, ap->func);
 
 	return 1;
 }

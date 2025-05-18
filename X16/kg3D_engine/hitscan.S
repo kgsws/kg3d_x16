@@ -842,13 +842,12 @@ cb_attack:
 	beq	@skip
 
 	; th->target = hitscan.origin
-	lda	HITSCAN_ORIGIN
+	lda	TMP_HITSCAN_ORIGIN
 	sta	THING_STRUCT_TH_TARGET,y
 
-	; th->angle = hitscan.angle ^ 0x80
-	lda	HITSCAN_HIT_ANGLE
-	eor	#$FF
-	sta	THING_STRUCT_ANGLE
+	; th->angle = hitscan.angle
+	lda	ARG_HITSCAN_ANGLE
+	sta	THING_STRUCT_ANGLE,y
 
 @skip:
 	sec
@@ -890,7 +889,7 @@ scan_things:
 	beq	@skip_thing
 
 	; tdx != hitscan.origin
-	cmp	HITSCAN_ORIGIN
+	cmp	TMP_HITSCAN_ORIGIN
 	beq	@skip_thing
 	tay
 
@@ -1300,7 +1299,7 @@ hitscan_cb_wall:
 
 hitscan_attack:
 	phy
-	sty	HITSCAN_ORIGIN
+	sty	TMP_HITSCAN_ORIGIN
 
 	; thing structure bank
 	lda	#BANK_THING_STRUCT

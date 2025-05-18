@@ -649,8 +649,8 @@ thing_tick:
 	; thing type
 	ldx	THMOVE_THING_TYPE
 
-	; on_floor = 1
-	sty	ARG_THING_CHECK_ONFLOOR
+	; on_floor = 0
+	stz	ARG_THING_CHECK_ONFLOOR
 
 	; thing info bank
 	lda	#BANK_THING_INFO
@@ -1612,8 +1612,8 @@ thing_tick:
 	lda	THING_STRUCT_Z_H,y
 	sta	ARG_THING_CHECK_Z_H
 
-	; on floor
-	sty	ARG_THING_CHECK_ONFLOOR
+	; on_floor = 0
+	stz	ARG_THING_CHECK_ONFLOOR
 
 	; move again
 	dec	THMOVE_MOVE_AGAIN
@@ -4266,15 +4266,13 @@ check_sector_things:
 	lda	#BANK_SECTOR_THINGS
 	sta	REG_RAM_BANK
 
-	; sector
-	ldy	THMOVE_SDX
-
 	; the loop
 	lda	#$A0
 	sta	THTEMP_PTR_H
 	stz	THTEMP_PTR_L
 @loop_sec_thing:
 	; get thing at this slot
+	ldy	THMOVE_SDX
 	lda	(THTEMP_PTR_L),y
 
 	; empty slot check
@@ -4294,18 +4292,18 @@ check_sector_things:
 	; blocking flags
 	lda	THING_STRUCT_BLOCKING,x
 	and	THMOVE_BLOCKEDBY
-	beq	@skip_check
+	beq	:+
 
 	; origin check
 	lda	THING_STRUCT_TH_ORIGIN,x
 	cmp	THMOVE_THING
-	beq	@skip_check
+	beq	:+
 
 	; origin check
 	ldy	THMOVE_THING
 	txa
 	cmp	THING_STRUCT_TH_ORIGIN,y
-	beq	@skip_check
+	beq	:+
 
 	; check this thing
 	jsr	check_thing
@@ -4314,9 +4312,6 @@ check_sector_things:
 	; blocked
 	rts
 :
-	ldy	THMOVE_SDX
-
-@skip_check:
 	; sector things bank
 	lda	#BANK_SECTOR_THINGS
 	sta	REG_RAM_BANK

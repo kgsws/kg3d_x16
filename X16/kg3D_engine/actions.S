@@ -15,7 +15,7 @@
 ;;;
 ; NOTES: action callback
 ;;;
-; Y is current thing; 0 = player weapon; does not have to be preserved
+; Y is current thing; 0 = player weapon; (does not have to be preserved)
 ; THANIM_PTR_* points to current frame
 ; ARG_THING_SPAWN_SECTOR is current thing sector; invalid for weapons
 ; BANK_THING_STATES is active bank
@@ -56,11 +56,10 @@ action_get_XY:
 	rts
 
 ;;;
-; get base info
+; get args
 ;;;
 
-handle_base_info:
-	; args
+handle_args:
 	phy
 	ldy	#THSTATE_STRUCT_ARG0
 	lda	(THANIM_PTR_L),y
@@ -72,6 +71,15 @@ handle_base_info:
 	lda	(THANIM_PTR_L),y
 	sta	TMP_STACT_ARG_2
 	ply
+	rts
+
+;;;
+; get base info
+;;;
+
+handle_base_info:
+	; args
+	jsr	handle_args
 
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
@@ -416,7 +424,9 @@ act_atk_projectile:
 
 	; angle + pitch
 	jsr	aim_rng
+	clc
 	lda	ARG_HITSCAN_ANGLE
+	adc	TMP_STACT_ARG_2
 	sta	THING_STRUCT_ANGLE,x
 	lda	ARG_HITSCAN_HALF_PITCH
 	asl
@@ -447,12 +457,92 @@ act_atk_hitscan:
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
+@loop:
+	; save
+	phx
+	phy
+	lda	ARG_HITSCAN_TYPE
+	pha
+
 	; angle + pitch
 	jsr	aim_rng
 
 	; attack
 	jsr	hitscan_attack
 
+	; restore
+	pla
+	sta	ARG_HITSCAN_TYPE
+	ply
+	plx
+
+	; next
+	dec	TMP_STACT_ARG_2
+	bne	@loop
+
+	; no changes
+	clc
+	rts
+
+;;;
+; effect: blood splat
+;;;
+
+act_eff_blood:
+	; args
+	jsr	handle_args
+
+	; tmp = rng_get()
+	jsr	rng_get
+
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; th->mz = 0
+	lda	#0
+	sta	THING_STRUCT_MZ_S,y
+	sta	THING_STRUCT_MZ_L,y
+
+	; if(st->arg[0])
+	ldx	TMP_STACT_ARG_0
+	beq	@no_power
+
+	; tmp & 0x80
+	lda	MATH_TEMP
+	and	#$80
+	sta	MATH_VAR_L
+
+	; th->angle += 0x40
+	clc
+	lda	THING_STRUCT_ANGLE,y
+	adc	#$40
+
+	; th->angle ^= tmp & 0x80
+	eor	MATH_VAR_L
+	sta	THING_STRUCT_ANGLE,y
+
+	; thing_launch(tdx, st->arg[0])
+	jsr	thing_launch
+
+	; th->mz = st->arg[0] << 8
+	lda	TMP_STACT_ARG_0
+	sta	THING_STRUCT_MZ_L,y
+
+@no_power:
+	; tmp & 0x7F
+	lda	MATH_TEMP
+	and	#$7F
+
+	; if(st->arg[2] > (tmp & 0x7F))
+	cmp	TMP_STACT_ARG_2
+	bcs	@no_boost
+
+	; th->mz = st->arg[1] << 8
+	lda	TMP_STACT_ARG_1
+	sta	THING_STRUCT_MZ_L,y
+
+@no_boost:
 	; no changes
 	clc
 	rts
@@ -554,6 +644,7 @@ action_table:
 	.word	act_wpn_lower
 	.word	act_atk_projectile
 	.word	act_atk_hitscan
+	.word	act_eff_blood
 
 ;;;
 ; extra tables

@@ -1402,7 +1402,7 @@ void things_tick()
 		if(th->eflags & THING_EFLAG_PROJECTILE)
 		{
 			move_again = thing_type[th->type].jump_pwr;
-			on_floor = 1;
+			on_floor = 0;
 		}
 
 multi_move:
@@ -1651,7 +1651,7 @@ skip_links:
 		if(move_again)
 		{
 			move_again--;
-			on_floor = 1;
+			on_floor = 0;
 			goto multi_move;
 		}
 

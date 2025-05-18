@@ -127,7 +127,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 
 				aim_rng(th, aim, st->arg[1]);
 
-				ph->angle = aim[0];
+				ph->angle = aim[0] + st->arg[2];
 				ph->pitch = aim[1] << 1;
 
 				thing_launch(pdx, thing_type[ph->type].speed);
@@ -145,9 +145,30 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 
 			tdx = th - things;
 
-			aim_rng(th, aim, st->arg[1]);
+			for(uint32_t i = 0; i < st->arg[2]; i++)
+			{
+				aim_rng(th, aim, st->arg[1]);
+				hitscan_attack(tdx, thing_type[th->type].atk_height, aim[0], aim[1], type);
+			}
+		}
+		break;
+		case 6: // effect: blood splat
+		{
+			uint8_t tmp = rng_get();
 
-			hitscan_attack(tdx, thing_type[th->type].atk_height, aim[0], aim[1], type);
+			th->mz = 0;
+
+			if(st->arg[0])
+			{
+				th->angle += 0x40;
+				th->angle ^= tmp & 0x80;
+				thing_launch(tdx, st->arg[0]);
+
+				th->mz = st->arg[0] << 8;
+			}
+
+			if(st->arg[2] > (tmp & 0x7F))
+				th->mz = st->arg[1] << 8;
 		}
 		break;
 	}
