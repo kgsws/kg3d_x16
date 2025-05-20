@@ -7003,8 +7003,9 @@ invalid:
 
 	count = 1 + last - first;
 
-	if(vl->max + count > MAX_X16_VARIANTS)
-	{
+	if(	count >= MAX_X16_WPNGROUP ||
+		vl->max + count > MAX_X16_VARIANTS
+	){
 		edit_status_printf("Too many variants!");
 		return;
 	}
@@ -7215,7 +7216,7 @@ int32_t uin_gfx_wpn_variant(glui_element_t *elm, int32_t x, int32_t y)
 		return 1;
 	}
 
-	edit_ui_textentry("Enter frame code or range.", MAX_X16_WPNGROUP + 1, te_weapon_variant_new);
+	edit_ui_textentry("Enter frame code or range.", 4, te_weapon_variant_new);
 
 	return 1;
 }
@@ -7242,11 +7243,15 @@ int32_t uin_gfx_wpn_dupl(glui_element_t *elm, int32_t x, int32_t y)
 		return 1;
 	}
 
-	//
-
 	ws = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
 	va = ws->variant + ws->now;
 	vb = ws->variant + va->wpn.base;
+
+	if(vb->wpn.count >= MAX_X16_WPNGROUP - 1)
+	{
+		edit_status_printf("Too many variants!");
+		return 1;
+	}
 
 	idx = vb->wpn.base + vb->wpn.count;
 	fdx = vb->wpn.frm + vb->wpn.count;

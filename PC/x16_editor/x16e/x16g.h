@@ -13,7 +13,7 @@
 #define MAX_X16_VARIANTS_PLN	16	// limited by UI design
 #define MAX_X16_GL_CMAPS	256	// forced by COLORMAP_IDX macro
 #define MAX_X16_WPNPARTS	15	// engine limit
-#define MAX_X16_WPNGROUP	8
+#define MAX_X16_WPNGROUP	(LEN_X16_VARIANT_NAME - 2)
 
 #define MAX_X16_SPRITE_FRAMES	26	// full uppercase alphabet
 
