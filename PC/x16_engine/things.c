@@ -298,6 +298,11 @@ void thing_launch(uint8_t tdx, uint8_t speed)
 	th->my += tab_cos[angle] * speed;
 }
 
+void thing_damage(uint8_t tdx, uint8_t odx, uint8_t sdx, uint16_t damage)
+{
+	printf("DMG %u %u %u; %u\n", tdx, odx, sdx, damage);
+}
+
 //
 //
 
@@ -534,8 +539,9 @@ static uint32_t check_things(uint8_t sdx, uint8_t tdx, int32_t x, int32_t y, int
 			continue;
 		}
 
-		if(tho->eflags & THING_EFLAG_PUSHABLE)
-		{
+		if(	tho->eflags & THING_EFLAG_PUSHABLE &&
+			!(th->eflags & THING_EFLAG_PROJECTILE)
+		){
 			// TODO: mass calculation
 			tho->mx += th->mx;
 			tho->my += th->my;
@@ -1053,12 +1059,11 @@ uint32_t thing_check_heights(uint8_t tdx)
 
 static void projectile_death(thing_t *th)
 {
-	uint32_t state;
+	thing_type_t *ti = thing_type + th->type;
 	thing_state_t *st;
+	uint32_t state;
 	int32_t nx, ny;
 	uint8_t radius;
-
-//	printf("block %d; %u\n", poscheck.blocked, poscheck.hit_thing);
 
 	// XY
 	nx = th->x;
@@ -1078,13 +1083,17 @@ static void projectile_death(thing_t *th)
 
 	// radius
 	radius = th->radius;
-	th->radius = thing_type[th->type].alt_radius;
+	th->radius = ti->alt_radius;
 
 	// unflag
 	th->eflags &= ~THING_EFLAG_PROJECTILE;
 
 	// noclip
 	th->eflags |= THING_EFLAG_NOCLIP;
+
+	// damage target
+	if(poscheck.blocked & 2)
+		thing_damage(poscheck.hit_thing, th->origin, th - things, ti->health);
 
 	// change animation
 	state = thing_anim[th->type][ANIM_DEATH].state;

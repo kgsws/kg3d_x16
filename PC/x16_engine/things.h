@@ -171,6 +171,8 @@ void thing_remove(uint8_t);
 
 void thing_launch(uint8_t tdx, uint8_t speed);
 
+void thing_damage(uint8_t tdx, uint8_t odx, uint8_t sdx, uint16_t damage);
+
 uint32_t thing_check_pos(uint8_t tdx, int32_t *nx, int32_t *ny, int16_t z, uint32_t on_floor, uint8_t sdx);
 void thing_apply_position();
 

@@ -4591,6 +4591,14 @@ check_thing:
 	lsr
 	bcc	@not_pushable
 
+	; the thing
+	ldy	THMOVE_THING
+
+	; check source projectile flag
+	lda	THING_STRUCT_EFLAGS,y
+	and	#THING_EFLAG_PROJECTILE
+	bne	@not_pushable
+
 	; get type
 	lda	THING_STRUCT_TYPE,x
 	tax
@@ -4607,8 +4615,7 @@ check_thing:
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
-	; things
-	ldy	THMOVE_THING
+	; the thing
 	ldx	THMOVE_OTHER_THING
 
 	; tho->mx += th->mx
@@ -4645,6 +4652,10 @@ check_thing:
 ;;;
 
 projectile_death:
+
+	; restore
+	ldy	TICK_IDX
+
 	; get thing height
 	lda	THING_STRUCT_HEIGHT,y
 	sta	THMOVE_HEIGHT

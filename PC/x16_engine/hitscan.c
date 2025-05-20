@@ -18,6 +18,7 @@ typedef struct
 	uint8_t radius;
 	uint8_t height;
 	uint8_t blockedby;
+	uint16_t damage;
 	int16_t sin;
 	int16_t cos;
 	int16_t idiv;
@@ -282,6 +283,8 @@ do_hit:
 			if(!(info->spawn[3] & 0x80))
 				hitscan.type = info->spawn[3];
 
+			thing_damage(hitscan.thing_pick, hitscan.origin, hitscan.origin, hitscan.damage);
+
 			goto do_spawn;
 		}
 	} else
@@ -414,6 +417,7 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, 
 	hitscan.radius = info->alt_radius + 1;
 	hitscan.height = info->height;
 	hitscan.blockedby = info->blockedby;
+	hitscan.damage = info->health;
 
 	hitscan.z = th->z >> 8;
 	hitscan.z += zadd;
