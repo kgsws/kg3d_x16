@@ -19,9 +19,10 @@
 
 #define THING_EFLAG_SLIDING	0x80
 #define THING_EFLAG_CLIMBABLE	0x40
-#define THING_EFLAG_NOCLIP	0x08
-#define THING_EFLAG_PROJECTILE	0x04
-#define THING_EFLAG_WATERSPEC	0x02
+#define THING_EFLAG_NOCLIP	0x10
+#define THING_EFLAG_PROJECTILE	0x08
+#define THING_EFLAG_WATERSPEC	0x04
+#define THING_EFLAG_NOPUSH	0x02
 #define THING_EFLAG_PUSHABLE	0x01
 
 #define THING_CHECK_WEAPON_SPRITE(a, t)	((a) != ANIM_SPAWN && (t) >= THING_WEAPON_FIRST && (t) < THING_WEAPON_FIRST + THING_WEAPON_COUNT)
@@ -48,7 +49,7 @@ typedef struct
 	uint8_t height;
 	uint8_t blocking;
 	uint8_t blockedby;
-	uint8_t mass;
+	uint8_t imass;
 	uint8_t gravity;
 	uint8_t speed;
 	uint8_t eflags;

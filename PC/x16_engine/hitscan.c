@@ -283,7 +283,7 @@ do_hit:
 			if(!(info->spawn[3] & 0x80))
 				hitscan.type = info->spawn[3];
 
-			thing_damage(hitscan.thing_pick, hitscan.origin, hitscan.origin, hitscan.damage);
+			thing_damage(hitscan.thing_pick, hitscan.origin, hitscan.angle, hitscan.damage);
 
 			goto do_spawn;
 		}

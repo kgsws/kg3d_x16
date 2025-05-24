@@ -2478,8 +2478,9 @@ static void do_sector(uint8_t idx)
 static void do_3d()
 {
 	thing_t *th = things + camera_thing;
-	sector_t *sec;
 	show_wpn_t show_wpn;
+	sector_t *sec;
+	uint32_t pidx;
 
 	projection.x = th->x & ~0xFF;
 	projection.y = th->y & ~0xFF;
@@ -2494,8 +2495,13 @@ static void do_3d()
 
 	sec = map_sectors + projection.sector;
 
+	pidx = (15 + camera_damage) >> 4;
+	if(pidx & 0xFC)
+		pidx = 3;
+	pidx += sec->flags & 0x0C;
+
 	palette = palette_src;
-	palette += (sec->flags & 0x0C) * 256 * 3;
+	palette += pidx * 256 * 3;
 
 	if(projection.z > sec->ceiling.height - 2)
 		projection.z = sec->ceiling.height - 2;
@@ -2684,6 +2690,12 @@ static void render()
 
 	if(!(frame_counter % 4))
 	{
+		if(camera_damage <= 3)
+			camera_damage = 0;
+		else
+		if(camera_damage)
+			camera_damage -= 3;
+
 		level_tick++;
 		things_tick(); // 15 TPS
 		input_action = 0;

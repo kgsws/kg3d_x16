@@ -710,8 +710,9 @@ cb_attack:
 @do_hit:
 	; if(hitscan.blockedby)
 	lda	HITSCAN_BLOCKBY
-	beq	@no_things
-
+	bne	:+
+	jmp	@no_things
+:
 	ldx	#<cb_attack_thing
 	ldy	#>cb_attack_thing
 	jsr	scan_things
@@ -799,10 +800,15 @@ cb_attack:
 
 	; if(!(info->spawn[3] & 0x80))
 	lda	THTYPE_STRUCT_SPAWN_D,x
-	bmi	@do_spawn
+	bmi	:+
 
 	; hitscan.type = info->spawn[3]
 	sta	ARG_THING_SPAWN_TYPE
+:
+	; do damage
+	lda	ARG_HITSCAN_ANGLE
+	ldx	TMP_HITSCAN_ORIGIN
+	jsr	thing_damage
 
 	bra	@do_spawn
 
@@ -1412,6 +1418,12 @@ hitscan_attack:
 	; blocked by
 	lda	THTYPE_STRUCT_BLOCKEDBY,x
 	sta	HITSCAN_BLOCKBY
+
+	; damage
+	lda	THTYPE_STRUCT_HEALTH_L,x
+	sta	ARG_THING_DAMAGE_L
+	lda	THTYPE_STRUCT_HEALTH_H,x
+	sta	ARG_THING_DAMAGE_H
 
 	; run
 	ply

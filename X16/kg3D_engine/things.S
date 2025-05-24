@@ -12,7 +12,9 @@
 .export thing_spawn
 .export thing_spawn_org
 .export thing_clear
+.export thing_damage
 .export thing_launch
+.export thing_launch_ang
 .export thing_tick
 .export thing_check_position
 .export thing_apply_position
@@ -474,17 +476,141 @@ thing_clear:
 	rts
 
 ;;;
+; damage thing
+;;;
+; Y - thing index
+; X - damage origin thing
+; A - thrust angle
+; ARG_THING_DAMAGE_*
+
+thing_damage:
+	pha
+	phx
+
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; check for camera damage
+	cpy	G_CAMERA_THING
+	bne	@no_camera
+
+	; check damage HI
+	lda	ARG_THING_DAMAGE_H
+	bne	:+
+
+	; add level
+	clc
+	lda	G_DAMAGE_LEVEL
+	adc	ARG_THING_DAMAGE_L
+
+	; check limit
+	bcs	:+
+	cmp	#255-14
+	bcc	:++
+:
+	; max
+	lda	#255-15
+:
+	sta	G_DAMAGE_LEVEL
+
+@no_camera:
+	; check for thrust
+	pla
+	beq	@no_thrust
+
+	; get thing type
+	ldx	THING_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; get mass
+	lda	THTYPE_STRUCT_IMASS,x
+	beq	@no_thrust
+
+	; check damage HI
+	lda	ARG_THING_DAMAGE_H
+	beq	:+
+
+	; limit damage
+	lda	#$3F
+	sta	ARG_THING_DAMAGE_L
+:
+	; double damage
+	lda	ARG_THING_DAMAGE_L
+	asl
+	bcc	:+
+
+	; limit damage
+	lda	#$7F
+:
+	tax
+
+	;; damage = (damage * info->imass) >> 5
+	; TODO
+
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; angle
+	pla
+
+	; thrust
+	jsr	thing_launch_ang
+
+	; done
+	rts
+
+@no_thrust:
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	pla
+	rts
+
+;;;
 ; launch thing
 ;;;
 ; assuming 'BANK_THING_STRUCT' is selected
 ; Y - thing index
 ; X - speed
+; A - angle (for 'ang' variant)
+
+thing_launch_ang:
+	; speed
+	stx	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; angle
+	pha
+
+	; speed check
+	txa
+	bpl	:+
+
+	; speed limit
+	lda	#127
+	sta	VERA_FX_CACHE_L
+:
+	bra	skip_pitch
 
 thing_launch:
 	; speed
 	stx	VERA_FX_CACHE_L
 	stz	VERA_FX_CACHE_M
 
+	; speed check
+	txa
+	bpl	:+
+
+	; speed limit
+	lda	#127
+	sta	VERA_FX_CACHE_L
+:
 	; get angle
 	lda	THING_STRUCT_ANGLE,y
 	pha
@@ -540,13 +666,14 @@ thing_launch:
 	sta	VERA_FX_CACHE_L
 
 @no_pitch:
+skip_pitch:
 	;; th->mx += tab_sin[angle] * speed
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
 
 	; get angle
 	plx
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
 
 	; speed is already set
 
@@ -560,11 +687,11 @@ thing_launch:
 	; add result
 	stz	VERA_ADDRx_L
 	clc
-	lda	VERA_DATA0
-	adc	THING_STRUCT_MX_S,y
+	lda	THING_STRUCT_MX_S,y
+	adc	VERA_DATA0
 	sta	THING_STRUCT_MX_S,y
-	lda	VERA_DATA0
-	adc	THING_STRUCT_MX_L,y
+	lda	THING_STRUCT_MX_L,y
+	adc	VERA_DATA0
 	sta	THING_STRUCT_MX_L,y
 
 	;; th->my += tab_cos[angle] * speed
@@ -584,11 +711,11 @@ thing_launch:
 	; add result
 	stz	VERA_ADDRx_L
 	clc
-	lda	VERA_DATA0
-	adc	THING_STRUCT_MY_S,y
+	lda	THING_STRUCT_MY_S,y
+	adc	VERA_DATA0
 	sta	THING_STRUCT_MY_S,y
-	lda	VERA_DATA0
-	adc	THING_STRUCT_MY_L,y
+	lda	THING_STRUCT_MY_L,y
+	adc	VERA_DATA0
 	sta	THING_STRUCT_MY_L,y
 
 	; done
@@ -599,6 +726,15 @@ thing_launch:
 ;;;
 
 thing_tick:
+	; damage flash
+	sec
+	lda	G_DAMAGE_LEVEL
+	sbc	#3
+	bcs	:+
+	lda	#0
+:
+	sta	G_DAMAGE_LEVEL
+
 	; no-stop opcode
 	lda	#$A0	; LDY #
 	sta	@stop_opcode
@@ -1009,11 +1145,6 @@ thing_tick:
 
 	;; camera stuff
 
-	; damage flash
-	lda	G_DAMAGE_LEVEL
-	beq	:+
-	dec	G_DAMAGE_LEVEL
-:
 	; projection.wh += projection.wd
 	clc
 	lda	G_VIEWHEIGHT
@@ -4589,15 +4720,26 @@ check_thing:
 	; check pushable flag
 	lda	THING_STRUCT_EFLAGS,x
 	lsr
-	bcc	@not_pushable
+	bcs	:+
 
+@do_block:
+	; poscheck.blocked = 2
+	lda	#2
+	sta	THMOVE_BLOCKED
+	lda	THMOVE_OTHER_THING
+	sta	THMOVE_HIT_THING
+
+	; blocked
+	clc
+	rts
+:
 	; the thing
 	ldy	THMOVE_THING
 
 	; check source projectile flag
 	lda	THING_STRUCT_EFLAGS,y
-	and	#THING_EFLAG_PROJECTILE
-	bne	@not_pushable
+	and	#THING_EFLAG_PROJECTILE|THING_EFLAG_NOPUSH
+	bne	@do_block
 
 	; get type
 	lda	THING_STRUCT_TYPE,x
@@ -4608,8 +4750,12 @@ check_thing:
 	sta	REG_RAM_BANK
 
 	; mass
-	lda	THTYPE_STRUCT_MASS,x
-	beq	@not_pushable
+	lda	THTYPE_STRUCT_IMASS,x
+	beq	@do_block
+
+	; save mass
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
 
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
@@ -4618,34 +4764,69 @@ check_thing:
 	; the thing
 	ldx	THMOVE_OTHER_THING
 
-	; tho->mx += th->mx
+	;; tho->mx += (th->mx * imass) >> 6
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; imass is already set
+
+	; th->mx
+	lda	THING_STRUCT_MX_S,y
+	sta	VERA_FX_CACHE_H
+	lda	THING_STRUCT_MX_L,y
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
 	clc
 	lda	THING_STRUCT_MX_S,x
-	adc	THING_STRUCT_MX_S,y
+	adc	VERA_DATA0
 	sta	THING_STRUCT_MX_S,x
 	lda	THING_STRUCT_MX_L,x
-	adc	THING_STRUCT_MX_L,y
+	adc	VERA_DATA0
 	sta	THING_STRUCT_MX_L,x
 
-	; tho->my += th->my
+	;; tho->my += (th->my * imass) >> 6
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; imass is already set
+
+	; th->mx
+	lda	THING_STRUCT_MY_S,y
+	sta	VERA_FX_CACHE_H
+	lda	THING_STRUCT_MY_L,y
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
 	clc
 	lda	THING_STRUCT_MY_S,x
-	adc	THING_STRUCT_MY_S,y
+	adc	VERA_DATA0
 	sta	THING_STRUCT_MY_S,x
 	lda	THING_STRUCT_MY_L,x
-	adc	THING_STRUCT_MY_L,y
+	adc	VERA_DATA0
 	sta	THING_STRUCT_MY_L,x
 
-@not_pushable:
-	; poscheck.blocked = 2
-	lda	#2
-	sta	THMOVE_BLOCKED
-	lda	THMOVE_OTHER_THING
-	sta	THMOVE_HIT_THING
-
-	; blocked
-	clc
-	rts
+	jmp	@do_block
 
 ;;;
 ; projectile death
@@ -4676,6 +4857,12 @@ projectile_death:
 	lda	THTYPE_STRUCT_ALT_RADIUS,x
 	sta	THMOVE_ALT_RADIUS
 
+	; damage
+	lda	THTYPE_STRUCT_HEALTH_L,x
+	sta	ARG_THING_DAMAGE_L
+	lda	THTYPE_STRUCT_HEALTH_H,x
+	sta	ARG_THING_DAMAGE_H
+
 	; new animation
 	lda	THTYPE_ANIM_DEATH_L,x
 	pha	; <next frame LO>
@@ -4700,6 +4887,19 @@ projectile_death:
 	lda	THMOVE_ALT_RADIUS
 	sta	THING_STRUCT_RADIUS,y
 
+	; check for thing hit
+	lda	THMOVE_BLOCKED
+	and	#2
+	beq	:+
+
+	; damage hit thing
+	phy
+	ldx	THING_STRUCT_TH_ORIGIN,y
+	lda	THING_STRUCT_ANGLE,y
+	ldy	THMOVE_HIT_THING
+	jsr	thing_damage
+	ply
+:
 	; set ticks
 	lda	#1
 	sta	THING_STRUCT_TICKS,y

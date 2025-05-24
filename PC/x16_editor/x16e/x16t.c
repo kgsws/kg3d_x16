@@ -194,7 +194,7 @@ static const export_type_t default_player_info =
 	.height = 144, // 0.5x for crouching / swimming
 	.blocking = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN),
 	.blockedby = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_PICKUP),
-	.mass = 128,
+	.imass = 64,
 	.gravity = 128,
 	.speed = 13, // 0.5x for crouching / swimming
 	.scale = 96,
@@ -225,7 +225,7 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("alt radius", alt_radius), ATTR_TYPE_ARADIUS},
 	{THING_ATTR("blocking", blocking), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("blocked by", blockedby), ATTR_TYPE_BLOCK_FLAGS},
-	{THING_ATTR("mass", mass), ATTR_TYPE_U8},
+	{THING_ATTR("invmass", imass), ATTR_TYPE_U8},
 	{THING_ATTR("gravity", gravity), ATTR_TYPE_U8},
 	{THING_ATTR("speed", speed), ATTR_TYPE_U8},
 	{THING_ATTR("scale", scale), ATTR_TYPE_SCALE},
@@ -249,6 +249,7 @@ static const thing_edit_flag_t thing_flag[] =
 	{FLAG_STR("noclip"), THING_EFLAG_NOCLIP},
 	{FLAG_STR("projectile"), THING_EFLAG_PROJECTILE},
 	{FLAG_STR("waterspec"), THING_EFLAG_WATERSPEC},
+	{FLAG_STR("no push"), THING_EFLAG_NOPUSH},
 	{FLAG_STR("pushable"), THING_EFLAG_PUSHABLE},
 };
 

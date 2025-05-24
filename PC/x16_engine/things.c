@@ -67,6 +67,7 @@ uint8_t player_thing;
 
 // camera
 uint8_t camera_thing;
+uint8_t camera_damage;
 
 // movement
 static uint8_t place_slot;
@@ -153,6 +154,15 @@ static void swap_thing_sector(uint8_t tdx, uint8_t sdx)
 			break;
 		}
 	}
+}
+
+static int32_t mlimit(int32_t val)
+{
+	if(val > 32767)
+		return 32767;
+	if(val < -32768)
+		return -32768;
+	return val;
 }
 
 //
@@ -287,6 +297,10 @@ void thing_launch(uint8_t tdx, uint8_t speed)
 	thing_t *th = things + tdx;
 	uint8_t angle = th->angle;
 	uint8_t pitch = th->pitch / 2 - 64;
+	int32_t nm;
+
+	if(speed > 127)
+		speed = 127;
 
 	if(pitch)
 	{
@@ -294,13 +308,40 @@ void thing_launch(uint8_t tdx, uint8_t speed)
 		speed = (tab_cos[pitch] * speed) >> 8;
 	}
 
-	th->mx += tab_sin[angle] * speed;
-	th->my += tab_cos[angle] * speed;
+	th->mx = mlimit(th->mx + tab_sin[angle] * speed);
+	th->my = mlimit(th->my + tab_cos[angle] * speed);
 }
 
-void thing_damage(uint8_t tdx, uint8_t odx, uint8_t sdx, uint16_t damage)
+void thing_launch_ang(uint8_t tdx, uint8_t angle, uint8_t speed)
 {
-	printf("DMG %u %u %u; %u\n", tdx, odx, sdx, damage);
+	thing_t *th = things + tdx;
+	if(speed > 127)
+		speed = 127;
+	th->mx = mlimit(th->mx + tab_sin[angle] * speed);
+	th->my = mlimit(th->my + tab_cos[angle] * speed);
+}
+
+void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
+{
+	thing_t *th = things + tdx;
+	thing_type_t *info = thing_type + th->type;
+
+	if(tdx == camera_thing)
+	{
+		if(damage + camera_damage >= 255 - 15)
+			camera_damage = 255 - 15;
+		else
+			camera_damage += damage;
+	}
+
+	if(	odx &&
+		info->imass
+	){
+		if(damage > 127)
+			damage = 127;
+		damage = (damage * info->imass) >> 5;
+		thing_launch_ang(tdx, angle, damage);
+	}
 }
 
 //
@@ -540,11 +581,14 @@ static uint32_t check_things(uint8_t sdx, uint8_t tdx, int32_t x, int32_t y, int
 		}
 
 		if(	tho->eflags & THING_EFLAG_PUSHABLE &&
-			!(th->eflags & THING_EFLAG_PROJECTILE)
+			!(th->eflags & (THING_EFLAG_PROJECTILE|THING_EFLAG_NOPUSH))
 		){
-			// TODO: mass calculation
-			tho->mx += th->mx;
-			tho->my += th->my;
+			int32_t imass = thing_type[tho->type].imass;
+			if(imass)
+			{
+				tho->mx += (th->mx * imass) >> 6;
+				tho->my += (th->my * imass) >> 6;
+			}
 		}
 
 		poscheck.blocked = 2; // blocked by thing
@@ -1093,7 +1137,7 @@ static void projectile_death(thing_t *th)
 
 	// damage target
 	if(poscheck.blocked & 2)
-		thing_damage(poscheck.hit_thing, th->origin, th - things, ti->health);
+		thing_damage(poscheck.hit_thing, th->origin, th->angle, ti->health);
 
 	// change animation
 	state = thing_anim[th->type][ANIM_DEATH].state;

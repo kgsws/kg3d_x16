@@ -227,11 +227,21 @@ render_view:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	; palette
+	; damage level
+	clc
 	lda	G_DAMAGE_LEVEL
-	lsr
-	lsr
-	lsr
+	adc	#15
+	tax
+	lda	TAB_SWAP,x
+	and	#$0F
+	cmp	#4
+	bcc	:+
+
+	; limit
+	lda	#3
+:
+	; sector palette
+	ldx	PROJECTION_SECTOR
 	ora	SECTOR_STRUCT_FLAGS,x
 	and	#$0F
 	sta	G_PALETTE_NEW

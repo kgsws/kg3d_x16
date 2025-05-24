@@ -16,9 +16,10 @@
 
 #define THING_EFLAG_SLIDING	0x80
 #define THING_EFLAG_CLIMBABLE	0x40
-#define THING_EFLAG_NOCLIP	0x08
-#define THING_EFLAG_PROJECTILE	0x04
-#define THING_EFLAG_WATERSPEC	0x02
+#define THING_EFLAG_NOCLIP	0x10
+#define THING_EFLAG_PROJECTILE	0x08
+#define THING_EFLAG_WATERSPEC	0x04
+#define THING_EFLAG_NOPUSH	0x02
 #define THING_EFLAG_PUSHABLE	0x01
 
 #define THING_TYPE_PLAYER_N	127	// normal
@@ -57,7 +58,7 @@ typedef struct
 	uint8_t height;
 	uint8_t blocking;
 	uint8_t blockedby;
-	uint8_t mass;
+	uint8_t imass;
 	uint8_t gravity;
 	uint8_t speed;
 	uint8_t eflags;
@@ -157,6 +158,7 @@ extern uint8_t player_thing;
 
 // camera
 extern uint8_t camera_thing;
+extern uint8_t camera_damage;
 
 //
 
@@ -170,8 +172,9 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 void thing_remove(uint8_t);
 
 void thing_launch(uint8_t tdx, uint8_t speed);
+void thing_launch_ang(uint8_t tdx, uint8_t ang, uint8_t speed);
 
-void thing_damage(uint8_t tdx, uint8_t odx, uint8_t sdx, uint16_t damage);
+void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage);
 
 uint32_t thing_check_pos(uint8_t tdx, int32_t *nx, int32_t *ny, int16_t z, uint32_t on_floor, uint8_t sdx);
 void thing_apply_position();
