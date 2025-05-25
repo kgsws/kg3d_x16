@@ -60,6 +60,7 @@ typedef struct
 	uint8_t view_height;
 	uint8_t atk_height;
 	uint8_t alt_radius;
+	uint8_t pain_chance;
 	//
 	uint8_t jump_pwr;
 } __attribute((packed)) export_type_t;

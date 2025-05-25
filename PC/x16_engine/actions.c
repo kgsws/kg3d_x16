@@ -171,6 +171,12 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				th->mz = st->arg[1] << 8;
 		}
 		break;
+		case 7: // death: simple
+		{
+			th->blocking = 0;
+			th->gravity = 128;
+		}
+		break;
 	}
 
 	return 0;

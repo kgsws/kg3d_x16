@@ -304,6 +304,7 @@ void thing_launch(uint8_t tdx, uint8_t speed)
 
 	if(pitch)
 	{
+		// NOTE: no 'mlimit'
 		th->mz += tab_sin[pitch] * speed;
 		speed = (tab_cos[pitch] * speed) >> 8;
 	}
@@ -325,6 +326,31 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 {
 	thing_t *th = things + tdx;
 	thing_type_t *info = thing_type + th->type;
+	int32_t hp = 1;
+
+	if(th->health)
+	{
+		hp = th->health - damage;
+		if(hp <= 0)
+		{
+			th->health = 0;
+
+			th->next_state = thing_anim[th->type][ANIM_DEATH].state;
+			th->ticks = 1;
+		} else
+			th->health = hp;
+	}
+
+	if(	hp > 0 &&
+		!(th->iflags & THING_IFLAG_GOTHIT) &&
+		info->pain_chance &&
+		info->pain_chance > (rng_get() & 0x7F)
+	){
+		th->next_state = thing_anim[th->type][ANIM_PAIN].state;
+		th->ticks = 1;
+	}
+
+	th->iflags |= THING_IFLAG_GOTHIT;
 
 	if(tdx == camera_thing)
 	{
@@ -1104,7 +1130,6 @@ uint32_t thing_check_heights(uint8_t tdx)
 static void projectile_death(thing_t *th)
 {
 	thing_type_t *ti = thing_type + th->type;
-	thing_state_t *st;
 	uint32_t state;
 	int32_t nx, ny;
 	uint8_t radius;
@@ -1137,11 +1162,10 @@ static void projectile_death(thing_t *th)
 
 	// damage target
 	if(poscheck.blocked & 2)
-		thing_damage(poscheck.hit_thing, th->origin, th->angle, ti->health);
+		thing_damage(poscheck.hit_thing, th->origin, th->angle, th->health);
 
 	// change animation
 	state = thing_anim[th->type][ANIM_DEATH].state;
-	st = thing_state + decode_state(state);
 	th->next_state = state;
 	th->ticks = 1;
 
@@ -1262,17 +1286,9 @@ void things_tick()
 	sector_t *sec;
 	uint8_t move_again;
 
-	for(uint32_t i = 1; ; i++)
+	for(uint32_t i = 1; i < 128; i++)
 	{
 		thing_t *th = things + i;
-
-		if(i >= 128)
-		{
-			// special case for local player weapon
-			i = 0;
-			th = things;
-			goto do_animation;
-		}
 
 		if(th->type >= 128)
 			continue;
@@ -1280,6 +1296,9 @@ void things_tick()
 		// decrement counter
 		if(th->counter)
 			th->counter--;
+
+		// TODO: remove this
+		th->iflags &= ~THING_IFLAG_GOTHIT;
 
 		// on floor?
 		on_floor = th->floorz >= (th->z >> 8);
@@ -1325,8 +1344,7 @@ void things_tick()
 				{
 					uint8_t speed = thing_type[th->type].speed;
 					uint8_t angle = ticcmd.angle + (ticcmd.bits_h & 0xE0);
-					th->mx += tab_sin[angle] * speed;
-					th->my += tab_cos[angle] * speed;
+					thing_launch_ang(i, angle, speed);
 				}
 
 				sec = map_sectors + thingsec[i][0];
@@ -1546,14 +1564,14 @@ apply_position:
 			// friction
 			if(!(th->eflags & THING_EFLAG_PROJECTILE))
 			{
-				th->mx /= 2;
-				th->my /= 2;
-
 				switch(th->mx & 0xFF00)
 				{
 					case 0x0000:
 					case 0xFF00:
 						th->mx = 0;
+					break;
+					default:
+						th->mx /= 2;
 					break;
 				}
 
@@ -1562,6 +1580,9 @@ apply_position:
 					case 0x0000:
 					case 0xFF00:
 						th->my = 0;
+					break;
+					default:
+						th->my /= 2;
 					break;
 				}
 			}
@@ -1661,12 +1682,14 @@ apply_position:
 		if(!(th->eflags & THING_EFLAG_PROJECTILE))
 		{
 			// friction
-			th->mz /= 2;
 			switch(th->mz & 0xFF00)
 			{
 				case 0x0000:
 				case 0xFF00:
 					th->mz = 0;
+				break;
+				default:
+					th->mz /= 2;
 				break;
 			}
 		}
@@ -1759,9 +1782,15 @@ act_next:
 			}
 		}
 
-		// stop
+		// player weapon
+		if(i == player_thing)
+		{
+			th = things;
+			i = 0;
+			goto do_animation;
+		} else
 		if(!i)
-			break;
+			i = player_thing;
 	}
 }
 

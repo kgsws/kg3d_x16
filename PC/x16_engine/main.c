@@ -3481,8 +3481,6 @@ static uint32_t load_tspr(uint8_t *path)
 	datal = *src++ << 8;
 	count = *src++;
 
-	count &= 0x1F;
-
 	if(!datal)
 		datal = 0x10000;
 

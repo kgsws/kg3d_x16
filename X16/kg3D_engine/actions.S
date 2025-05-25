@@ -548,6 +548,25 @@ act_eff_blood:
 	rts
 
 ;;;
+; death: simple
+;;;
+
+act_die_simple:
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	lda	#0
+	sta	THING_STRUCT_BLOCKING,y
+
+	lda	#128
+	sta	THING_STRUCT_GRAVITY,y
+
+	; no changes
+	clc
+	rts
+
+;;;
 ; apply new animation
 ;;;
 
@@ -645,6 +664,7 @@ action_table:
 	.word	act_atk_projectile
 	.word	act_atk_hitscan
 	.word	act_eff_blood
+	.word	act_die_simple
 
 ;;;
 ; extra tables

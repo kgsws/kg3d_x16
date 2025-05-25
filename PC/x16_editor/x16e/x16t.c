@@ -27,7 +27,7 @@
 #define NUM_STATE_ROWS	9
 
 #define UI_ATTR_HEIGHT	18
-#define UI_TITLE_HEIGHT	28
+#define UI_TITLE_HEIGHT	18
 #define UI_SPACE_HEIGHT	10
 #define UI_STATE_HEIGHT	18
 
@@ -42,6 +42,7 @@ enum
 {
 	ATTR_TYPE_U8,
 	ATTR_TYPE_U16,
+	ATTR_TYPE_CHANCE,
 	ATTR_TYPE_TT,
 	ATTR_TYPE_BLOCK_FLAGS,
 	ATTR_TYPE_SCALE,
@@ -234,6 +235,7 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("attack height", atk_height), ATTR_TYPE_ATK_HEIGHT},
 	{THING_ATTR("water height", water_height), ATTR_TYPE_WATER_HEIGHT},
 	{THING_ATTR("health", health), ATTR_TYPE_U16},
+	{THING_ATTR("pain chance", pain_chance), ATTR_TYPE_CHANCE},
 	{THING_ATTR("jump power", jump_pwr), ATTR_TYPE_U8},
 	{THING_ATTR("spawn A", spawn[0]), ATTR_TYPE_TT},
 	{THING_ATTR("spawn B", spawn[1]), ATTR_TYPE_TT},
@@ -385,6 +387,11 @@ const state_action_def_t state_action_def[] =
 			.def = 64,
 			.lim = {0, 128}
 		}
+	},
+///
+	{
+		.name = "death: simple",
+		.flags = AFLG_THING
 	},
 	// terminator
 	{}
@@ -1044,6 +1051,9 @@ void x16t_update_thing_view(uint32_t force_show_state)
 			case ATTR_TYPE_U16:
 				sprintf(text, "%u", src->u16);
 			break;
+			case ATTR_TYPE_CHANCE:
+				sprintf(text, "%u / 128", src->u8);
+			break;
 			case ATTR_TYPE_BLOCK_FLAGS:
 				edit_put_blockbits(text, src->u8)[0] = 0;
 			break;
@@ -1059,7 +1069,7 @@ void x16t_update_thing_view(uint32_t force_show_state)
 					*(uint16_t*)text = '\t';
 			break;
 			case ATTR_TYPE_SCALE:
-				sprintf(text, "=%.3f", ((float)src->u8 * 2.0f + 64.0f) / 256.0f);
+				sprintf(text, "%.3f", ((float)src->u8 * 2.0f + 64.0f) / 256.0f);
 			break;
 			case ATTR_TYPE_U7F:
 				// special flag MSB
@@ -2642,13 +2652,13 @@ uint32_t x16t_init()
 
 	free(ttex);
 
-	ui_thing_attrs.base.height = NUM_SHOW_ATTRS * UI_ATTR_HEIGHT + UI_ATTR_HEIGHT + UI_TITLE_HEIGHT;
+	ui_thing_attrs.base.height = NUM_SHOW_ATTRS * UI_ATTR_HEIGHT + (UI_ATTR_HEIGHT / 4) + UI_TITLE_HEIGHT;
 
 	ui_thing_flags.base.y = ui_thing_attrs.base.y + ui_thing_attrs.base.height + UI_SPACE_HEIGHT;
-	ui_thing_flags.base.height = NUM_SHOW_FLAGS * UI_ATTR_HEIGHT + UI_ATTR_HEIGHT + UI_TITLE_HEIGHT;
+	ui_thing_flags.base.height = NUM_SHOW_FLAGS * UI_ATTR_HEIGHT + (UI_ATTR_HEIGHT / 4) + UI_TITLE_HEIGHT;
 
 	ui_thing_anims.base.y = ui_thing_flags.base.y + ui_thing_flags.base.height + UI_SPACE_HEIGHT;
-	ui_thing_anims.base.height = NUM_SHOW_ANIMS * UI_ATTR_HEIGHT + UI_ATTR_HEIGHT + UI_TITLE_HEIGHT;
+	ui_thing_anims.base.height = NUM_SHOW_ANIMS * UI_ATTR_HEIGHT + (UI_ATTR_HEIGHT / 4) + UI_TITLE_HEIGHT;
 
 	// load default
 	x16t_load(NULL);

@@ -487,10 +487,6 @@ thing_damage:
 	pha
 	phx
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
 	; check for camera damage
 	cpy	G_CAMERA_THING
 	bne	@no_camera
@@ -515,6 +511,114 @@ thing_damage:
 	sta	G_DAMAGE_LEVEL
 
 @no_camera:
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; check health
+	lda	THING_STRUCT_HEALTH_L,y
+	ora	THING_STRUCT_HEALTH_H,y
+	beq	@skip_death
+
+	; apply damage
+	sec
+	lda	THING_STRUCT_HEALTH_L,y
+	sbc	ARG_THING_DAMAGE_L
+	sta	MATH_TEMP_A
+	lda	THING_STRUCT_HEALTH_H,y
+	sbc	ARG_THING_DAMAGE_H
+	sta	MATH_TEMP_B
+	bcc	:+
+	ora	MATH_TEMP_A
+	beq	:+
+
+	; new health
+	lda	MATH_TEMP_A
+	sta	THING_STRUCT_HEALTH_L,y
+	lda	MATH_TEMP_B
+	sta	THING_STRUCT_HEALTH_H,y
+
+	bra	@skip_death
+:
+	; death
+	lda	#0
+	sta	THING_STRUCT_HEALTH_L,y
+	sta	THING_STRUCT_HEALTH_H,y
+
+	; thing type
+	ldx	THING_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; new animation
+	lda	THTYPE_ANIM_DEATH_L,x
+	pha	; <next frame LO>
+	lda	THTYPE_ANIM_DEATH_H,x
+	pha	; <next frame HI>
+
+@set_anim:
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+	; set ticks
+	lda	#1
+	sta	THING_STRUCT_TICKS,y
+
+	; set new frame
+	pla	; <next frame HI>
+	sta	THING_STRUCT_NXTFRM_H,y
+	pla	; <next frame LO>
+	sta	THING_STRUCT_NXTFRM_L,y
+
+	bra	@skip_pain
+
+@skip_death:
+	; if(!(th->iflags & THING_IFLAG_GOTHIT))
+	lda	THING_STRUCT_IFLAGS,y
+	and	#THING_IFLAG_GOTHIT
+	bne	@skip_pain
+
+	; thing type
+	ldx	THING_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; pain chance
+	lda	THTYPE_STRUCT_PAIN_CHANCE,x
+	beq	@skip_pain_bank
+	sta	MATH_VAR_U
+
+	; rng
+	jsr	rng_get
+	lda	MATH_TEMP
+	and	#$7F
+	cmp	MATH_VAR_U
+	bcs	@skip_pain_bank
+
+	; new animation
+	lda	THTYPE_ANIM_PAIN_L,x
+	pha	; <next frame LO>
+	lda	THTYPE_ANIM_PAIN_H,x
+	pha	; <next frame HI>
+
+	bra	@set_anim
+
+@skip_pain_bank:
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
+
+@skip_pain:
+	; set hit flag
+	lda	THING_STRUCT_IFLAGS,y
+	ora	#THING_IFLAG_GOTHIT
+	sta	THING_STRUCT_IFLAGS,y
+
 	; check for thrust
 	pla
 	beq	@no_thrust
@@ -582,8 +686,7 @@ thing_damage:
 
 thing_launch_ang:
 	; speed
-	stx	VERA_FX_CACHE_L
-	stz	VERA_FX_CACHE_M
+	stx	MATH_TEMP_A
 
 	; angle
 	pha
@@ -594,14 +697,13 @@ thing_launch_ang:
 
 	; speed limit
 	lda	#127
-	sta	VERA_FX_CACHE_L
+	sta	MATH_TEMP_A
 :
 	bra	skip_pitch
 
 thing_launch:
 	; speed
-	stx	VERA_FX_CACHE_L
-	stz	VERA_FX_CACHE_M
+	stx	MATH_TEMP_A
 
 	; speed check
 	txa
@@ -609,7 +711,7 @@ thing_launch:
 
 	; speed limit
 	lda	#127
-	sta	VERA_FX_CACHE_L
+	sta	MATH_TEMP_A
 :
 	; get angle
 	lda	THING_STRUCT_ANGLE,y
@@ -628,7 +730,10 @@ thing_launch:
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
-	; speed is already set
+	; speed
+	lda	MATH_TEMP_A
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
 
 	; tab_sin
 	math_read_sin	VERA_FX_CACHE_H, VERA_FX_CACHE_U
@@ -652,7 +757,10 @@ thing_launch:
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
-	; speed is already set
+	; speed
+	lda	MATH_TEMP_A
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
 
 	; tab_cos
 	math_read_cos	VERA_FX_CACHE_H, VERA_FX_CACHE_U
@@ -663,61 +771,125 @@ thing_launch:
 
 	; get result (>> 8)
 	lda	VERA_DATA0
-	sta	VERA_FX_CACHE_L
+	sta	MATH_TEMP_A
 
 @no_pitch:
 skip_pitch:
-	;; th->mx += tab_sin[angle] * speed
-
 	; get angle
 	plx
+
+	;; th->mx = mlimit(th->mx + tab_sin[angle] * speed)
 
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
-	; speed is already set
+	; speed
+	lda	MATH_TEMP_A
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
 
 	; tab_sin
 	math_read_sin	VERA_FX_CACHE_H, VERA_FX_CACHE_U
 
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; th->mx * 1
+	lda	THING_STRUCT_MX_S,y
+	sta	VERA_FX_CACHE_L
+	lda	THING_STRUCT_MX_L,y
+	sta	VERA_FX_CACHE_M
+	lda	#1
+	sta	VERA_FX_CACHE_H
+	stz	VERA_FX_CACHE_U
+
 	; save result
 	stz	VERA_ADDRx_L
 	stz	VERA_DATA0
 
-	; add result
+	; get result
 	stz	VERA_ADDRx_L
-	clc
-	lda	THING_STRUCT_MX_S,y
-	adc	VERA_DATA0
+	lda	VERA_DATA0
 	sta	THING_STRUCT_MX_S,y
-	lda	THING_STRUCT_MX_L,y
-	adc	VERA_DATA0
+	lda	VERA_DATA0
 	sta	THING_STRUCT_MX_L,y
 
-	;; th->my += tab_cos[angle] * speed
+	; overflow check
+	eor	VERA_DATA0
+	bpl	:+
+
+	; max
+	lda	#$FF
+	sta	THING_STRUCT_MX_S,y
+	lsr
+	sta	THING_STRUCT_MX_L,y
+
+	; check sign bit
+	lda	VERA_DATA0
+	bpl	:+
+
+	; min
+	lda	#$80
+	sta	THING_STRUCT_MX_L,y
+	asl
+	sta	THING_STRUCT_MX_S,y
+:
+	;; th->my = mlimit(th->my + tab_cos[angle] * speed)
 
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
-	; speed is already set
+	; speed
+	lda	MATH_TEMP_A
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
 
 	; tab_cos
 	math_read_cos	VERA_FX_CACHE_H, VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; th->my * 1
+	lda	THING_STRUCT_MY_S,y
+	sta	VERA_FX_CACHE_L
+	lda	THING_STRUCT_MY_L,y
+	sta	VERA_FX_CACHE_M
+	lda	#1
+	sta	VERA_FX_CACHE_H
+	stz	VERA_FX_CACHE_U
 
 	; save result
 	stz	VERA_ADDRx_L
 	stz	VERA_DATA0
 
-	; add result
+	; get result
 	stz	VERA_ADDRx_L
-	clc
-	lda	THING_STRUCT_MY_S,y
-	adc	VERA_DATA0
+	lda	VERA_DATA0
 	sta	THING_STRUCT_MY_S,y
-	lda	THING_STRUCT_MY_L,y
-	adc	VERA_DATA0
+	lda	VERA_DATA0
 	sta	THING_STRUCT_MY_L,y
 
+	; overflow check
+	eor	VERA_DATA0
+	bpl	:+
+
+	; max
+	lda	#$FF
+	sta	THING_STRUCT_MY_S,y
+	lsr
+	sta	THING_STRUCT_MY_L,y
+
+	; check sign bit
+	lda	VERA_DATA0
+	bpl	:+
+
+	; min
+	lda	#$80
+	sta	THING_STRUCT_MY_L,y
+	asl
+	sta	THING_STRUCT_MY_S,y
+:
 	; done
 	rts
 
@@ -734,10 +906,6 @@ thing_tick:
 	lda	#0
 :
 	sta	G_DAMAGE_LEVEL
-
-	; no-stop opcode
-	lda	#$A0	; LDY #
-	sta	@stop_opcode
 
 	; first thing slot
 	ldy	#1
@@ -758,6 +926,12 @@ thing_tick:
 	bpl	:+
 	jmp	@skip_thing
 :
+	; TODO: remove this
+	; set hit flag
+	lda	THING_STRUCT_IFLAGS,y
+	and	#<~THING_IFLAG_GOTHIT
+	sta	THING_STRUCT_IFLAGS,y
+
 	; decrement cooldown
 	lda	THING_STRUCT_COUNTER,y
 	sta	MATH_TEMP_A
@@ -864,13 +1038,7 @@ thing_tick:
 @skip_use:
 	; if(ticcmd.bits & TCMD_MOVING)
 	ldx	TICK_CMD_BITS_L
-	bmi	:+
-	jmp	@skip_pmove
-:
-	;; th->mx += tab_sin[ticcmd.move] * thing_type[th->type].speed
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
+	bpl	@skip_pmove
 
 	; get type
 	ldx	THMOVE_THING_TYPE
@@ -881,58 +1049,20 @@ thing_tick:
 
 	; speed
 	lda	THTYPE_STRUCT_SPEED,x
-	sta	VERA_FX_CACHE_L
-	stz	VERA_FX_CACHE_M
+	tax
 
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
-	; tab_sin
+	; angle
 	lda	TICK_CMD_BITS_H
 	and	#$E0
 	clc
 	adc	TICK_CMD_ANGLE
-	tax
-	math_read_sin	VERA_FX_CACHE_H, VERA_FX_CACHE_U
 
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; add result
-	stz	VERA_ADDRx_L
-	clc
-	lda	VERA_DATA0
-	adc	THING_STRUCT_MX_S,y
-	sta	THING_STRUCT_MX_S,y
-	lda	VERA_DATA0
-	adc	THING_STRUCT_MX_L,y
-	sta	THING_STRUCT_MX_L,y
-
-	;; th->my += tab_cos[ticcmd.move] * thing_type[th->type].speed
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; speed is already set
-
-	; tab_cos
-	math_read_cos	VERA_FX_CACHE_H, VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; add result
-	stz	VERA_ADDRx_L
-	clc
-	lda	VERA_DATA0
-	adc	THING_STRUCT_MY_S,y
-	sta	THING_STRUCT_MY_S,y
-	lda	VERA_DATA0
-	adc	THING_STRUCT_MY_L,y
-	sta	THING_STRUCT_MY_L,y
+	; move
+	jsr	thing_launch_ang
 
 @skip_pmove:
 	; th->angle = ticcmd.angle
@@ -1334,33 +1464,32 @@ thing_tick:
 
 	; th->mx /= 2
 	lda	THING_STRUCT_MX_L,x
+	beq	:++
+	cmp	#$FF
+	beq	:+
 	rol
 	ror	THING_STRUCT_MX_L,x
 	ror	THING_STRUCT_MX_S,x
-
-	lda	THING_STRUCT_MX_L,x
-	bpl	:+
-	eor	#$FF
+	bra	:+++
 :
-	bne	:+
 	stz	THING_STRUCT_MX_L,x
+:
 	stz	THING_STRUCT_MX_S,x
 :
 	; th->my /= 2
 	lda	THING_STRUCT_MY_L,x
+	beq	:++
+	cmp	#$FF
+	beq	:+
 	rol
 	ror	THING_STRUCT_MY_L,x
 	ror	THING_STRUCT_MY_S,x
-
-	lda	THING_STRUCT_MY_L,x
-	bpl	:+
-	eor	#$FF
+	bra	:+++
 :
-	bne	:+
 	stz	THING_STRUCT_MY_L,x
+:
 	stz	THING_STRUCT_MY_S,x
 :
-	; th->my /= 2
 
 @no_xy_friction:
 @no_xymove:
@@ -1620,16 +1749,16 @@ thing_tick:
 
 	; th->mz /= 2
 	lda	THING_STRUCT_MZ_L,x
+	beq	:++
+	cmp	#$FF
+	beq	:+
 	rol
 	ror	THING_STRUCT_MZ_L,x
 	ror	THING_STRUCT_MZ_S,x
-
-	lda	THING_STRUCT_MZ_L,x
-	bpl	:+
-	eor	#$FF
+	bra	:+++
 :
-	bne	:+
 	stz	THING_STRUCT_MZ_L,x
+:
 	stz	THING_STRUCT_MZ_S,x
 :
 @skip_z_friction:
@@ -1760,14 +1889,14 @@ thing_tick:
 
 	; if(th->ticks)
 	lda	THING_STRUCT_TICKS,y
-	beq	@skip_thing
+	beq	@done_thing
 
 	; th->ticks--
 	dea
 	sta	THING_STRUCT_TICKS,y
 
 	; if(!th->ticks)
-	bne	@skip_thing
+	bne	@done_thing
 
 @act_again:
 	; if(th->next_state)
@@ -1869,23 +1998,32 @@ thing_tick:
 	pla	; <ticks>
 	sta	THING_STRUCT_TICKS,y
 
-@skip_thing:
+	; done
+@done_thing:
 	; TIME
 	jsr	time_update
 
-@stop_opcode:
-	ldy	#0	; modified opcode
+	; player weapon
+	lda	TICK_IDX
+	bne	:+
+	lda	G_PLAYER_THING
+	sta	TICK_IDX
+	bra	@skip_thing
+:
+	cmp	G_PLAYER_THING
+	bne	@skip_thing
 
+	stz	TICK_IDX
+	ldy	#0
+	jmp	@do_animation
+
+@skip_thing:
 	; next
 	inc	TICK_IDX
 	bmi	:+
 	jmp	@thing_loop
 :
-	; run weapon animation
-	lda	#$60	; RTS
-	sta	@stop_opcode
-	sty	TICK_IDX
-	jmp	@do_animation
+	rts
 
 @remove_thing:
 	; check if weapon
@@ -1950,7 +2088,7 @@ thing_tick:
 	bne	@loop_del_lnk
 
 	; skip states
-	bra	@skip_thing
+	bra	@done_thing
 
 @slide_try_0:
 	; modify momentnum using wall angle
@@ -4833,7 +4971,6 @@ check_thing:
 ;;;
 
 projectile_death:
-
 	; restore
 	ldy	TICK_IDX
 
@@ -4857,12 +4994,6 @@ projectile_death:
 	lda	THTYPE_STRUCT_ALT_RADIUS,x
 	sta	THMOVE_ALT_RADIUS
 
-	; damage
-	lda	THTYPE_STRUCT_HEALTH_L,x
-	sta	ARG_THING_DAMAGE_L
-	lda	THTYPE_STRUCT_HEALTH_H,x
-	sta	ARG_THING_DAMAGE_H
-
 	; new animation
 	lda	THTYPE_ANIM_DEATH_L,x
 	pha	; <next frame LO>
@@ -4875,7 +5006,7 @@ projectile_death:
 
 	; unflag + noclip
 	lda	THING_STRUCT_EFLAGS,y
-	and	#~THING_EFLAG_PROJECTILE & $FF
+	and	#<~THING_EFLAG_PROJECTILE
 	ora	#THING_EFLAG_NOCLIP
 	sta	THING_STRUCT_EFLAGS,y
 
@@ -4894,6 +5025,10 @@ projectile_death:
 
 	; damage hit thing
 	phy
+	lda	THING_STRUCT_HEALTH_L,y
+	sta	ARG_THING_DAMAGE_L
+	lda	THING_STRUCT_HEALTH_H,y
+	sta	ARG_THING_DAMAGE_H
 	ldx	THING_STRUCT_TH_ORIGIN,y
 	lda	THING_STRUCT_ANGLE,y
 	ldy	THMOVE_HIT_THING

@@ -10,6 +10,7 @@
 #define TCMD_GO_DOWN	0x01
 
 #define THING_IFLAG_NOJUMP	0x01
+#define THING_IFLAG_GOTHIT	0x02
 #define THING_IFLAG_USED	0x20
 #define THING_IFLAG_JUMPED	0x40
 #define THING_IFLAG_HEIGHTCHECK	0x80
@@ -69,6 +70,7 @@ typedef struct
 	uint8_t view_height;
 	uint8_t atk_height;
 	uint8_t alt_radius;
+	uint8_t pain_chance;
 	//
 	uint8_t jump_pwr;
 } __attribute((packed)) thing_type_t;
