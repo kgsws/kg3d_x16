@@ -205,10 +205,11 @@ entry:
 	;;;;
 	;; setup sprites
 
-	; ADDR0 = 0x01FFFF, decrement = 1
+	; ADDR0 = 0x01FFDF, decrement = 1
 	stz	VERA_CTRL
-	lda	#$FF
+	lda	#$DF
 	sta	VERA_ADDRx_L
+	lda	#$FF
 	sta	VERA_ADDRx_M
 	lda	#%00011001
 	sta	VERA_ADDRx_H

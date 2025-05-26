@@ -582,9 +582,8 @@ render_view:
 	lda	#BANK_WSPR_INFO
 	sta	REG_RAM_BANK
 
-	; ADDR0 = 0x1FF28, increment = 1
-	lda	#$28
-	sta	VERA_ADDRx_L
+	; ADDR0 = 0x1FF00, increment = 1
+	stz	VERA_ADDRx_L
 	lda	#$FF
 	sta	VERA_ADDRx_M
 	lda	#%00010001

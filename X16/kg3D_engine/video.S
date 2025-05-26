@@ -254,19 +254,19 @@ video_palette:
 ;;;
 
 video_swap:
-	; ADDR1 = 0x01FFA0, increment = 8
+	; ADDR1 = 0x01FF80, increment = 8
 	lda	#$01
 	sta	VERA_CTRL
-	lda	#$A0
+	lda	#$80
 	sta	VERA_ADDRx_L
 	lda	#$FF
 	sta	VERA_ADDRx_M
 	lda	#%01000001
 	sta	VERA_ADDRx_H
 
-	; ADDR0 = 0x01FFC1, increment = 8
+	; ADDR0 = 0x01FFA1, increment = 8
 	stz	VERA_CTRL
-	lda	#$C1
+	lda	#$A1
 	sta	VERA_ADDRx_L
 	lda	#$FF
 	sta	VERA_ADDRx_M
