@@ -3587,7 +3587,8 @@ thing_check_position:
 	jmp	@skip_checks
 
 @do_checks:
-	; dist = (d0.x * wall->dist.x + d0.y * wall->dist.y) >> 8
+	;;; get left side
+	;; dist = (d0.x * wall->dist.x + d0.y * wall->dist.y) >> 8
 
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
@@ -3627,21 +3628,25 @@ thing_check_position:
 	lda	VERA_DATA0
 
 	; if(dist < 0)
-	bpl	:+++
+	bpl	@do_right
 
-	; if(dist >= -255)
-	beq	:++
+	; if(-dist < poscheck.radius)
+	ina
+	bne	:+
+
+	; invert distance
+	txa
+	bne	:++
 :
 	jmp	@skip_checks
 :
-	; invert distance
-	txa
-	beq	:--
 	eor	#$FF
 	ina
 	jmp	@check_vtx
-:
-	; dist = (d1.y * wall->dist.y + d1.x * wall->dist.x) >> 8
+
+@do_right:
+	;;; get right side
+	;; dist = (d1.y * wall->dist.y + d1.x * wall->dist.x) >> 8
 
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
