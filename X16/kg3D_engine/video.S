@@ -13,14 +13,12 @@
 .export video_palette
 .export video_set_scale
 .export video_swap
-.export video_lowcrl
 .export video_setup_imgline
 .export video_image_from_file
 .export video_data_from_file
 .export video_draw_vline
 .export video_draw_tline
 .export video_draw_hline
-.export video_draw_hline_low
 .export video_draw_sline
 .export video_copy_normal
 .export video_copy_remap
@@ -254,19 +252,19 @@ video_palette:
 ;;;
 
 video_swap:
-	; ADDR1 = 0x01FF80, increment = 8
+	; ADDR1 = 0x01FFD0, increment = 8
 	lda	#$01
 	sta	VERA_CTRL
-	lda	#$80
+	lda	#$D0
 	sta	VERA_ADDRx_L
 	lda	#$FF
 	sta	VERA_ADDRx_M
 	lda	#%01000001
 	sta	VERA_ADDRx_H
 
-	; ADDR0 = 0x01FFA1, increment = 8
+	; ADDR0 = 0x01FFE1, increment = 8
 	stz	VERA_CTRL
-	lda	#$A1
+	lda	#$E1
 	sta	VERA_ADDRx_L
 	lda	#$FF
 	sta	VERA_ADDRx_M
@@ -288,20 +286,14 @@ video_swap:
 	lda	#$84
 	sta	VERA_DATA0
 	sta	VERA_DATA0
-	sta	VERA_DATA0
-	sta	VERA_DATA0
 
 	lda	#$83
-	sta	VERA_DATA0
-	sta	VERA_DATA0
 	sta	VERA_DATA0
 	sta	VERA_DATA0
 
 	lda	#$01
 	sta	VERA_DATA1
-	sta	VERA_DATA1
 	lda	#$81
-	sta	VERA_DATA1
 	sta	VERA_DATA1
 
 	rts
@@ -309,71 +301,14 @@ video_swap:
 	lda	#$81
 	sta	VERA_DATA0
 	sta	VERA_DATA0
-	sta	VERA_DATA0
-	sta	VERA_DATA0
 
 	lda	#$80
 	sta	VERA_DATA0
 	sta	VERA_DATA0
-	sta	VERA_DATA0
-	sta	VERA_DATA0
 
-	stz	VERA_DATA1
 	stz	VERA_DATA1
 	lda	#$80
 	sta	VERA_DATA1
-	sta	VERA_DATA1
-
-	rts
-
-;;;
-; clear every odd column in both framebuffers
-;;;
-
-video_lowcrl:
-	; dcsel = 0, addrsel = 0
-	stz	VERA_CTRL
-
-	; ADDR0 = 0x0000??, increment = 2
-	lda	#%00100000
-	sta	VERA_ADDRx_H
-	stz	VERA_ADDRx_M
-
-	; clear blocks
-	ldy	#5
-@loop:
-	; ADDR0 = 0x????01
-	lda	#$01
-	sta	VERA_ADDRx_L
-
-	; clear columns
-	ldx	#0
-@loop_col:
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	dex
-	bne	@loop_col
-
-	clc
-	lda	VERA_ADDRx_M
-	adc	#02
-	sta	VERA_ADDRx_M
-
-	dey
-	bne	@loop
 
 	rts
 
@@ -614,25 +549,6 @@ video_draw_tline:
 ; VIDEO_DRAW_X is X on screen
 ; VIDEO_DRAW_Y is off by one
 ; uses X and Y
-
-video_draw_hline_low:
-	; increment = 2
-	lda	#%00100000
-	sta	VERA_ADDRx_H
-
-	; X start and stop
-	lda	VIDEO_DRAW_XX
-	lsr
-	clc
-	adc	#(TAB_PLJUMP_L-TAB_PHJUMP_L)
-	pha
-	lda	VIDEO_DRAW_X
-	lsr
-	clc
-	adc	#(TAB_PLJUMP_L-TAB_PHJUMP_L)
-	pha
-
-	bra	hline_code
 
 video_draw_hline:
 	; increment = 1

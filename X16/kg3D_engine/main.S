@@ -196,9 +196,7 @@ load_render:
 	; init rendering
 	jsr	render_init
 
-	; set detail level
-	lda	#0
-	jmp	render_set_detail
+	rts
 
 copy_code:
 	lda	#>LDR_CODE_DEST

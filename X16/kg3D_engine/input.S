@@ -121,19 +121,6 @@ ex_input_process:
 	sta	INPUT_WEAPON_SLOT
 	bra	@skip_keys
 :
-	; check F5 release
-	cmp	#$F4
-	bne	:+
-
-	; toggle details
-	lda	#$04
-	sta	VERA_CTRL
-	stz	VERA_FX_CTRL
-	lda	#$FF
-	jsr	render_set_detail
-	jsr	math_setup_vera
-	bra	@skip_keys
-:
 	; check keyboard
 	asl
 	beq	@skip_keys

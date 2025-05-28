@@ -12,7 +12,6 @@
 
 .export render_init
 .export render_view
-.export render_set_detail
 
 ;;;
 ; NOTES
@@ -73,84 +72,6 @@ render_init:
 	stz	G_WPN_NOW_OFFS_L
 	stz	G_WPN_NOW_OFFS_H
 	stz	G_WPN_AVG
-
-	rts
-
-;;;
-; set rendering detail mode
-;;;
-; Z flag: 0 = hight, pos = low, neg = toggle
-
-render_set_detail:
-	bpl	:+
-
-	; get current mode
-	lda	detcode_wall_vline
-	and	#$01
-	beq	:+
-	pha
-	jsr	video_lowcrl
-	pla
-:
-	bne	:+
-
-	; texturing
-	lda	#$EA	; NOP opcode
-	sta	opcode_texture_map
-
-	; walls
-	lda	#$A9	; LDA opcode
-	sta	detcode_wall_vline
-
-	; masked
-	lda	#$A9	; LDA opcode
-	sta	detcode_masked_vline
-
-	; sprites
-	lda	#$A9	; LDA opcode
-	sta	detcode_sprite_vline
-
-	; sky planes
-	lda	#$A9	; LDA opcode
-	sta	detcode_sky_line
-
-	; planes
-	lda	#<video_draw_hline
-	sta	detcode_hline+1
-	lda	#>video_draw_hline
-	sta	detcode_hline+2
-	lda	#$80	; BRA opcode
-	sta	detcode_hscale
-
-	rts
-:
-	; texturing
-	lda	#$E8	; INX opcode
-	sta	opcode_texture_map
-
-	; walls
-	lda	#$80	; BRA opcode
-	sta	detcode_wall_vline
-
-	; masked
-	lda	#$B0	; BCS opcode
-	sta	detcode_masked_vline
-
-	; sprites
-	lda	#$B0	; BCS opcode
-	sta	detcode_sprite_vline
-
-	; sky planes
-	lda	#$80	; BRA opcode
-	sta	detcode_sky_line
-
-	; planes
-	lda	#<video_draw_hline_low
-	sta	detcode_hline+1
-	lda	#>video_draw_hline_low
-	sta	detcode_hline+2
-	lda	#$A9	; LDA opcode
-	sta	detcode_hscale
 
 	rts
 
@@ -582,8 +503,9 @@ render_view:
 	lda	#BANK_WSPR_INFO
 	sta	REG_RAM_BANK
 
-	; ADDR0 = 0x1FF00, increment = 1
-	stz	VERA_ADDRx_L
+	; ADDR0 = 0x01FF50, increment = 1
+	lda	#$50
+	sta	VERA_ADDRx_L
 	lda	#$FF
 	sta	VERA_ADDRx_M
 	lda	#%00010001
@@ -1387,26 +1309,6 @@ draw_span:
 	lda	#$06
 	sta	VERA_CTRL
 
-detcode_hscale:
-	bra	:+
-
-	; X
-	lda	PLANE_DRAW_XS_L
-	asl
-	sta	PLANE_DRAW_XS_L
-	lda	PLANE_DRAW_XS_H
-	rol
-	sta	PLANE_DRAW_XS_H
-
-	; X
-	lda	PLANE_DRAW_YS_L
-	asl
-	sta	PLANE_DRAW_YS_L
-	lda	PLANE_DRAW_YS_H
-	rol
-	sta	PLANE_DRAW_YS_H
-:
-
 	; set affine X step
 	lda	PLANE_DRAW_XS_L
 	asl
@@ -1456,8 +1358,7 @@ detcode_hscale:
 	stz	VERA_FX_X_POS_H
 
 	; draw span
-detcode_hline:
-	jsr	video_draw_hline	; modified address
+	jsr	video_draw_hline
 
 	ldy	PLANE_TEMP
 	rts
@@ -1502,10 +1403,6 @@ sky_plane_loop:
 
 	; increment doubled X
 	inc	VIDEO_DRAW_X
-
-	; skip odd column
-detcode_sky_line:
-	bra	:+	; modified opcode
 
 	; draw
 	jsr	video_draw_sline
@@ -3923,10 +3820,6 @@ wall_affine_opcode_A:
 wall_vline_opcode_A:
 	jsr	video_draw_vline	; modified address
 
-	; skip odd column
-detcode_wall_vline:
-	bra	wall_skip_draw	; modified opcode
-
 	; next column
 	inc	VIDEO_DRAW_X
 
@@ -5153,15 +5046,10 @@ sprite_loop_col:
 	lsr
 	tay
 
-	; skip odd column
-detcode_sprite_vline:
-	bcs	:+	; modified opcode
-
 	; load top clip
 	lda	(HI_PTR_L),y
 	sta	SPRITE_CLIP_TOP
-	bpl	:++
-:
+	bpl	:+
 	jmp	sprite_skip_col
 :
 	cmp	SPRITE_CLIP_Y0
@@ -5891,15 +5779,10 @@ masked_loop_col:
 	lsr
 	tay
 
-	; skip odd column
-detcode_masked_vline:
-	bcs	:+	; modified opcode
-
 	; top clip
 	lda	(WALL_PTR_L),y
 	sta	MASKED_CLIP_TOP
-	bpl	:++
-:
+	bpl	:+
 	jmp	@skip_col
 :
 	; bot clip
@@ -7092,10 +6975,6 @@ loop_texture_map_x:
 	; get result (>> 8)
 	lda	VERA_DATA0
 	sta	RENDER_TEXTURE_X,x
-
-	; skip odd column
-opcode_texture_map:
-	inx
 
 	; next
 	inx

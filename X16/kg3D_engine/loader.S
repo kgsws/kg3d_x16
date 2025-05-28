@@ -205,9 +205,9 @@ entry:
 	;;;;
 	;; setup sprites
 
-	; ADDR0 = 0x01FFDF, decrement = 1
+	; ADDR0 = 0x01FFFF, decrement = 1
 	stz	VERA_CTRL
-	lda	#$DF
+	lda	#$FF
 	sta	VERA_ADDRx_L
 	lda	#$FF
 	sta	VERA_ADDRx_M
@@ -215,7 +215,7 @@ entry:
 	sta	VERA_ADDRx_H
 
 	; setup sprites
-	ldy	#96
+	ldy	#48
 @loop_spr:
 	lda	sprite_data-1,y
 	sta	VERA_DATA0
@@ -992,29 +992,14 @@ sprite_data:
 	.word	128
 	.word	0
 	.word	$F00C
-	;
-	.word	$8200
-	.word	129
-	.word	0
-	.word	$F00C
 	;;;
 	.word	$8280
 	.word	128
 	.word	64
 	.word	$F00C
-	;
-	.word	$8280
-	.word	129
-	.word	64
-	.word	$F00C
 	;;;
 	.word	$8100
 	.word	64
-	.word	0
-	.word	$F00C
-	;
-	.word	$8100
-	.word	65
 	.word	0
 	.word	$F00C
 	;;;
@@ -1022,29 +1007,14 @@ sprite_data:
 	.word	64
 	.word	64
 	.word	$F00C
-	;
-	.word	$8180
-	.word	65
-	.word	64
-	.word	$F00C
 	;;;
 	.word	$8000
 	.word	0
 	.word	0
 	.word	$F00C
-	;
-	.word	$8000
-	.word	1
-	.word	0
-	.word	$F00C
 	;;;
 	.word	$8080
 	.word	0
-	.word	64
-	.word	$F00C
-	;
-	.word	$8080
-	.word	1
 	.word	64
 	.word	$F00C
 
