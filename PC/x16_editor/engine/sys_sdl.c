@@ -235,10 +235,10 @@ int system_init(int argc, void **argv)
 	if(!sdl_context)
 		return 1;
 
+	SDL_GL_SetSwapInterval(1);
+
 	if(glewInit() != GLEW_OK)
 		return 1;
-
-	SDL_GL_SetSwapInterval(1);
 
 	glViewport(0, 0, screen_width, screen_height);
 	glShadeModel(GL_SMOOTH);

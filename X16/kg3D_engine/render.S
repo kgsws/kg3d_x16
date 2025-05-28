@@ -6916,6 +6916,15 @@ generate_texture_map:
 	; mark as 'generated'
 	sta	WALL_HAVE_TEX_X
 
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; ld.y
+	lda	WALL_LD_Y_L
+	sta	VERA_FX_CACHE_L
+	lda	WALL_LD_Y_H
+	sta	VERA_FX_CACHE_M
+
 	; loop start
 	lda	WALL_X1
 	asl
@@ -6934,38 +6943,15 @@ loop_texture_map_x:
 	and	#$07
 	ora	#>TAB_TAN_L
 	sta	HI_PTR_H
+	ora	#>TAB_TAN_H
+	sta	IH_PTR_H
 
-	; toffs = (-1 * ld.x + ld.y * tab_tan[ang]) >> 8
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; -1
-	lda	#$FF
-	sta	VERA_FX_CACHE_L
-	sta	VERA_FX_CACHE_M
-
-	; ld.x
-	lda	WALL_LD_X_L
-	sta	VERA_FX_CACHE_H
-	lda	WALL_LD_X_H
-	sta	VERA_FX_CACHE_U
-
-	; accumulate
-	lda	VERA_FX_ACCUM
-
-	; ld.y
-	lda	WALL_LD_Y_L
-	sta	VERA_FX_CACHE_L
-	lda	WALL_LD_Y_H
-	sta	VERA_FX_CACHE_M
+	; toffs = (ld.x >> 8) - ((ld.y * tab_tan[ang]) >> 8)
 
 	; tab_tan[ang]
 	lda	(HI_PTR_L),y
 	sta	VERA_FX_CACHE_H
-	lda	#>TAB_TAN_H
-	tsb	HI_PTR_H
-	lda	(HI_PTR_L),y
+	lda	(IH_PTR_L),y
 	sta	VERA_FX_CACHE_U
 
 	; save result
@@ -6973,7 +6959,9 @@ loop_texture_map_x:
 	stz	VERA_DATA0
 
 	; get result (>> 8)
+	sec
 	lda	VERA_DATA0
+	sbc	WALL_LD_X_H
 	sta	RENDER_TEXTURE_X,x
 
 	; next

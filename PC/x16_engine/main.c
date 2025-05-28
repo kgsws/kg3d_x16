@@ -1480,7 +1480,8 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		uint8_t xoffs;
 
 		ang = (lca + x2angle[x0]) & 2047;
-		xoffs = (-1 * ld->x + ld->y * tab_tan[ang]) >> 8;
+		// xoffs = (-1 * ld->x + ld->y * tab_tan[ang]) >> 8;
+		xoffs = ((ld->y * tab_tan[ang]) >> 8) - (ld->x >> 8);
 
 		tmap_coord[x0] = xoffs;
 	}
@@ -3912,6 +3913,8 @@ int main(int argc, void **argv)
 
 	sdl_win = SDL_CreateWindow("TEST", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL);
 	sdl_context = SDL_GL_CreateContext(sdl_win);
+
+	SDL_GL_SetSwapInterval(1);
 
 	glViewport(0, 0, WIDTH, HEIGHT);
 	glShadeModel(GL_SMOOTH);

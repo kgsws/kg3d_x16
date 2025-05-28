@@ -1056,7 +1056,8 @@ static void dr_wall(kge_sector_t *sec, kge_line_t *line, vertex_t *ld, uint32_t 
 		uint8_t xoffs;
 
 		ang = (projection.lca + x2angle[x0]) & 2047;
-		xoffs = (-1 * ld->x + ld->y * tab_tan[ang]) >> 8;
+		// xoffs = (-1 * ld->x + ld->y * tab_tan[ang]) >> 8;
+		xoffs = ((ld->y * tab_tan[ang]) >> 8) - (ld->x >> 8);
 
 		tmap_coord[x0] = xoffs;
 	}
