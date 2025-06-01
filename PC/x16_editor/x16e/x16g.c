@@ -185,6 +185,7 @@ enum
 {
 	CBOR_FONT_DATA,
 	CBOR_FONT_SPACE,
+	CBOR_FONT_YO,
 	//
 	NUM_CBOR_FONT
 };
@@ -217,6 +218,7 @@ typedef struct hud_element_s
 	uint32_t shader;
 	void (*import)(uint8_t*);
 	void *(*texgen)(const struct hud_element_s *);
+	void *(*pregen)(const struct hud_element_s *);
 } hud_element_t;
 
 typedef union
@@ -348,7 +350,8 @@ typedef struct
 typedef struct
 {
 	uint8_t data[32];
-	int8_t space;
+	uint8_t space;
+	int8_t yoffs;
 } font_char_t;
 
 typedef struct
@@ -437,6 +440,7 @@ uint32_t x16_num_skies;
 editor_sky_t editor_sky[MAX_X16_SKIES];
 
 static uint_fast8_t hud_display;
+static uint8_t hud_demo_text[48] = "Click HERE to set text ...";
 
 static font_char_t font_char[FONT_CHAR_COUNT];
 static nums_char_t nums_char[NUMS_CHAR_COUNT];
@@ -642,6 +646,7 @@ static const uint16_t swpn_data_size[] =
 
 static void hud_import_font(uint8_t*);
 static void *hud_texgen_font(const hud_element_t*);
+static void *hud_pregen_font(const hud_element_t*);
 static void hud_import_nums(uint8_t*);
 static void *hud_texgen_nums(const hud_element_t*);
 
@@ -656,6 +661,7 @@ static const hud_element_t hud_element[NUM_HUD_ELM] =
 		.shader = SHADER_FRAGMENT_COLORMAP,
 		.import = hud_import_font,
 		.texgen = hud_texgen_font,
+		.pregen = hud_pregen_font
 	},
 	[HUDE_NUMS] =
 	{
@@ -1158,6 +1164,12 @@ static edit_cbor_obj_t cbor_font[] =
 		.name = "space",
 		.nlen = 5,
 		.type = EDIT_CBOR_TYPE_U8,
+	},
+	[CBOR_FONT_YO] =
+	{
+		.name = "y",
+		.nlen = 1,
+		.type = EDIT_CBOR_TYPE_S8,
 	},
 	// terminator
 	[NUM_CBOR_FONT] = {}
@@ -2058,7 +2070,8 @@ static int32_t cbor_gfx_font(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 
 	cbor_font[CBOR_FONT_DATA].ptr = fc->data;
 	cbor_font[CBOR_FONT_DATA].extra = 8 * 8 / 2;
-	cbor_font[CBOR_FONT_SPACE].u8 = (uint8_t*)&fc->space;
+	cbor_font[CBOR_FONT_SPACE].u8 = &fc->space;
+	cbor_font[CBOR_FONT_YO].s8 = &fc->yoffs;
 
 	ctx->entry_cb = cbor_gfx_font_entry;
 
@@ -5164,6 +5177,64 @@ static void *hud_texgen_font(const hud_element_t *elm)
 	return data;
 }
 
+static void *hud_pregen_font(const hud_element_t *elm)
+{
+	uint8_t *txt = hud_demo_text;
+	uint32_t xx = 0;
+	font_char_t *fc;
+	uint8_t *data;
+
+	data = calloc(160, 16);
+	if(!data)
+		return NULL;
+
+	while(1)
+	{
+		uint8_t in = *txt++;
+		uint8_t *dst, *src;
+
+		if(!in)
+			break;
+
+		in -= 0x20;
+
+		if(in >= FONT_CHAR_COUNT)
+			continue;
+
+		fc = font_char + in;
+		if(fc->yoffs + 4 < 0)
+			continue;
+		if(fc->yoffs + 8 > 16)
+			continue;
+
+		src = fc->data;
+		dst = data + xx + 160 * (4 + fc->yoffs);
+		xx += fc->space;
+
+		if(xx > 160)
+			break;
+
+		for(uint32_t y = 0; y < 8; y++)
+		{
+			for(uint32_t x = 0; x < 4; x++)
+			{
+				uint8_t ni = *src++;
+
+				if(!*dst)
+					*dst = ni & 15;
+				dst++;
+
+				if(!*dst)
+					*dst = ni >> 4;
+				dst++;
+			}
+			dst += 160 - 8;
+		}
+	}
+
+	return data;
+}
+
 static void *hud_texgen_nums(const hud_element_t *elm)
 {
 	uint8_t *data;
@@ -5213,6 +5284,7 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 	uint8_t text[32];
 
 	ui_gfx_hud_texture.base.disabled = 1;
+	ui_gfx_hud_demo.base.disabled = 1;
 
 	data = elm->texgen(elm);
 	if(data)
@@ -5243,6 +5315,28 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 			*cmap++ = i + hud_display * 16;
 
 		x16g_update_texture(X16G_GLTEX_COLORMAPS);
+	}
+
+	if(elm->pregen)
+	{
+		data = elm->pregen(elm);
+		if(data)
+		{
+			// update texture
+			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE_ALT;
+			gi->width = 160;
+			gi->height = 16;
+			gi->format = GL_LUMINANCE;
+			gi->data = data;
+			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE_ALT);
+
+			ui_gfx_hud_demo.base.width = gi->width * elm->scale;
+			ui_gfx_hud_demo.base.height = gi->height * elm->scale;
+			ui_gfx_hud_demo.base.disabled = 0;
+			ui_gfx_hud_demo.shader = elm->shader;
+
+			free(data);
+		}
 	}
 
 	return hud_element[idx->now].name;
@@ -7695,6 +7789,26 @@ int32_t uin_gfx_sky_delete(glui_element_t *elm, int32_t x, int32_t y)
 //
 // input: hud
 
+static uint8_t font_import_pixel(uint8_t in, font_char_t *fc)
+{
+	if(in < 16)
+		return in;
+
+	if(in <= 64)
+	{
+		fc->space = in - 16;
+		return 0;
+	}
+
+	if(in <= 96)
+	{
+		fc->yoffs = (int32_t)in - 80;
+		return 0;
+	}
+
+	return 0;
+}
+
 static void hud_import_font(uint8_t *file)
 {
 	image_t *img;
@@ -7721,35 +7835,20 @@ static void hud_import_font(uint8_t *file)
 		font_char_t *fc = font_char + i;
 		uint8_t *dst = fc->data;
 
-		fc->space = -9;
+		fc->space = 9;
 
 		for(uint32_t x = 0; x < 64; x += 2)
 		{
 			uint8_t in, out;
 
-			in = *src++;
-			if(in >= 16)
-			{
-				in = 0;
-				if(fc->space < 0)
-					fc->space = (x & 7) + (in - 16);
-			}
+			in = font_import_pixel(*src++, fc);
 			out = in;
 
-			in = *src++;
-			if(in >= 16)
-			{
-				in = 0;
-				if(fc->space < 0)
-					fc->space = (x & 7) + (in - 15);
-			}
+			in = font_import_pixel(*src++, fc);
 			out |= in << 4;
 
 			*dst++ = out;
 		}
-
-		if(fc->space < 0)
-			fc->space = -fc->space;
 	}
 
 	free(img);
@@ -7824,6 +7923,16 @@ static void fs_hud(uint8_t *file)
 	hud_element[gfx_idx[GFX_MODE_HUD].now].import(file);
 }
 
+static void te_hud_text(uint8_t *text)
+{
+	if(!text)
+		return;
+
+	strcpy(hud_demo_text, text);
+
+	update_gfx_mode(0);
+}
+
 int32_t uin_gfx_hud_import(glui_element_t *elm, int32_t x, int32_t y)
 {
 	edit_ui_file_select("Select PNG to load HUD element from.", X16_DIR_DATA PATH_SPLIT_STR, ".png", fs_hud);
@@ -7835,6 +7944,12 @@ int32_t uin_gfx_hud_color(glui_element_t *elm, int32_t x, int32_t y)
 {
 	hud_display = (hud_display + 1) & 15;
 	update_gfx_mode(0);
+	return 1;
+}
+
+int32_t uin_gfx_hud_demo(glui_element_t *elm, int32_t x, int32_t y)
+{
+	edit_ui_textentry("Enter some text.", sizeof(hud_demo_text), te_hud_text);
 	return 1;
 }
 
@@ -9075,7 +9190,8 @@ const uint8_t *x16g_save(const uint8_t *file)
 		font_char_t *fc = font_char + i;
 
 		cbor_font[CBOR_FONT_DATA].ptr = fc->data;
-		cbor_font[CBOR_FONT_SPACE].u8 = (uint8_t*)&fc->space;
+		cbor_font[CBOR_FONT_SPACE].u8 = &fc->space;
+		cbor_font[CBOR_FONT_YO].s8 = &fc->yoffs;
 
 		edit_cbor_export(cbor_font, NUM_CBOR_FONT, &gen);
 	}

@@ -1660,9 +1660,18 @@
 							{
 								"name": "ui_gfx_hud_texture",
 								"x": 512,
-								"y": 384,
-								"align": "center center",
+								"y": 192,
+								"align": "center",
 								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
+								"shader": "palette"
+							},
+							{
+								"name": "ui_gfx_hud_demo",
+								"click": "uin_gfx_hud_demo",
+								"x": 512,
+								"y": 512,
+								"align": "center",
+								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE_ALT]",
 								"shader": "palette"
 							}
 						]

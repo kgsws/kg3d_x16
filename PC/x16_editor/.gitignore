@@ -1,5 +1,6 @@
 *.o
 *.png
+*.xcf
 *.copy
 kgedit
 shader_text.inc
