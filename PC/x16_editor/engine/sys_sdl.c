@@ -26,7 +26,6 @@ static uint32_t first_tick;
 uint32_t screen_width;
 uint32_t screen_height;
 float screen_aspect;
-float screen_scale[2];
 
 uint32_t gametick;
 uint_fast8_t system_was_busy;
@@ -211,17 +210,7 @@ int system_init(int argc, void **argv)
 	// VIDEO
 	screen_width = HAX_VIDEO_WIDTH;
 	screen_height = HAX_VIDEO_HEIGHT;
-	screen_aspect = (float)screen_width / (float)screen_height;
-
-	if(screen_aspect > 0)
-	{
-		screen_scale[0] = (1.0f / screen_aspect) * (float)screen_width;
-		screen_scale[1] = (float)screen_height;
-	} else
-	{
-		screen_scale[0] = (float)screen_width;
-		screen_scale[1] = (float)screen_height * screen_aspect;
-	}
+	screen_aspect = (float)screen_height / (float)screen_width;
 
 	if(SDL_Init(SDL_INIT_EVERYTHING) != 0)
 		return 1;

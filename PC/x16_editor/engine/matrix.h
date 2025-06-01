@@ -11,7 +11,7 @@ extern const matrix3d_t mat_identity;
 
 //
 
-void matrix_perspective(matrix3d_t *mat, float fovy, float aspect, float zNear, float zFar);
+void matrix_perspective(matrix3d_t *mat, float fov, float aspect, float zNear, float zFar);
 void martix_ortho(matrix3d_t *mat, float left, float right, float bottom, float top, float nearVal, float farVal);
 
 void matrix_identity(matrix3d_t *mat);

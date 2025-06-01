@@ -72,19 +72,19 @@ static matrix3d_t mat_rotate_z =
 //
 //
 
-void matrix_perspective(matrix3d_t *mat, float fovy, float aspect, float zNear, float zFar)
+void matrix_perspective(matrix3d_t *mat, float fov, float aspect, float zNear, float zFar)
 {
 	float f, z;
 
 	for(uint32_t i = 0; i < 16; i++)
 		mat->raw[i] = 0.0f;
 
-	f = fovy * 0.5f;
+	f = fov * 0.5f;
 	f = cosf(f) / sinf(f);
 	z = zNear - zFar;
 
-	mat->val[0][0] = f / aspect;
-	mat->val[1][1] = f;
+	mat->val[0][0] = f;
+	mat->val[1][1] = f / aspect;
 	mat->val[2][2] = (zFar + zNear) / z;
 	mat->val[3][2] = (zFar * zNear * 2.0f) / z;
 	mat->val[2][3] = -1.0f;
