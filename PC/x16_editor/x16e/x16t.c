@@ -1000,6 +1000,7 @@ void x16t_update_thing_view(uint32_t force_show_state)
 
 	ui_thing_state_preview.base.disabled = 1;
 	ui_thing_state_origin.base.disabled = 1;
+	ui_thing_state_bbox.base.disabled = 1;
 
 	if(force_show_state)
 	{
@@ -1175,6 +1176,7 @@ u8:
 				uint32_t scale = 3;
 
 				ui_thing_state_origin.base.disabled = hide_origin;
+				ui_thing_state_bbox.base.disabled = hide_origin;
 
 				glBindTexture(GL_TEXTURE_2D, x16_thing_texture[0]);
 
@@ -1184,6 +1186,7 @@ u8:
 					{
 						ui_thing_state_preview.base.disabled = 0;
 						ui_thing_state_origin.base.disabled = 1;
+						ui_thing_state_bbox.base.disabled = 1;
 
 						ui_thing_state_preview.base.x = ui_thing_state_origin.base.x;
 						ui_thing_state_preview.base.y = ui_thing_state_origin.base.y;
@@ -1200,22 +1203,30 @@ u8:
 				{
 					if(!x16g_generate_state_texture(idx, frm, show_angle | 0x80000000))
 					{
+						float fcale;
+
 						ui_thing_state_preview.base.disabled = 0;
 						ui_thing_state_origin.base.disabled = 0;
+						ui_thing_state_bbox.base.disabled = 0;
 
 						if(x16g_state_res[1] > 128)
 							scale = 2;
 
 						ui_thing_state_preview.base.x = ui_thing_state_origin.base.x - x16g_state_offs[0] * scale;
-						ui_thing_state_preview.base.y = ui_thing_state_origin.base.y - x16g_state_offs[1] * scale;
+						ui_thing_state_preview.base.y = ui_thing_state_origin.elements[0]->base.y + ui_thing_state_origin.base.y - x16g_state_offs[1] * scale;
 
 						ui_thing_state_preview.base.width = x16g_state_res[0] * scale;
 						ui_thing_state_preview.base.height = x16g_state_res[1] * scale;
 
+						ui_thing_state_bbox.base.x = ui_thing_state_origin.base.x;
+
 						if(scale == 3)
 						{
 							if(!(x16g_state_res[0] & 1))
+							{
+								ui_thing_state_bbox.base.x--;
 								ui_thing_state_preview.base.x--;
+							}
 							ui_thing_state_preview.base.y += 2;
 						} else
 							ui_thing_state_preview.base.y++;
@@ -1224,6 +1235,11 @@ u8:
 						ui_thing_state_preview.coord.s[1] = (float)x16g_state_res[0] / (float)x16g_state_res[2];
 						ui_thing_state_preview.coord.t[0] = 0.0f;
 						ui_thing_state_preview.coord.t[1] = 1.0f;
+
+						fcale = 256.0f / ((float)ti->info.scale * 2.0f + 64.0f);
+
+						ui_thing_state_bbox.base.width = 2 + (ti->info.radius * scale) * fcale;
+						ui_thing_state_bbox.base.height = 2 + ((ti->info.height * scale) / 2) * fcale;
 					}
 				}
 			}

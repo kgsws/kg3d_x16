@@ -491,6 +491,8 @@ static const uint8_t tm_256x16[] =
 #include "tm_256x16.h"
 };
 
+static const uint8_t spr_rot_flip[] = {4, 7, 6, 5, 0, 3, 2, 1};
+
 static const uint8_t *update_gfx_palette(ui_idx_t *idx);
 static int32_t input_gfx_palette(glui_element_t*,uint32_t);
 static int32_t input_gfx_weapons(glui_element_t*,uint32_t);
@@ -6865,6 +6867,107 @@ int32_t uin_gfx_sprite_offs_y(glui_element_t *elm, int32_t x, int32_t y)
 		va->sw.oy++;
 
 	update_gfx_mode(0);
+
+	return 1;
+}
+
+int32_t uin_gfx_sprite_angles(glui_element_t *elm, int32_t x, int32_t y)
+{
+	variant_list_t *sp;
+	uint32_t frm;
+	uint32_t mask = 0;
+	uint8_t name[4];
+
+	if(!gfx_idx[GFX_MODE_SPRITES].max)
+		return 1;
+
+	sp = x16_sprite + gfx_idx[GFX_MODE_SPRITES].now;
+	if(!sp->max)
+		return 1;
+
+	frm = sp->variant[sp->now].spr.frm;
+
+	for(uint32_t i = 0; i < sp->max; i++)
+	{
+		variant_info_t *va = sp->variant + i;
+
+		if(va->spr.frm != frm)
+			continue;
+
+		mask |= 1 << va->spr.rot;
+	}
+
+	if(!mask)
+		return 1;
+
+	switch(mask & 0b10000010)
+	{
+		case 0b10000010:
+			edit_status_printf("Rotations 1 and 7 already exist.");
+			mask |= 256;
+		break;
+		case 0b00000000:
+			edit_status_printf("No rotations 1 or 7 exist.");
+			mask |= 256;
+		break;
+	}
+
+	switch(mask & 0b01000100)
+	{
+		case 0b01000100:
+			edit_status_printf("Rotations 2 and 6 already exist.");
+			mask |= 256;
+		break;
+		case 0b00000000:
+			edit_status_printf("No rotations 2 or 6 exist.");
+			mask |= 256;
+		break;
+	}
+
+	switch(mask & 0b00101000)
+	{
+		case 0b00101000:
+			edit_status_printf("Rotations 3 and 5 already exist.");
+			mask |= 256;
+		break;
+		case 0b00000000:
+			edit_status_printf("No rotations 3 or 5 exist.");
+			mask |= 256;
+		break;
+	}
+
+	if(mask > 255)
+		return 1;
+
+	mask &= 0b11101110;
+	name[0] = 'A' + frm;
+	name[2] = 0;
+
+	for(uint32_t i = 0; i < sp->max; i++)
+	{
+		variant_info_t *va = sp->variant + i;
+		variant_info_t *vd;
+
+		if(va->spr.frm != frm)
+			continue;
+
+		if(!(mask & (1 << va->spr.rot)))
+			continue;
+
+		if(sp->max >= MAX_X16_VARIANTS)
+		{
+			edit_status_printf("Too many variants!");
+			return 1;
+		}
+
+		name[1] = '0' + spr_rot_flip[va->spr.rot];
+		vlist_var_new(name, x16_sprite, gfx_idx + GFX_MODE_SPRITES);
+
+		vd = sp->variant + sp->now;
+		vd->sw = va->sw;
+
+		uin_gfx_sprite_mirror(NULL, 0, 0);
+	}
 
 	return 1;
 }

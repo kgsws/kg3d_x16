@@ -31,7 +31,8 @@
 			"btn_back_u": [48, 48, 48],
 			"btn_text_s": [192, 192, 192],
 			"btn_text_u": [64, 64, 64],
-			"fs_border": [0, 192, 192]
+			"fs_border": [0, 192, 192],
+			"state_bbox": [0, 255, 0]
 		},
 		"fonts":
 		[
@@ -1256,6 +1257,31 @@
 								"text": true
 							},
 							{
+								"name": "ui_gfx_sprite_display",
+								"click": "uin_gfx_sprite_display",
+								"x": 408,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": true,
+								"color": ["bright", "white"]
+							},
+							{
+								"click": "uin_gfx_sprite_angles",
+								"x": 616,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
+								"background": ["btnbg", "gray"],
+								"text": "Auto-mirror angles",
+								"font": "medium",
+								"color": ["bright", "white"],
+								"text align": "center center"
+							},
+							{
 								"click": "uin_gfx_sprite_mirror",
 								"x": 824,
 								"y": 192,
@@ -1293,18 +1319,6 @@
 								"color": ["bright", "white"],
 								"text align": "center center",
 								"text": true
-							},
-							{
-								"name": "ui_gfx_sprite_display",
-								"click": "uin_gfx_sprite_display",
-								"x": 512,
-								"y": 192,
-								"width": 192,
-								"height": 32,
-								"align": "center",
-								"background": ["btnbg", "gray"],
-								"text": true,
-								"color": ["bright", "white"]
 							}
 						]
 					},
@@ -1861,20 +1875,28 @@
 								"shader": "palette"
 							},
 							{
+								"name": "ui_thing_state_bbox",
+								"priority": 1,
+								"x": 400,
+								"y": 461,
+								"align": "bot center",
+								"border": {"color": "state_bbox", "size": 1}
+							},
+							{
 								"name": "ui_thing_state_origin",
 								"priority": 1,
 								"x": 400,
-								"y": 460,
+								"y": 100,
 								"width": 1,
-								"height": 256,
-								"align": "center center",
+								"height": 512,
+								"align": "top center",
 								"background": "white",
 								"elements":
 								[
 									{
-										"x": -128,
-										"y": 128,
-										"width": 256,
+										"x": -256,
+										"y": 360,
+										"width": 512,
 										"height": 1,
 										"background": "white"
 									}
