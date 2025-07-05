@@ -163,6 +163,7 @@ static uint32_t set_attr;
 
 static uint8_t *num_ptru8;
 static uint32_t num_limit;
+static uint8_t num_empty;
 
 static glui_text_t *text_attribute;
 static glui_text_t *text_flag;
@@ -587,6 +588,9 @@ static int32_t cbor_cb_state(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 			sa++;
 		}
 
+		if(load_state.next & 0x80)
+			load_state.next &= 0x87;
+
 		load_state.frame &= 0b10011111;
 
 		*st = load_state;
@@ -668,7 +672,6 @@ static int32_t cbor_cb_attrs(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 
 static int32_t cbor_cb_anims(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
 {
-	const thing_edit_anim_t *anim_tab;
 	const thing_edit_anim_t *anim;
 
 	if(	type != KGCBOR_TYPE_ARRAY &&
@@ -676,22 +679,20 @@ static int32_t cbor_cb_anims(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 	)
 		return 1;
 
-	anim_tab = THING_CHECK_WEAPON_SPRITE(NUM_THING_ANIMS, cbor_main_index) ? weapon_anim : thing_anim;
-	anim = anim_tab;
-
-	while(anim->name)
+	cbor_entry_index = NUM_THING_ANIMS;
+	anim = THING_CHECK_WEAPON_SPRITE(NUM_THING_ANIMS, cbor_main_index) ? weapon_anim : thing_anim;
+	for(uint32_t i = 0; i < NUM_THING_ANIMS; i++, anim++)
 	{
 		if(	anim->nlen == ctx->key_len &&
 			!memcmp(key, anim->name, anim->nlen)
-		)
+		){
+			cbor_entry_index = i;
 			break;
-		anim++;
+		}
 	}
 
-	if(!anim->name)
+	if(cbor_entry_index >= NUM_THING_ANIMS)
 		return 1;
-
-	cbor_entry_index = anim - anim_tab;
 
 	if(type == KGCBOR_TYPE_STRING)
 	{
@@ -1300,6 +1301,9 @@ u8:
 		txt++;
 
 		// next
+		if(st->next & 0x80)
+			sprintf(text, "%s", anim_name_tab[st->next & 7].name);
+		else
 		if(st->next >= ta->count)
 			strcpy(text, "\t");
 		else
@@ -1505,7 +1509,7 @@ static void te_set_u8(uint8_t *text)
 
 	if(!text[0])
 	{
-		*num_ptru8 = 255;
+		*num_ptru8 = num_empty;
 		x16t_update_thing_view(0);
 		return;
 	}
@@ -1866,7 +1870,7 @@ int32_t uin_thing_state_ins(glui_element_t *elm, int32_t x, int32_t y)
 	for(uint32_t i = 0; i < ta->count; i++)
 	{
 		ts = ta->state + i;
-		if(ts->next > show_state && ts->next != 255)
+		if(ts->next > show_state && ts->next < MAX_STATES_IN_ANIMATION)
 			ts->next++;
 	}
 
@@ -1900,12 +1904,12 @@ int32_t uin_thing_state_del(glui_element_t *elm, int32_t x, int32_t y)
 	for(uint32_t i = 0; i < ta->count; i++)
 	{
 		thing_st_t *ts = ta->state + i;
-		if(ts->next != 255)
+		if(ts->next < MAX_STATES_IN_ANIMATION)
 		{
 			if(ts->next > show_state)
 				ts->next--;
 			if(ts->next >= ta->count && i < ta->count - 1)
-				ts->next = 255;
+				ts->next = MAX_STATES_IN_ANIMATION;
 		}
 	}
 
@@ -1932,6 +1936,37 @@ int32_t uin_thing_state_origin(glui_element_t *elm, int32_t x, int32_t y)
 
 //
 // input for state table
+
+static void te_set_nextstate(uint8_t *text)
+{
+	const thing_edit_anim_t *anim;
+	uint32_t i;
+
+	if(!text)
+		return;
+
+	if(text[0] != '@')
+	{
+		te_set_u8(text);
+		return;
+	}
+
+	anim = THING_CHECK_WEAPON_SPRITE(NUM_THING_ANIMS, show_thing) ? weapon_anim : thing_anim;
+	for(i = 0; i < NUM_THING_ANIMS; i++, anim++)
+	{
+		if(!strcmp(text + 1, anim->name))
+			break;
+	}
+
+	if(i >= NUM_THING_ANIMS)
+	{
+		edit_status_printf("Invalid animation!");
+		return;
+	}
+
+	*num_ptru8 = 0x80 | i;
+	x16t_update_thing_view(0);
+}
 
 static void te_arg_us8(uint8_t *text)
 {
@@ -2082,6 +2117,7 @@ static int32_t uin_state_ticks(glui_element_t *elm, int32_t x, int32_t y)
 
 	si = select_state(elm->base.custom);
 
+	num_empty = 0;
 	num_limit = 256;
 	num_ptru8 = &ti->anim[show_anim].state[si].ticks;
 	edit_ui_textentry("Enter new ticks (0 to 255).", 8, te_set_u8);
@@ -2097,13 +2133,14 @@ static int32_t uin_state_next(glui_element_t *elm, int32_t x, int32_t y)
 
 	si = select_state(elm->base.custom);
 
+	num_empty = MAX_STATES_IN_ANIMATION;
 	num_limit = ti->anim[show_anim].count;
 	num_ptru8 = &ti->anim[show_anim].state[si].next;
 
 	if(num_limit)
 	{
-		sprintf(text, "Enter new next state (max %u) or leave empty.", num_limit - 1);
-		edit_ui_textentry(text, 8, te_set_u8);
+		sprintf(text, "Enter next state (max %u) or @anim or leave empty.", num_limit - 1);
+		edit_ui_textentry(text, 16, te_set_nextstate);
 	}
 
 	return 1;
@@ -2771,6 +2808,7 @@ void x16t_export()
 	uint8_t crouch_height = thing_info[THING_TYPE_PLAYER_C].info.height;
 	uint8_t swim_height = thing_info[THING_TYPE_PLAYER_S].info.height;
 	uint8_t fly_height = thing_info[THING_TYPE_PLAYER_F].info.height;
+	uint8_t st_next[MAX_X16_STATES];
 
 	if(thing_info[THING_TYPE_PLAYER_N].anim[ANIM_SPAWN].count == 0)
 	{
@@ -2868,19 +2906,28 @@ void x16t_export()
 				st = ta->state + k;
 				dst = state_data + state_idx;
 
-				if(st->next < ta->count)
-					next = base_state + st->next;
-				else
-					next = 0;
-
 				frame = st->frame;
 
 				sprite = x16g_spritelink_by_hash(st->sprite);
 				if(sprite < 0)
 					sprite = 0xFF;
 
-				dst->next = (next << 3) | ((next >> 5) & 0x07);
-				dst->frm_nxt = ((next >> 3) & 0x60) | frame;
+				st_next[state_idx] = st->next;
+				if(st->next & 0x80)
+				{
+					dst->next = i;
+					dst->frm_nxt = frame;
+				} else
+				{
+					if(st->next < ta->count)
+						next = base_state + st->next;
+					else
+						next = 0;
+
+					dst->next = (next << 3) | ((next >> 5) & 0x07);
+					dst->frm_nxt = ((next >> 3) & 0x60) | frame;
+				}
+
 				dst->sprite = sprite;
 				dst->ticks = st->ticks;
 				dst->action = st->action;
@@ -2911,6 +2958,27 @@ void x16t_export()
 
 		for(uint32_t j = 0; j < sizeof(export_type_t); j++)
 			tdst[j * 256] = tsrc[j];
+	}
+
+	// fix st->next animations
+	for(uint32_t i = 0; i < state_idx; i++)
+	{
+		uint8_t in = st_next[i];
+
+		if(in & 0x80)
+		{
+			export_state_t *dst = state_data + i;
+			thing_anim_t *ta;
+			uint32_t next;
+
+			in &= 7;
+
+			ta = thing_info[dst->next].anim + in;
+			next = ta->index;
+
+			dst->next = (next << 3) | ((next >> 5) & 0x07);
+			dst->frm_nxt |= ((next >> 3) & 0x60);
+		}
 	}
 
 	// fix animation links

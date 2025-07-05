@@ -2643,7 +2643,7 @@
 				"disabled": true,
 				"x": 512,
 				"y": 384,
-				"width": 384,
+				"width": 448,
 				"height": 88,
 				"align": "center center",
 				"background": "back",
@@ -2652,7 +2652,7 @@
 				[
 					{
 						"name": "ui_textentry_title",
-						"x": 192,
+						"x": 224,
 						"y": 5,
 						"text": true,
 						"color": "white"
@@ -2660,7 +2660,7 @@
 					{
 						"x": 0,
 						"y": 32,
-						"width": 384,
+						"width": 448,
 						"height": 24,
 						"color": "black",
 						"background": "white",
@@ -2675,7 +2675,7 @@
 					},
 					{
 						"click": "uin_textentry_ok",
-						"x": 96,
+						"x": 128,
 						"y": 60,
 						"width": 128,
 						"height": 24,
@@ -2688,7 +2688,7 @@
 					},
 					{
 						"click": "uin_textentry_ko",
-						"x": 288,
+						"x": 320,
 						"y": 60,
 						"width": 128,
 						"height": 24,
