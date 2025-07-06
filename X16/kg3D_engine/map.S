@@ -193,8 +193,12 @@ ex_precache:
 	sta	REG_RAM_BANK
 
 	; get thing sprite count
-	lda	$A000
+	lda	$A000 + THSTATE_STRUCT_ARG0
 	sta	TAB_THG_SPRLNK
+
+	; get logo sprite
+	lda	$A000 + THSTATE_STRUCT_ARG1
+	sta	TAB_MENU_LOGO
 
 	; reset memory
 	lda	#$08
@@ -226,11 +230,24 @@ ex_precache:
 	bne	@loop_rclr
 
 	; thing load stack pointer
+	; (to prevent sprite load recursion)
 	tsx
 	dex
 	dex
 	stx	MAP_TEMP_STACK
 
+	; check logo sprite
+	ldx	TAB_MENU_LOGO
+	bmi	:+
+
+	; name is already set
+	jsr	load_sprite_wpn
+
+	; apply remap
+	ldx	TAB_MENU_LOGO
+	lda	TAB_SPRITE_REMAP,x
+	sta	TAB_MENU_LOGO
+:
 	; precache base things
 	lda	#THING_WEAPON_FIRST
 	sta	MAP_TEMP_TH_TYPE
@@ -885,6 +902,7 @@ ex_map_load:
 	jsr	thing_clear
 
 	; thing load stack pointer
+	; (to prevent sprite load recursion)
 	tsx
 	dex
 	dex
@@ -1903,9 +1921,10 @@ load_sprite:
 	; check type
 	plx
 	cpx	TAB_THG_SPRLNK
-	bcc	@do_thing
+	bcc	load_sprite_thg
 
 	;; WEAPON SPRITE
+load_sprite_wpn:
 
 	; mark as loaded
 	lda	MAP_TEMP_WPN_IDX
@@ -1942,8 +1961,8 @@ load_sprite:
 
 	rts
 
-@do_thing:
 	;; THING SPRITE
+load_sprite_thg:
 
 	; mark as loaded
 	lda	MAP_TEMP_SPR_IDX
@@ -2707,7 +2726,7 @@ type_sky:
 	.byte	"SKY"
 
 file_name:
-	.byte	"DATA/HASHHASH.666"
+	.byte	"DATA/F8845BD5.WPS"
 file_name_end:
 
 ;;; TESTING ONLY

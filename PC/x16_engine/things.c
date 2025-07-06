@@ -53,6 +53,7 @@ uint8_t sprite_remap[128];
 thing_state_t *const thing_state = (thing_state_t*)(thing_data + 8192);
 
 uint32_t num_sprlnk_thg;
+uint32_t logo_spr_idx;
 
 // thing ZERO is not valid
 thing_t things[128];
@@ -646,9 +647,10 @@ uint32_t thing_init(const char *file)
 	if(load_file(file, thing_data, sizeof(thing_data)) != sizeof(thing_data))
 		return 1;
 
-	// sprite count
-	num_sprlnk_thg = thing_state->raw[0];
-
+	// extra info
+	num_sprlnk_thg = thing_state->arg[0];
+	logo_spr_idx = thing_state->arg[1];
+printf("%u %u\n", num_sprlnk_thg, logo_spr_idx);
 	// load thing types
 	for(uint32_t i = 0; i < 128; i++)
 	{

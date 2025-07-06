@@ -8,6 +8,7 @@
 .include "engine.inc"
 .include "tables.inc"
 .include "render.inc"
+.include "menu.inc"
 
 .export input_init
 .export input_clear
@@ -62,13 +63,16 @@ input_clear:
 ;;;
 
 input_init:
-	lda	REG_RAM_BANK
-	pha
+	; clear menu
+	stz	TAB_MENU_ACTIVE
+
+	; extra code bank
 	lda	#BANK_EXTRA_CODE
 	sta	REG_RAM_BANK
+
+	; actual init
 	jsr	ex_input_init
-	pla
-	sta	REG_RAM_BANK
+
 	rts
 
 ;;;
@@ -112,6 +116,12 @@ ex_input_process:
 	jsr	k_extapi
 	beq	@loop_stop
 
+	; check ESC
+	cmp	#$EE
+	bne	:+
+	jsr	menu_esc
+	bra	@skip_keys
+:
 	; check weapon slots
 	cmp	#$82
 	bcc	:+
@@ -170,6 +180,16 @@ ex_input_process:
 	;;;;;;;;;;;;;;;;;;;;;;;;
 	; generate tick command
 
+	; check menu flag
+	lda	TAB_MENU_ACTIVE
+	beq	:+
+
+	; empty ticcmd
+	stz	TICK_CMD_BITS_L
+	stz	TICK_CMD_BITS_H
+
+	rts
+:
 	;; mouse X
 	lda	INPUT_MOUSE_TMP_X
 	beq	@skip_mouse_x

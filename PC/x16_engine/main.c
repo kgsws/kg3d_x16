@@ -3853,6 +3853,11 @@ static uint32_t precache()
 
 	memset(sprite_remap, 0xFF, sizeof(sprite_remap));
 
+	if(	!(logo_spr_idx & 0x80) &&
+		load_wspr("DATA/F8845BD5.WPS")
+	)
+		return 1;
+
 	for(uint32_t i = THING_WEAPON_FIRST; i < 128; i++)
 	{
 		if(load_thing_sprites(i, 0))

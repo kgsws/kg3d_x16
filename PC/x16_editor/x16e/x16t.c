@@ -105,18 +105,14 @@ typedef struct
 	void (*func)(uint8_t*);
 } arg_parse_t;
 
-typedef union
+typedef struct
 {
-	uint8_t raw[8];
-	struct
-	{
-		uint8_t action;
-		uint8_t next;
-		uint8_t frm_nxt;
-		uint8_t sprite;
-		uint8_t ticks;
-		uint8_t arg[3];
-	};
+	uint8_t action;
+	uint8_t next;
+	uint8_t frm_nxt;
+	uint8_t sprite;
+	uint8_t ticks;
+	uint8_t arg[3];
 } export_state_t;
 
 typedef struct
@@ -2838,6 +2834,9 @@ void x16t_export()
 
 	state_idx = 1; // state 0 is 'STOP'
 
+	// store extra info into dummy state zero
+	state_data->arg[1] = 0xFF;
+
 	memset(thing_data, 0, sizeof(thing_data));
 
 	// sprite names
@@ -2845,6 +2844,12 @@ void x16t_export()
 	{
 		uint8_t *tdst = thing_data + i + 128 + 24 * 256; // 24 = offset for sprite names, stored in 'thing animation info' area; 0xB880
 		uint32_t hash = editor_sprlink[i].hash;
+
+		if(	i >= x16_num_sprlnk_thg &&
+			hash == 0xF8845BD5
+		)
+			// logo sprite
+			state_data->arg[1] = i;
 
 		*tdst = hash;
 		tdst += 256;
@@ -3009,7 +3014,7 @@ void x16t_export()
 	}
 
 	// store extra info into dummy state zero
-	state_data->raw[0] = x16_num_sprlnk_thg;
+	state_data->arg[0] = x16_num_sprlnk_thg;
 
 	// save
 	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES4.BIN", thing_data, sizeof(thing_data));

@@ -63,11 +63,12 @@ start:
 	; load map
 	jsr	map_load
 
+	; renderer code
+	jsr	load_render
+
 	;;;;
 	;; GAME LOOP
 	;;;;
-
-	jsr	load_render
 
 @game_loop:
 	jsr	render_view

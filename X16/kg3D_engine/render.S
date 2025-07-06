@@ -12,6 +12,7 @@
 
 .export render_init
 .export render_view
+.export render_wspr_draw
 
 ;;;
 ; NOTES
@@ -447,6 +448,13 @@ render_view:
 :
 	;;; WEAPON
 
+	; menu check
+	lda	TAB_MENU_ACTIVE
+	beq	:+
+
+	; menu logo active
+	rts
+:
 	; weapon check
 	lda	#$FF
 	sta	TMP_REND_WPN_IDX
@@ -454,7 +462,7 @@ render_view:
 	; if(camera_thing == player_thing)
 	lda	G_PLAYER_THING
 	cmp	G_CAMERA_THING
-	bne	@wspr_no_gfx
+	bne	wspr_no_gfx
 
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
@@ -464,30 +472,33 @@ render_view:
 	lda	THING_STRUCT_SPRITE
 	sta	TMP_REND_WPN_IDX
 
+render_wspr_draw:
 	; check sprite
 	lda	TMP_REND_WPN_IDX
-	bmi	@wspr_no_gfx
+	bmi	wspr_no_gfx
 
 	jsr	update_weapon_gfx
 
-@wspr_no_gfx:
+wspr_no_gfx:
 	; prepare sprite update
 	inc	TMP_PTR_L
 	inc	TMP_PTR_L
 	ldx	#15
 
-	; ADDR0 = 0x1FF2E, increment = 8
-	lda	#$2E
+	; check if empty
+	lda	TMP_REND_WPN_IDX
+	bpl	:+
+
+	; ADDR0 = 0x01FF56, increment = 8
+	lda	#$56
 	sta	VERA_ADDRx_L
 	lda	#$FF
 	sta	VERA_ADDRx_M
 	lda	#%01000001
 	sta	VERA_ADDRx_H
 
-	; check if empty
-	lda	TMP_REND_WPN_IDX
-	bmi	@loop_wspr_inv
-
+	bra	@loop_wspr_inv
+:
 	; XY swing
 	jsr	update_weapon_swing
 	ldx	#15
@@ -555,7 +566,9 @@ render_view:
 	; next
 	dex
 	bne	@loop_wspr_prt
-	bra	@wspr_done
+
+	; done
+	rts
 
 @do_wspr_inv:
 	; dummy
@@ -574,7 +587,6 @@ render_view:
 	stz	VERA_DATA0
 	dex
 	bne	@loop_wspr_inv
-@wspr_done:
 
 	; done
 	rts

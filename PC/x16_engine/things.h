@@ -111,18 +111,14 @@ typedef struct
 	uint16_t next_state;
 } thing_t;
 
-typedef union
+typedef struct
 {
-	uint8_t raw[8];
-	struct
-	{
-		uint8_t action;
-		uint8_t next;
-		uint8_t frm_nxt;
-		uint8_t sprite;
-		uint8_t ticks;
-		uint8_t arg[3];
-	};
+	uint8_t action;
+	uint8_t next;
+	uint8_t frm_nxt;
+	uint8_t sprite;
+	uint8_t ticks;
+	uint8_t arg[3];
 } thing_state_t;
 
 typedef struct
@@ -148,6 +144,7 @@ extern uint32_t sprite_hash[128];
 extern uint8_t sprite_remap[128];
 extern thing_state_t *const thing_state;
 extern uint32_t num_sprlnk_thg;
+extern uint32_t logo_spr_idx;
 
 extern thing_t things[128];
 extern uint8_t thingsec[128][16]; // list of sectors which specific thing is in, slot 0 is main sector
