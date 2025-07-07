@@ -499,8 +499,13 @@ wspr_no_gfx:
 
 	bra	@loop_wspr_inv
 :
+	; menu check
+	lda	TAB_MENU_ACTIVE
+	bne	:+
+
 	; XY swing
 	jsr	update_weapon_swing
+:
 	ldx	#15
 
 	; dcsel = 2, addrsel = 0

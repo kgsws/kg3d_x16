@@ -116,10 +116,18 @@ ex_input_process:
 	jsr	k_extapi
 	beq	@loop_stop
 
+	; check in-menu
+	ldy	TAB_MENU_ACTIVE
+	beq	:+
+
+	; pass to menu system
+	jsr	menu_input
+	bra	@skip_keys
+:
 	; check ESC
 	cmp	#$EE
 	bne	:+
-	jsr	menu_esc
+	jsr	menu_toggle
 	bra	@skip_keys
 :
 	; check weapon slots
