@@ -473,6 +473,9 @@ sector_t map_sectors[256];
 sector_extra_t map_secext[256];
 uint8_t map_data[32 * 1024];
 
+// font stuff
+static uint8_t font_info[512];
+
 // texture stuff
 static uint8_t vram[128 * 1024];
 static uint8_t vram_4bpp;
@@ -2985,6 +2988,9 @@ static uint32_t load_tables()
 		printf("Unable to load TABLES2.BIN!\n");
 		return 1;
 	}
+
+	// font info
+	read(fd, font_info, sizeof(font_info));
 
 	// HUD
 	read(fd, vram + 62 * 256, 2 * 256);

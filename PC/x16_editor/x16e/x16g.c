@@ -186,6 +186,7 @@ enum
 	CBOR_FONT_DATA,
 	CBOR_FONT_SPACE,
 	CBOR_FONT_YO,
+	CBOR_FONT_XO,
 	//
 	NUM_CBOR_FONT
 };
@@ -352,6 +353,7 @@ typedef struct
 	uint8_t data[32];
 	uint8_t space;
 	int8_t yoffs;
+	int8_t xoffs;
 } font_char_t;
 
 typedef struct
@@ -1166,6 +1168,12 @@ static edit_cbor_obj_t cbor_font[] =
 		.name = "space",
 		.nlen = 5,
 		.type = EDIT_CBOR_TYPE_U8,
+	},
+	[CBOR_FONT_XO] =
+	{
+		.name = "x",
+		.nlen = 1,
+		.type = EDIT_CBOR_TYPE_S8,
 	},
 	[CBOR_FONT_YO] =
 	{
@@ -2073,6 +2081,7 @@ static int32_t cbor_gfx_font(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 	cbor_font[CBOR_FONT_DATA].ptr = fc->data;
 	cbor_font[CBOR_FONT_DATA].extra = 8 * 8 / 2;
 	cbor_font[CBOR_FONT_SPACE].u8 = &fc->space;
+	cbor_font[CBOR_FONT_XO].s8 = &fc->xoffs;
 	cbor_font[CBOR_FONT_YO].s8 = &fc->yoffs;
 
 	ctx->entry_cb = cbor_gfx_font_entry;
@@ -5164,8 +5173,8 @@ static void *hud_texgen_font(const hud_element_t *elm)
 				for(uint32_t xx = 0; xx < 4; xx++)
 				{
 					uint8_t in = *ss++;
-					*dd++ = in & 15;
 					*dd++ = in >> 4;
+					*dd++ = in & 15;
 				}
 				dd += 8 * 16 - 8;
 			}
@@ -5182,11 +5191,12 @@ static void *hud_texgen_font(const hud_element_t *elm)
 static void *hud_pregen_font(const hud_element_t *elm)
 {
 	uint8_t *txt = hud_demo_text;
-	uint32_t xx = 0;
+	int32_t xx = 2;
+	int32_t yy = 4;
 	font_char_t *fc;
 	uint8_t *data;
 
-	data = calloc(160, 16);
+	data = calloc(160, 32);
 	if(!data)
 		return NULL;
 
@@ -5195,8 +5205,16 @@ static void *hud_pregen_font(const hud_element_t *elm)
 		uint8_t in = *txt++;
 		uint8_t *dst, *src;
 
-		if(!in)
+		if(in == 1)
 			break;
+
+		if(!in)
+		{
+			txt = "Next Line ...\x01";
+			xx = 2;
+			yy += font_char[0].yoffs;
+			continue;
+		}
 
 		in -= 0x20;
 
@@ -5204,13 +5222,23 @@ static void *hud_pregen_font(const hud_element_t *elm)
 			continue;
 
 		fc = font_char + in;
-		if(fc->yoffs + 4 < 0)
+		if(!in)
+		{
+			xx += fc->space;
 			continue;
-		if(fc->yoffs + 8 > 16)
+		}
+
+		if(fc->yoffs + yy < 0)
+			continue;
+		if(fc->yoffs + yy + 8 > 32)
+			continue;
+		if(fc->xoffs + xx < 0)
+			continue;
+		if(fc->xoffs + xx + 8 > 160)
 			continue;
 
 		src = fc->data;
-		dst = data + xx + 160 * (4 + fc->yoffs);
+		dst = data + (xx + fc->xoffs) + 160 * (yy + fc->yoffs);
 		xx += fc->space;
 
 		if(xx > 160)
@@ -5223,11 +5251,11 @@ static void *hud_pregen_font(const hud_element_t *elm)
 				uint8_t ni = *src++;
 
 				if(!*dst)
-					*dst = ni & 15;
+					*dst = ni >> 4;
 				dst++;
 
 				if(!*dst)
-					*dst = ni >> 4;
+					*dst = ni & 15;
 				dst++;
 			}
 			dst += 160 - 8;
@@ -5262,8 +5290,8 @@ static void *hud_texgen_nums(const hud_element_t *elm)
 				for(uint32_t xx = 0; xx < 4; xx++)
 				{
 					uint8_t in = *ss++;
-					*dd++ = in & 15;
 					*dd++ = in >> 4;
+					*dd++ = in & 15;
 				}
 				dd += 7 * 8;
 			}
@@ -5327,7 +5355,7 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 			// update texture
 			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE_ALT;
 			gi->width = 160;
-			gi->height = 16;
+			gi->height = 32;
 			gi->format = GL_LUMINANCE;
 			gi->data = data;
 			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE_ALT);
@@ -7909,6 +7937,12 @@ static uint8_t font_import_pixel(uint8_t in, font_char_t *fc)
 		return 0;
 	}
 
+	if(in <= 128)
+	{
+		fc->xoffs = (int32_t)in - 112;
+		return 0;
+	}
+
 	return 0;
 }
 
@@ -7933,22 +7967,27 @@ static void hud_import_font(uint8_t *file)
 
 	src = img->data;
 
+	font_char[0].yoffs = 9;
+
 	for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
 	{
 		font_char_t *fc = font_char + i;
 		uint8_t *dst = fc->data;
 
 		fc->space = 9;
+		fc->xoffs = 0;
+		if(i)
+			fc->yoffs = 0;
 
 		for(uint32_t x = 0; x < 64; x += 2)
 		{
 			uint8_t in, out;
 
 			in = font_import_pixel(*src++, fc);
-			out = in;
+			out = in << 4;
 
 			in = font_import_pixel(*src++, fc);
-			out |= in << 4;
+			out |= in;
 
 			*dst++ = out;
 		}
@@ -7998,7 +8037,7 @@ static void hud_import_nums(uint8_t *file)
 				if(nc->space < 0)
 					nc->space = (x & 7) + (in - 16);
 			}
-			out = in;
+			out = in << 4;
 
 			in = *src++;
 			if(in >= 16)
@@ -8007,7 +8046,7 @@ static void hud_import_nums(uint8_t *file)
 				if(nc->space < 0)
 					nc->space = (x & 7) + (in - 15);
 			}
-			out |= in << 4;
+			out |= in;
 
 			*dst++ = out;
 		}
@@ -8507,6 +8546,23 @@ void x16g_export()
 	{
 		uint32_t i;
 		uint8_t ttmp[256];
+
+		memset(ttmp + FONT_CHAR_COUNT, 0, sizeof(ttmp) - FONT_CHAR_COUNT);
+
+		// font space
+		for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
+			ttmp[i] = font_char[i].space;
+		for(uint32_t i = 0; i < NUMS_CHAR_COUNT; i++)
+			ttmp[i + 128] = nums_char[i].space;
+		write(fd, ttmp, sizeof(ttmp));
+
+		// font offsets
+		for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
+		{
+			ttmp[i] = font_char[i].yoffs;
+			ttmp[i + 128] = font_char[i].xoffs;
+		}
+		write(fd, ttmp, sizeof(ttmp));
 
 		// HUD
 		for(i = 0; i < NUMS_CHAR_COUNT; i++)
@@ -9294,6 +9350,7 @@ const uint8_t *x16g_save(const uint8_t *file)
 
 		cbor_font[CBOR_FONT_DATA].ptr = fc->data;
 		cbor_font[CBOR_FONT_SPACE].u8 = &fc->space;
+		cbor_font[CBOR_FONT_XO].s8 = &fc->xoffs;
 		cbor_font[CBOR_FONT_YO].s8 = &fc->yoffs;
 
 		edit_cbor_export(cbor_font, NUM_CBOR_FONT, &gen);
