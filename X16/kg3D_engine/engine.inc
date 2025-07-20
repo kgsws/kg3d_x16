@@ -83,6 +83,18 @@ ARG_HITSCAN_HALF_PITCH = ARG_THING_CHECK_ONFLOOR
 ARG_HITSCAN_TYPE = ARG_THING_SPAWN_TYPE
 
 ;;;
+; function variables for 'text'
+;;;
+
+ARG_TEXT_PTR_L = $02
+ARG_TEXT_PTR_H = $03
+ARG_TEXT_X = $04
+ARG_TEXT_Y = $05
+ARG_TEXT_C = $06
+
+RET_TEXT_LEN = $0F
+
+;;;
 ; texture info structure
 ;;;
 ; there are 128 texture slots

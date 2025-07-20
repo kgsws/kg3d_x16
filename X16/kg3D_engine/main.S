@@ -7,6 +7,7 @@
 .include "engine.inc"
 .include "math.inc"
 .include "map.inc"
+.include "menu.inc"
 .include "video.inc"
 .include "render.inc"
 .include "things.inc"
@@ -31,6 +32,7 @@ start:
 	; init
 	jsr	map_init
 	jsr	input_init
+	jsr	menu_init	; after input init (BANK_EXTRA_CODE)
 	jsr	video_init
 
 	; set video mode

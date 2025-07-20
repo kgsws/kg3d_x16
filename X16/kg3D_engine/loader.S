@@ -344,15 +344,32 @@ entry:
 	stz	VERA_CTRL
 
 	;;;;
-	;; rearange video tables
+	;; rearrange video tables
 
-	; ADDR0 = 0x01D800, increment = 1
+	; ADDR0 = 0x01D600, increment = 1
 	stz	VERA_CTRL
 	stz	VERA_ADDRx_L
-	lda	#$D8
+	lda	#$D6
 	sta	VERA_ADDRx_M
 	lda	#%00010001
 	sta	VERA_ADDRx_H
+
+	; extra code bank
+	lda	#BANK_EXTRA_CODE
+	sta	REG_RAM_BANK
+
+	; copy from VRAM
+	ldx	#0
+@loop_font0:
+	lda	VERA_DATA0
+	sta	TAB_FONT_SPACE,x
+	inx
+	bne	@loop_font0
+@loop_font1:
+	lda	VERA_DATA0
+	sta	TAB_FONT_YOFFS,x
+	inx
+	bne	@loop_font1
 
 	; ADDR1 = 0x00??00, increment = 1
 	lda	#%00000001
@@ -520,7 +537,7 @@ load_tables:
 
 	; load from file
 	jsr	file_load_tab
-	.word	$D800
+	.word	$D600
 	.byte	FILE_DEST_VRAM1
 	bcs	error_tab
 
