@@ -97,6 +97,10 @@ set_menu_ptr:
 ;;;
 
 menu_toggle:
+	; clear current input
+	stz	INPUT_STATE_L
+	stz	INPUT_STATE_H
+
 	; invalidate weapon sprite
 	lda	#$FF
 	sta	TMP_REND_WPN_IDX
@@ -397,16 +401,31 @@ menu_update:
 	; check special
 	ldy	#STRUCT_MENU_SPECIAL
 	lda	(TMP_PTR_L),y
-	beq	:+
+	beq	@not_special
 
-	; fake extra spaces
+	; fake 7 extra spaces
 	lda	TAB_FONT_SPACE
 	asl
 	asl
-	adc	TAB_FONT_SPACE
+	asl
 	adc	MATH_TEMP
+	sec
+	sbc	TAB_FONT_SPACE
 	sta	MATH_TEMP
-:
+
+	; calculate X
+	clc
+	lda	#160
+	adc	MATH_TEMP
+	ror
+	sta	TMP_PTR_I
+
+	; draw special part
+	lda	(TMP_PTR_L),y
+	tax
+	jsr	draw_special
+
+@not_special:
 	; calculate X
 	sec
 	lda	#160
@@ -425,27 +444,8 @@ menu_update:
 	adc	#STRUCT_MENU_ITEM_TEXT
 	sta	FUNC_ARG_L
 
-	; max - top
-	ldy	#STRUCT_MENU_MAX
-	lda	(TMP_PTR_L),y
-	dey
-	sec
-	sbc	(TMP_PTR_L),y
-
-	; get draw count
-	cmp	TAB_MENU_MAX
-	bcc	:+
-	lda	TAB_MENU_MAX
-:
-	tax
-
-	; top item
-	lda	(TMP_PTR_L),y
-	asl
-	asl
-	clc
-	adc	#STRUCT_MENU_ITEM_TEXT
-	tay
+	; prepare entry list
+	jsr	prepare_draw
 
 	; item loop
 @loop_item:
@@ -525,6 +525,159 @@ get_text_ptr:
 	rts
 
 ;;;
+; prepare entry draw
+;;;
+
+prepare_draw:
+	; max - top
+	ldy	#STRUCT_MENU_MAX
+	lda	(TMP_PTR_L),y
+	dey
+	sec
+	sbc	(TMP_PTR_L),y
+
+	; get draw count
+	cmp	TAB_MENU_MAX
+	bcc	:+
+	lda	TAB_MENU_MAX
+:
+	tax
+
+	; top item
+	lda	(TMP_PTR_L),y
+	asl
+	asl
+	clc
+	adc	#STRUCT_MENU_ITEM_TEXT
+	tay
+
+	rts
+
+;;;
+; special drawing
+;;;
+
+draw_special:
+	lda	ARG_TEXT_Y
+	pha
+	jmp	(@spec_tab-2,x)
+
+@spec_tab:
+	.word	draw_keys
+
+draw_keys:
+	; key config
+	ldy	#STRUCT_MENU_TOP
+	lda	(TMP_PTR_L),y
+	tax
+	lda	keys_conf_top,x
+	sta	FUNC_ARG_L
+	lda	#>TAB_CONFIG_BASE
+	sta	FUNC_ARG_H
+
+	; prepare entry list
+	jsr	prepare_draw
+
+	; color
+	lda	#11
+	sta	ARG_TEXT_C
+
+	; base text pointer
+	lda	#>key_names_start
+	sta	ARG_TEXT_PTR_H
+
+	; item loop
+@loop_item:
+	; text pointer
+	iny
+	lda	(TMP_PTR_L),y
+	pha
+	iny
+
+	; function pointer
+	iny
+	iny
+
+	; check entry type
+	pla
+	bpl	@skip
+
+	phx
+
+	; read config
+	lda	(FUNC_ARG_L)
+	inc	FUNC_ARG_L
+	tax
+	lda	key_table,x
+
+	; check unknown
+	bne	@is_known
+
+	; generate key code
+	txa
+	and	#$0F
+	jsr	get_hex
+	sta	knam_nib_lo
+	lda	TAB_SWAP,x
+	and	#$0F
+	jsr	get_hex
+	sta	knam_nib_hi
+
+	; text pointer
+	lda	#<key_names_start
+	sta	ARG_TEXT_PTR_L
+
+	bra	@write
+
+@is_known:
+	; check type
+	bpl	@is_text
+
+	; generate character
+	and	#$7F
+	sta	knam_nib_lo
+
+	; text pointer
+	lda	#<knam_nib_lo
+	sta	ARG_TEXT_PTR_L
+
+	bra	@write
+
+@is_text:
+	; text pointer
+	sta	ARG_TEXT_PTR_L
+
+@write:
+	; X
+	jsr	text_width
+	sec
+	lda	TMP_PTR_I
+	sbc	RET_TEXT_LEN
+	sta	ARG_TEXT_X
+
+	; write
+	jsr	text_write
+
+	plx
+
+@skip:
+	; Y += font_height
+	clc
+	lda	ARG_TEXT_Y
+	adc	TAB_FONT_HEIGHT
+	sta	ARG_TEXT_Y
+
+	; next
+	dex
+	bne	@loop_item
+
+	pla
+	sta	ARG_TEXT_Y
+	rts
+
+;;;;;;;;;;;;;;;;;;;;;
+
+;;;
 ; menu strings
 ;;;
 
@@ -565,11 +718,19 @@ mtxt_ctrl_primary:
 	.asciiz	"Primary"
 mtxt_ctrl_secondary:
 	.asciiz	"Secondary"
+mtxt_ctrl_other:
+	.asciiz	"Other"
+mtxt_ctrl_use:
+	.asciiz	"Use"
 
 ;;;;
 
 mtxt_test:
 	.asciiz	"... TeSt ..."
+
+;;;;;;;;;;;;;;;;
+
+.align  256
 
 ;;;
 ; MENU: keyboard
@@ -580,9 +741,9 @@ mptr_keyboard:
 	.byte	1
 	.byte	0
 	; numitems
-	.byte	14
+	.byte	16
 	; special
-	.byte	1
+	.byte	2
 	; previous
 	.word	mptr_options
 	; title
@@ -628,6 +789,12 @@ mptr_keyboard:
 	.word	$0000	; TODO
 	; item 13
 	.word	mtxt_ctrl_secondary
+	.word	$0000	; TODO
+;;	; item 14 [S]
+	.word	mtxt_ctrl_other & $7FFF
+	.word	$0000	; TODO
+	; item 15
+	.word	mtxt_ctrl_use
 	.word	$0000	; TODO
 
 ;;;
@@ -681,3 +848,205 @@ mptr_main:
 	; item 3
 	.word	mtxt_save_game
 	.word	$0000	; TODO
+
+;;;;;;;;;;;;;;;;
+
+;;;
+; top offset of key config
+;;;
+
+keys_conf_top:
+	.byte	<TAB_CFG_KEY_FORWARD	; [S]
+	.byte	<TAB_CFG_KEY_FORWARD
+	.byte	<TAB_CFG_KEY_BACKWARD
+	.byte	<TAB_CFG_KEY_JUMP
+	.byte	<TAB_CFG_KEY_CROUCH
+	.byte	<TAB_CFG_KEY_S_LEFT	; [S]
+	.byte	<TAB_CFG_KEY_S_LEFT
+	.byte	<TAB_CFG_KEY_S_RIGHT
+	.byte	<TAB_CFG_KEY_T_LEFT	; [S]
+	.byte	<TAB_CFG_KEY_T_LEFT
+	.byte	<TAB_CFG_KEY_T_RIGHT
+	.byte	<TAB_CFG_KEY_ATK_P	; [S]
+	.byte	<TAB_CFG_KEY_ATK_P
+	.byte	<TAB_CFG_KEY_ATK_S
+	.byte	<TAB_CFG_KEY_USE	; [S]
+	.byte	<TAB_CFG_KEY_USE
+
+.align  256
+
+;;;
+; key names
+;;;
+
+key_names_start:
+	.byte	'$'
+knam_nib_hi:
+	.byte	'#'
+knam_nib_lo:
+	.byte	'#'
+knam_none:
+	.byte	0
+knam_up:
+	.asciiz	"up"
+knam_down:
+	.asciiz	"down"
+knam_left:
+	.asciiz	"left"
+knam_right:
+	.asciiz	"right"
+knam_space:
+	.asciiz	"space"
+knam_lctrl:
+	.asciiz	"Lctrl"
+knam_rctrl:
+	.asciiz	"Rctrl"
+knam_lalt:
+	.asciiz	"Lalt"
+knam_ralt:
+	.asciiz	"Ralt"
+knam_lshift:
+	.asciiz	"Lshift"
+knam_rshift:
+	.asciiz	"Rshift"
+knam_tab:
+	.asciiz	"tab"
+knam_enter:
+	.asciiz	"enter"
+knam_backspace:
+	.asciiz	"bkspc"
+knam_ins:
+	.asciiz	"ins"
+knam_del:
+	.asciiz	"del"
+knam_home:
+	.asciiz	"home"
+knam_end:
+	.asciiz	"end"
+knam_pgup:
+	.asciiz	"pgUp"
+knam_pgdn:
+	.asciiz	"pgDn"
+
+;;;
+; key name list
+;;;
+
+key_table:
+	; 0x00
+	.byte	knam_none - key_names_start
+	.byte	0
+	.byte	$80 + '1'
+	.byte	$80 + '2'
+	.byte	$80 + '3'
+	.byte	$80 + '4'
+	.byte	$80 + '5'
+	.byte	$80 + '6'
+	.byte	$80 + '7'
+	.byte	$80 + '8'
+	.byte	$80 + '9'
+	.byte	$80 + '0'
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	knam_backspace - key_names_start
+	; 0x10
+	.byte	knam_tab - key_names_start
+	.byte	$80 + 'Q'
+	.byte	$80 + 'W'
+	.byte	$80 + 'E'
+	.byte	$80 + 'R'
+	.byte	$80 + 'T'
+	.byte	$80 + 'Y'
+	.byte	$80 + 'U'
+	.byte	$80 + 'I'
+	.byte	$80 + 'O'
+	.byte	$80 + 'P'
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	$80 + 'A'
+	; 0x20
+	.byte	$80 + 'S'
+	.byte	$80 + 'D'
+	.byte	$80 + 'F'
+	.byte	$80 + 'G'
+	.byte	$80 + 'H'
+	.byte	$80 + 'J'
+	.byte	$80 + 'K'
+	.byte	$80 + 'L'
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	knam_enter - key_names_start
+	.byte	knam_lshift - key_names_start
+	.byte	0
+	.byte	$80 + 'Z'
+	.byte	$80 + 'X'
+	; 0x30
+	.byte	$80 + 'C'
+	.byte	$80 + 'V'
+	.byte	$80 + 'B'
+	.byte	$80 + 'N'
+	.byte	$80 + 'M'
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	knam_rshift - key_names_start
+	.byte	knam_lctrl - key_names_start
+	.byte	0
+	.byte	knam_lalt - key_names_start
+	.byte	knam_space - key_names_start
+	.byte	knam_ralt - key_names_start
+	.byte	0
+	; 0x40
+	.byte	knam_rctrl - key_names_start
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	knam_ins - key_names_start
+	.byte	knam_del - key_names_start
+	.byte	0
+	.byte	0
+	.byte	knam_left - key_names_start
+	; 0x50
+	.byte	knam_home - key_names_start
+	.byte	knam_end - key_names_start
+	.byte	0
+	.byte	knam_up - key_names_start
+	.byte	knam_down - key_names_start
+	.byte	knam_pgup - key_names_start
+	.byte	knam_pgdn - key_names_start
+	.byte	0
+	.byte	0
+	.byte	knam_right - key_names_start
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	; 0x60
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+key_table_end:

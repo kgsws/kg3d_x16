@@ -13,6 +13,7 @@
 .export input_init
 .export input_clear
 .export input_process
+.export input_apply_keys
 
 ; input key bits L (do not touch - used with 'move_angle' lookup)
 INBIT_FORWARD = %00000001
@@ -116,18 +117,26 @@ ex_input_process:
 	jsr	k_extapi
 	beq	@loop_stop
 
+	; check keyboard
+	ora	#0
+	beq	@skip_keys
+
 	; check in-menu
 	ldy	TAB_MENU_ACTIVE
 	beq	:+
 
 	; pass to menu system
+	phx
 	jsr	menu_input
+	plx
 	bra	@skip_keys
 :
 	; check ESC
 	cmp	#$EE
 	bne	:+
+	phx
 	jsr	menu_toggle
+	plx
 	bra	@skip_keys
 :
 	; check weapon slots
@@ -139,28 +148,24 @@ ex_input_process:
 	sta	INPUT_WEAPON_SLOT
 	bra	@skip_keys
 :
-	; check keyboard
-	asl
-	beq	@skip_keys
-
 	; check key binding
 	tay
-	bcc	:+
+	bpl	:+
+	and	#$7F
+	tay
 
 	; unset
-	lda	TAB_INPUT_BITS,y
+	lda	TAB_INPUT_BITS_L,y
 	trb	INPUT_STATE_L
-	iny
-	lda	TAB_INPUT_BITS,y
+	lda	TAB_INPUT_BITS_H,y
 	trb	INPUT_STATE_H
 
 	bra	@skip_keys
 :
 	; set
-	lda	TAB_INPUT_BITS,y
+	lda	TAB_INPUT_BITS_L,y
 	tsb	INPUT_STATE_L
-	iny
-	lda	TAB_INPUT_BITS,y
+	lda	TAB_INPUT_BITS_H,y
 	tsb	INPUT_STATE_H
 
 @skip_keys:
@@ -216,7 +221,7 @@ ex_input_process:
 	sta	VERA_FX_CACHE_M
 :
 	; sensitivity
-	lda	TAB_MOUSE_SENS_H
+	lda	TAB_CFG_MOUSE_SENS_H
 	sta	VERA_FX_CACHE_H
 	stz	VERA_FX_CACHE_U
 
@@ -294,7 +299,7 @@ ex_input_process:
 	sta	VERA_FX_CACHE_M
 :
 	; sensitivity
-	lda	TAB_MOUSE_SENS_V
+	lda	TAB_CFG_MOUSE_SENS_V
 	sta	VERA_FX_CACHE_H
 	stz	VERA_FX_CACHE_U
 
@@ -495,87 +500,84 @@ ex_input_init:
 	stz	INPUT_STATE_L
 	stz	INPUT_STATE_H
 
-	; clear all input bits
-	lda	#$00
-	ldy	#$00
-@clr_loop:
-	sta	TAB_INPUT_BITS,y
-	iny
-	bne	@clr_loop
+	; default config
+	ldx	#TAB_CONFIG_SIZE-1
+@loop_defcfg:
+	lda	default_config,x
+	sta	TAB_CONFIG_BASE,x
+	dex
+	bpl	@loop_defcfg
 
-	; mouse sensitivity
-	lda	#$90
-	sta	TAB_MOUSE_SENS_H
-	lda	#$80
-	sta	TAB_MOUSE_SENS_V
-
-	; $12 'W'
-	ldy	#$24
-	lda	#INBIT_FORWARD
-	sta	TAB_INPUT_BITS,y
-
-	; $20 'S'
-	ldy	#$40
-	lda	#INBIT_BACKWARD
-	sta	TAB_INPUT_BITS,y
-
-	; $1F 'A'
-	ldy	#$3E
-	lda	#INBIT_SLEFT
-	sta	TAB_INPUT_BITS,y
-
-	; $21 'D'
-	ldy	#$42
-	lda	#INBIT_SRIGHT
-	sta	TAB_INPUT_BITS,y
-
-	; $3D space
-	ldy	#$7A
-	lda	#INBIT_GO_UP
-	sta	TAB_INPUT_BITS,y
-
-	; $30 'C'
-	ldy	#$60
-	lda	#INBIT_GO_DOWN
-	sta	TAB_INPUT_BITS,y
-
-	; $3A lctrl
-	ldy	#$75
-	lda	#INBIT_ATTACK
-	sta	TAB_INPUT_BITS,y
-
-	; $3C lalt
-	ldy	#$79
-	lda	#INBIT_ALTACK
-	sta	TAB_INPUT_BITS,y
-
-	; $13 'E'
-	ldy	#$26
-	lda	#INBIT_USE
-	sta	TAB_INPUT_BITS,y
-
-	; $53 up
-	ldy	#$A6
-	lda	#INBIT_FORWARD
-	sta	TAB_INPUT_BITS,y
-
-	; $54 down
-	ldy	#$A8
-	lda	#INBIT_BACKWARD
-	sta	TAB_INPUT_BITS,y
-
-	; $4F left
-	ldy	#$9F
-	lda	#INBIT_TLEFT
-	sta	TAB_INPUT_BITS,y
-
-	; $59 right
-	ldy	#$B3
-	lda	#INBIT_TRIGHT
-	sta	TAB_INPUT_BITS,y
+	; apply
+	jsr	input_apply_keys
 
 	; done
 	rts
+
+;;;
+; apply keys from config
+;;;
+
+input_apply_keys:
+	; clear all input bits
+	lda	#0
+	tay
+@clr_loop:
+	sta	TAB_INPUT_BITS_L,y
+	iny
+	bne	@clr_loop
+
+	;; apply config
+
+	ldy	TAB_CFG_KEY_FORWARD
+	lda	#INBIT_FORWARD
+	sta	TAB_INPUT_BITS_L,y
+
+	ldy	TAB_CFG_KEY_BACKWARD
+	lda	#INBIT_BACKWARD
+	sta	TAB_INPUT_BITS_L,y
+
+	ldy	TAB_CFG_KEY_JUMP
+	lda	#INBIT_GO_UP
+	sta	TAB_INPUT_BITS_L,y
+
+	ldy	TAB_CFG_KEY_CROUCH
+	lda	#INBIT_GO_DOWN
+	sta	TAB_INPUT_BITS_L,y
+
+	ldy	TAB_CFG_KEY_S_LEFT
+	lda	#INBIT_SLEFT
+	sta	TAB_INPUT_BITS_L,y
+
+	ldy	TAB_CFG_KEY_S_RIGHT
+	lda	#INBIT_SRIGHT
+	sta	TAB_INPUT_BITS_L,y
+
+	ldy	TAB_CFG_KEY_T_LEFT
+	lda	#INBIT_TLEFT
+	sta	TAB_INPUT_BITS_H,y
+
+	ldy	TAB_CFG_KEY_T_RIGHT
+	lda	#INBIT_TRIGHT
+	sta	TAB_INPUT_BITS_H,y
+
+	ldy	TAB_CFG_KEY_ATK_P
+	lda	#INBIT_ATTACK
+	sta	TAB_INPUT_BITS_H,y
+
+	ldy	TAB_CFG_KEY_ATK_S
+	lda	#INBIT_ALTACK
+	sta	TAB_INPUT_BITS_H,y
+
+	ldy	TAB_CFG_KEY_USE
+	lda	#INBIT_USE
+	sta	TAB_INPUT_BITS_L,y
+
+	rts
+
+;;;;;;;;;;;;;;;;
+
+.align  256
 
 ;;;
 ; movement angles
@@ -597,5 +599,26 @@ move_angle:
 	.byte	$80
 	.byte	$00
 	.byte	$40
+	.byte	$80
+
+;;;
+; default config
+;;;
+
+default_config:
+	; keys
+	.byte	18
+	.byte	32
+	.byte	61
+	.byte	58
+	.byte	31
+	.byte	33
+	.byte	79
+	.byte	89
+	.byte	0
+	.byte	0
+	.byte	19
+	; mouse
+	.byte	$90
 	.byte	$80
 

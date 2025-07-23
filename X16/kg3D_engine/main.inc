@@ -5,3 +5,4 @@
 .import load_mapfs
 .import load_render
 .import rng_get
+.import get_hex

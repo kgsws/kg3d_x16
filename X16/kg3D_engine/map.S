@@ -2656,28 +2656,19 @@ make_hash:
 	lsr
 	lsr
 	lsr
-	jsr	@get_hex
+	jsr	get_hex
 	sta	file_name+5,y
 	iny
 
 	lda	TAB_TEMP_DATA,x
 	and	#$0F
-	jsr	@get_hex
+	jsr	get_hex
 	sta	file_name+5,y
 	iny
 
 	dex
 	bpl	@loop
 
-	rts
-
-@get_hex:
-	cmp	#$0A
-	bcs	:+
-	adc	#$30
-	rts
-:
-	adc	#$36
 	rts
 
 ;;;

@@ -20,6 +20,7 @@
 .export load_mapfs
 .export load_render
 .export rng_get
+.export get_hex
 
 .segment "CODE"
 
@@ -132,6 +133,19 @@ clear_bank:
 	dex
 	bne	@loop
 
+	rts
+
+;;;
+; get hex nibble
+;;;
+
+get_hex:
+	cmp	#$0A
+	bcs	:+
+	adc	#$30
+	rts
+:
+	adc	#$36
 	rts
 
 ;;;
