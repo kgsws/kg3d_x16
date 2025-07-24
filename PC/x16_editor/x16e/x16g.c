@@ -88,6 +88,7 @@ enum
 	CBOR_ROOT_SKIES,
 	CBOR_ROOT_FONT,
 	CBOR_ROOT_NUMS,
+	CBOR_ROOT_HUD,
 	CBOR_ROOT_FULLBRIGHT,
 	//
 	NUM_CBOR_ROOT
@@ -181,6 +182,7 @@ enum
 	//
 	NUM_CBOR_WPN_PART
 };
+
 enum
 {
 	CBOR_FONT_DATA,
@@ -189,6 +191,18 @@ enum
 	CBOR_FONT_XO,
 	//
 	NUM_CBOR_FONT
+};
+
+enum
+{
+	CBOR_HUD_MENU_COLOR_TITLE,
+	CBOR_HUD_MENU_COLOR_ITEM,
+	CBOR_HUD_MENU_COLOR_GROUP,
+	CBOR_HUD_MENU_COLOR_SELECT,
+	CBOR_HUD_MENU_COLOR_EXTRA,
+	CBOR_HUD_MENU_COLOR_EXSEL,
+	//
+	NUM_CBOR_HUD
 };
 
 typedef struct
@@ -362,6 +376,22 @@ typedef struct
 	int8_t space;
 } nums_char_t;
 
+typedef struct
+{
+	struct
+	{
+		struct
+		{
+			uint8_t title;
+			uint8_t item;
+			uint8_t group;
+			uint8_t select;
+			uint8_t extra;
+			uint8_t exsel;
+		} color;
+	} menu;
+} hud_cfg_t;
+
 //
 
 typedef struct
@@ -442,10 +472,12 @@ uint32_t x16_num_skies;
 editor_sky_t editor_sky[MAX_X16_SKIES];
 
 static uint_fast8_t hud_display;
-static uint8_t hud_demo_text[48] = "Click HERE to set text ...";
+static uint8_t hud_demo_text[16] = "Custom group";
 
 static font_char_t font_char[FONT_CHAR_COUNT];
 static nums_char_t nums_char[NUMS_CHAR_COUNT];
+
+static hud_cfg_t hud_cfg;
 
 static uint32_t base_height_cmaps;
 
@@ -477,6 +509,16 @@ static int32_t cbor_entry_index;
 static uint_fast8_t cbor_stex_is_sprite;
 
 uint8_t x16_sky_name[LEN_X16_SKY_NAME];
+
+static const hud_cfg_t hud_cfg_def =
+{
+	.menu.color.title = 15,
+	.menu.color.item = 14,
+	.menu.color.select = 13,
+	.menu.color.group = 12,
+	.menu.color.extra = 11,
+	.menu.color.exsel = 10,
+};
 
 static const uint8_t vram_ranges[] =
 {
@@ -661,8 +703,7 @@ static const hud_element_t hud_element[NUM_HUD_ELM] =
 		.name = "text font",
 		.width = 16 * 8,
 		.height = 6 * 8,
-		.scale = 4,
-		.shader = SHADER_FRAGMENT_COLORMAP,
+		.scale = 3,
 		.import = hud_import_font,
 		.texgen = hud_texgen_font,
 		.pregen = hud_pregen_font
@@ -672,8 +713,7 @@ static const hud_element_t hud_element[NUM_HUD_ELM] =
 		"numeric font",
 		.width = 8 * 8,
 		.height = 2 * 16,
-		.scale = 4,
-		.shader = SHADER_FRAGMENT_COLORMAP,
+		.scale = 3,
 		.import = hud_import_nums,
 		.texgen = hud_texgen_nums,
 	},
@@ -792,6 +832,7 @@ static int32_t cbor_gfx_wpn_variant(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t typ
 static int32_t cbor_gfx_sky(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_gfx_font(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_gfx_nums(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
+static int32_t cbor_gfx_hud(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_gfx_fullbright(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_gfx_stex_variant(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 
@@ -859,6 +900,13 @@ static const edit_cbor_obj_t cbor_root[] =
 		.nlen = 4,
 		.type = EDIT_CBOR_TYPE_ARRAY,
 		.handler = cbor_gfx_nums
+	},
+	[CBOR_ROOT_HUD] =
+	{
+		.name = "hud",
+		.nlen = 3,
+		.type = EDIT_CBOR_TYPE_OBJECT,
+		.handler = cbor_gfx_hud
 	},
 	[CBOR_ROOT_FULLBRIGHT] =
 	{
@@ -1183,6 +1231,54 @@ static edit_cbor_obj_t cbor_font[] =
 	},
 	// terminator
 	[NUM_CBOR_FONT] = {}
+};
+
+static edit_cbor_obj_t cbor_hud[] =
+{
+	[CBOR_HUD_MENU_COLOR_TITLE] =
+	{
+		.name = "menu.color.title",
+		.nlen = 16,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.menu.color.title
+	},
+	[CBOR_HUD_MENU_COLOR_ITEM] =
+	{
+		.name = "menu.color.item",
+		.nlen = 15,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.menu.color.item
+	},
+	[CBOR_HUD_MENU_COLOR_GROUP] =
+	{
+		.name = "menu.color.group",
+		.nlen = 16,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.menu.color.group
+	},
+	[CBOR_HUD_MENU_COLOR_SELECT] =
+	{
+		.name = "menu.color.select",
+		.nlen = 17,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.menu.color.select
+	},
+	[CBOR_HUD_MENU_COLOR_EXTRA] =
+	{
+		.name = "menu.color.extra",
+		.nlen = 16,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.menu.color.extra
+	},
+	[CBOR_HUD_MENU_COLOR_EXSEL] =
+	{
+		.name = "menu.color.exsel",
+		.nlen = 16,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.menu.color.exsel
+	},
+	// terminator
+	[NUM_CBOR_HUD] = {}
 };
 
 //
@@ -2108,6 +2204,12 @@ static int32_t cbor_gfx_nums(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 	ctx->entry_cb = cbor_gfx_font_entry;
 
 	return 0;
+}
+
+static int32_t cbor_gfx_hud(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
+{
+	edit_cbor_branch(cbor_hud, type, key, ctx->key_len, value, ctx->val_len);
+	return 1;
 }
 
 static int32_t cbor_gfx_fullbright(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
@@ -4088,6 +4190,12 @@ static void gfx_cleanup()
 	memset(x16_weapon, 0, sizeof(x16_weapon));
 	memset(font_char, 0, sizeof(font_char));
 	memset(nums_char, 0, sizeof(nums_char));
+	memcpy(&hud_cfg, &hud_cfg_def, sizeof(hud_cfg_t));
+
+	for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
+		font_char[i].space = 9;
+
+	font_char[0].yoffs = 10;
 }
 
 static void gfx_default_light()
@@ -5188,33 +5296,50 @@ static void *hud_texgen_font(const hud_element_t *elm)
 	return data;
 }
 
-static void *hud_pregen_font(const hud_element_t *elm)
+static int32_t hud_font_width(const uint8_t *text)
 {
-	uint8_t *txt = hud_demo_text;
-	int32_t xx = 2;
-	int32_t yy = 4;
-	font_char_t *fc;
-	uint8_t *data;
-
-	data = calloc(160, 32);
-	if(!data)
-		return NULL;
+	int32_t x = 0;
 
 	while(1)
 	{
-		uint8_t in = *txt++;
-		uint8_t *dst, *src;
-
-		if(in == 1)
-			break;
+		uint8_t in = *text++;
+		font_char_t *fc;
 
 		if(!in)
-		{
-			txt = "Next Line ...\x01";
-			xx = 2;
-			yy += font_char[0].yoffs;
+			break;
+
+		in -= 0x20;
+
+		if(in >= FONT_CHAR_COUNT)
 			continue;
-		}
+
+		fc = font_char + in;
+		x += fc->space;
+	}
+
+	return x;
+}
+
+static void hud_font_write(uint8_t *data, int32_t x, int32_t y, int32_t color, const uint8_t *text, int32_t align)
+{
+	if(align)
+	{
+		int32_t w = hud_font_width(text);
+		if(align >= 0)
+			w /= 2;
+		x -= w;
+	}
+
+	color <<= 4;
+
+	while(1)
+	{
+		uint8_t in = *text++;
+		uint8_t *dst, *src;
+		font_char_t *fc;
+
+		if(!in)
+			break;
 
 		in -= 0x20;
 
@@ -5224,24 +5349,24 @@ static void *hud_pregen_font(const hud_element_t *elm)
 		fc = font_char + in;
 		if(!in)
 		{
-			xx += fc->space;
+			x += fc->space;
 			continue;
 		}
 
-		if(fc->yoffs + yy < 0)
+		if(fc->yoffs + y < 0)
 			continue;
-		if(fc->yoffs + yy + 8 > 32)
+		if(fc->yoffs + y + 8 > 120)
 			continue;
-		if(fc->xoffs + xx < 0)
+		if(fc->xoffs + x < 0)
 			continue;
-		if(fc->xoffs + xx + 8 > 160)
+		if(fc->xoffs + x + 8 > 160)
 			continue;
 
 		src = fc->data;
-		dst = data + (xx + fc->xoffs) + 160 * (yy + fc->yoffs);
-		xx += fc->space;
+		dst = data + (x + fc->xoffs) + 160 * (y + fc->yoffs);
+		x += fc->space;
 
-		if(xx > 160)
+		if(x > 160)
 			break;
 
 		for(uint32_t y = 0; y < 8; y++)
@@ -5250,16 +5375,116 @@ static void *hud_pregen_font(const hud_element_t *elm)
 			{
 				uint8_t ni = *src++;
 
-				if(!*dst)
-					*dst = ni >> 4;
+				if(!*dst && ni & 0xF0)
+					*dst = (ni >> 4) | color;
 				dst++;
 
-				if(!*dst)
-					*dst = ni & 15;
+				if(!*dst && ni & 0x0F)
+					*dst = (ni & 15) | color;
 				dst++;
 			}
 			dst += 160 - 8;
 		}
+	}
+}
+
+static void *hud_pregen_font(const hud_element_t *elm)
+{
+	static const uint8_t *const item_list[] =
+	{
+		"\x80""Group #0",
+		"Example",
+		"Test item",
+		hud_demo_text,
+		"Stuff",
+		"\xC0""Selected",
+		"Filler",
+		NULL
+	};
+	static const uint8_t *const extra_list[] =
+	{
+		NULL,
+		"47",
+		"xyz",
+		NULL,
+		"yes",
+		"$2F",
+		"no"
+	};
+	const uint8_t *const *itxt;
+	const uint8_t *const *etxt = extra_list;
+	uint8_t *data;
+	int32_t y, xl, xr;
+
+	data = calloc(160, 120);
+	if(!data)
+		return NULL;
+
+	// title
+	hud_font_write(data, 80, font_char[0].yoffs * 1, hud_cfg.menu.color.title, "Menu Title", 1);
+
+	// width
+	xl = 0;
+	for(itxt = item_list; *itxt; itxt++)
+	{
+		const uint8_t *txt = *itxt;
+		int32_t w;
+
+		if(	txt == hud_demo_text ||
+			txt[0] == 0x80
+		)
+			continue;
+
+		if(txt[0] == 0xC0)
+			txt++;
+
+		w = hud_font_width(txt);
+		if(xl < w)
+			xl = w;
+	}
+	xl += font_char[0].space * 7;
+	xr = 160 + xl;
+	xr /= 2;
+	xl = 160 - xl;
+	xl /= 2;
+
+	// items
+	y = font_char[0].yoffs * 3;
+	for(itxt = item_list; *itxt; itxt++, etxt++)
+	{
+		const uint8_t *txt = *itxt;
+		int32_t color = hud_cfg.menu.color.item;
+		int32_t center = 0;
+		int32_t xx = xl;
+
+		if(txt[0] == 0x80)
+		{
+			txt++;
+			goto group;
+		}
+
+		if(txt == hud_demo_text)
+		{
+group:
+			center = 1;
+			color = hud_cfg.menu.color.group;
+			xx = 80;
+		}
+
+		// extra
+		if(*etxt)
+			hud_font_write(data, xr, y, txt[0] == 0xC0 ? hud_cfg.menu.color.exsel : hud_cfg.menu.color.extra, *etxt, -1);
+
+		if(txt[0] == 0xC0)
+		{
+			txt++;
+			color = hud_cfg.menu.color.select;
+		}
+
+		// item / group
+		hud_font_write(data, xx, y, color, txt, center);
+
+		y += font_char[0].yoffs;
 	}
 
 	return data;
@@ -5334,7 +5559,7 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 		ui_gfx_hud_texture.base.width = gi->width * elm->scale;
 		ui_gfx_hud_texture.base.height = gi->height * elm->scale;
 		ui_gfx_hud_texture.base.disabled = 0;
-		ui_gfx_hud_texture.shader = elm->shader;
+		ui_gfx_hud_texture.shader = SHADER_FRAGMENT_COLORMAP;
 
 		free(data);
 
@@ -5355,7 +5580,7 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 			// update texture
 			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE_ALT;
 			gi->width = 160;
-			gi->height = 32;
+			gi->height = 120;
 			gi->format = GL_LUMINANCE;
 			gi->data = data;
 			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE_ALT);
@@ -5363,7 +5588,7 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 			ui_gfx_hud_demo.base.width = gi->width * elm->scale;
 			ui_gfx_hud_demo.base.height = gi->height * elm->scale;
 			ui_gfx_hud_demo.base.disabled = 0;
-			ui_gfx_hud_demo.shader = elm->shader;
+			ui_gfx_hud_demo.shader = SHADER_FRAGMENT_PALETTE;
 
 			free(data);
 		}
@@ -7170,7 +7395,7 @@ static void te_weapon_variant_new(uint8_t *text)
 	variant_list_t *vl = x16_weapon + gfx_idx[GFX_MODE_WEAPONS].now;
 	variant_info_t *va;
 	uint8_t first, last;
-	const char *err = "Variant with this name already exists!";
+	const uint8_t *err = "Variant with this name already exists!";
 	uint32_t base;
 
 	if(!text)
@@ -8070,6 +8295,9 @@ static void te_hud_text(uint8_t *text)
 	if(!text)
 		return;
 
+	if(!text[0])
+		text = "Custom group";
+
 	strcpy(hud_demo_text, text);
 
 	update_gfx_mode(0);
@@ -8554,6 +8782,8 @@ void x16g_export()
 			ttmp[i] = font_char[i].space;
 		for(uint32_t i = 0; i < NUMS_CHAR_COUNT; i++)
 			ttmp[i + 128] = nums_char[i].space;
+		// HUD info
+		memcpy(ttmp + FONT_CHAR_COUNT, &hud_cfg, sizeof(hud_cfg));
 		write(fd, ttmp, sizeof(ttmp));
 
 		// font offsets
@@ -8564,7 +8794,7 @@ void x16g_export()
 		}
 		write(fd, ttmp, sizeof(ttmp));
 
-		// HUD
+		// numeric
 		for(i = 0; i < NUMS_CHAR_COUNT; i++)
 			write(fd, nums_char[i].data, 64);
 
@@ -9371,6 +9601,10 @@ const uint8_t *x16g_save(const uint8_t *file)
 
 		edit_cbor_export(cbor_font, NUM_CBOR_FONT, &gen);
 	}
+
+	/// HUD
+	kgcbor_put_string(&gen, cbor_root[CBOR_ROOT_HUD].name, cbor_root[CBOR_ROOT_HUD].nlen);
+	edit_cbor_export(cbor_hud, NUM_CBOR_HUD, &gen);
 
 	/// fullbright colors
 	size = 0;

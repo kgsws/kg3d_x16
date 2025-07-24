@@ -344,7 +344,7 @@ menu_update:
 	sta	ARG_TEXT_Y
 
 	; color
-	lda	#15
+	lda	TAB_HUD_MENU_COLOR_TITLE
 	sta	ARG_TEXT_C
 
 	; write
@@ -398,6 +398,15 @@ menu_update:
 	dex
 	bne	@loop_calc
 
+	; selection highlight
+	lda	(TMP_PTR_L)
+	ina
+	asl
+	asl
+	clc
+	adc	#STRUCT_MENU_ITEM_TEXT
+	sta	SECTOR_PTR_I
+
 	; check special
 	ldy	#STRUCT_MENU_SPECIAL
 	lda	(TMP_PTR_L),y
@@ -435,15 +444,6 @@ menu_update:
 
 	;; draw visible items
 
-	; selection highlight
-	lda	(TMP_PTR_L)
-	ina
-	asl
-	asl
-	clc
-	adc	#STRUCT_MENU_ITEM_TEXT
-	sta	FUNC_ARG_L
-
 	; prepare entry list
 	jsr	prepare_draw
 
@@ -464,7 +464,7 @@ menu_update:
 	lda	ARG_TEXT_PTR_H
 	bmi	@normal
 
-	; fix
+	; fix pointer
 	ora	#$80
 	sta	ARG_TEXT_PTR_H
 
@@ -477,16 +477,16 @@ menu_update:
 	sta	ARG_TEXT_X
 
 	; color
-	lda	#12
+	lda	TAB_HUD_MENU_COLOR_GROUP
 
 	bra	@set_color
 
 @normal:
 	; color
-	lda	#14
-	cpy	FUNC_ARG_L
+	lda	TAB_HUD_MENU_COLOR_ITEM
+	cpy	SECTOR_PTR_I
 	bne	@set_color
-	dea
+	lda	TAB_HUD_MENU_COLOR_SELECT
 @set_color:
 	sta	ARG_TEXT_C
 
@@ -578,10 +578,6 @@ draw_keys:
 	; prepare entry list
 	jsr	prepare_draw
 
-	; color
-	lda	#11
-	sta	ARG_TEXT_C
-
 	; base text pointer
 	lda	#>key_names_start
 	sta	ARG_TEXT_PTR_H
@@ -597,6 +593,14 @@ draw_keys:
 	; function pointer
 	iny
 	iny
+
+	; color
+	lda	TAB_HUD_MENU_COLOR_EXTRA
+	cpy	SECTOR_PTR_I
+	bne	@set_color
+	lda	TAB_HUD_MENU_COLOR_EXSEL
+@set_color:
+	sta	ARG_TEXT_C
 
 	; check entry type
 	pla

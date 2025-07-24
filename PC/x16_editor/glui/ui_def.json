@@ -1674,7 +1674,7 @@
 							{
 								"name": "ui_gfx_hud_texture",
 								"x": 512,
-								"y": 192,
+								"y": 160,
 								"align": "center",
 								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
 								"shader": "palette"
@@ -1683,7 +1683,7 @@
 								"name": "ui_gfx_hud_demo",
 								"click": "uin_gfx_hud_demo",
 								"x": 512,
-								"y": 512,
+								"y": 336,
 								"align": "center",
 								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE_ALT]",
 								"shader": "palette"
