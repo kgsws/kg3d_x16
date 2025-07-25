@@ -8,11 +8,11 @@
 .include "engine.inc"
 .include "tables.inc"
 .include "render.inc"
+.include "input.inc"
 .include "text.inc"
 
 .export menu_init
 .export menu_toggle
-.export menu_input
 
 ; menu structure
 STRUCT_MENU_NOW = $00	; must be zero
@@ -93,7 +93,7 @@ set_menu_ptr:
 	rts
 
 ;;;
-; ESC key
+; enter or leave the menu
 ;;;
 
 menu_toggle:
@@ -126,10 +126,22 @@ menu_toggle:
 	lda	TAB_MENU_LOGO
 	sta	mptr_main+STRUCT_MENU_TITLE
 
+	; set keyboard handler
+	lda	#<khdl_menu
+	sta	input_menu_opcode+1
+	lda	#>khdl_menu
+	sta	input_menu_opcode+2
+
 	; draw items
 	jmp	menu_update
 
 @disable:
+	; set keyboard handler
+	lda	#<input_handle_key
+	sta	input_menu_opcode+1
+	lda	#>input_handle_key
+	sta	input_menu_opcode+2
+
 	; deactivate
 	stz	TAB_MENU_ACTIVE
 
@@ -156,7 +168,7 @@ menu_toggle:
 ; menu input
 ;;;
 
-menu_input:
+khdl_menu:
 	; current menu
 	jsr	set_menu_ptr
 
@@ -270,15 +282,21 @@ menu_input:
 	sta	MATH_VAR_L
 	iny
 	lda	(TMP_PTR_L),y
-	bpl	:+
+	bmi	:+
+
+	; fix pointer
+	ora	#$80
 
 	; change menu
 	sta	TAB_MENU_ACTIVE+0
 	lda	MATH_VAR_L
 	sta	TAB_MENU_ACTIVE+1
 	jsr	set_menu_ptr
-:
 	bra	menu_update
+:
+	; run item callback
+	sta	MATH_VAR_H
+	jmp	(MATH_VAR_L)
 
 ;;;
 ; update menu sprites
@@ -348,7 +366,7 @@ menu_update:
 	sta	ARG_TEXT_C
 
 	; write
-	jsr	text_write
+	jsr	text_write_la
 
 	; item Y = font_height * 3
 	lda	TAB_FONT_HEIGHT
@@ -491,7 +509,7 @@ menu_update:
 	sta	ARG_TEXT_C
 
 	; write
-	jsr	text_write
+	jsr	text_write_la
 
 	; Y += font_height
 	clc
@@ -660,7 +678,7 @@ draw_keys:
 	sta	ARG_TEXT_X
 
 	; write
-	jsr	text_write
+	jsr	text_write_la
 
 	plx
 
@@ -679,7 +697,119 @@ draw_keys:
 	sta	ARG_TEXT_Y
 	rts
 
+;;;
+; prepare key change
+;;;
+
+sel_key_set:
+	; set keyboard handler
+	lda	#<khdl_setkey
+	sta	input_menu_opcode+1
+	lda	#>khdl_setkey
+	sta	input_menu_opcode+2
+
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
+	; disable cache write
+	stz	VERA_FX_CTRL
+
+	; reset sprites
+	stz	TAB_TEXT_I
+
+	; color
+	lda	TAB_HUD_MENU_COLOR_TITLE
+	sta	ARG_TEXT_C
+
+	; Y
+	sec
+	lda	#60
+	sbc	TAB_FONT_HEIGHT
+	sta	ARG_TEXT_Y
+
+	; prompt
+	lda	#<mtxt_key_in_0
+	sta	ARG_TEXT_PTR_L
+	lda	#>mtxt_key_in_0
+	sta	ARG_TEXT_PTR_H
+	jsr	text_write_ca
+
+	; Y
+	lda	#60
+	sta	ARG_TEXT_Y
+
+	; prompt
+	lda	#<mtxt_key_in_1
+	sta	ARG_TEXT_PTR_L
+	lda	#>mtxt_key_in_1
+	sta	ARG_TEXT_PTR_H
+	jsr	text_write_ca
+
+	; clear other characters
+	jsr	text_clean
+
+	; re-enable math
+	jmp	math_setup_vera
+
+;;;
+; prepare key handler
+;;;
+
+khdl_setkey:
+	; check key release
+	bmi	:+
+	rts
+:
+	and	#$7F
+
+	; current menu
+	jsr	set_menu_ptr
+
+	; check ESC
+	cmp	#$6E
+	bcs	@cancel
+
+	; the key
+	pha
+
+	; config option
+	lda	(TMP_PTR_L)
+	tax
+	lda	keys_conf_top,x
+
+	; config pointer
+	sta	FUNC_ARG_L
+	lda	#>TAB_CONFIG_BASE
+	sta	FUNC_ARG_H
+
+	; save
+	pla
+	sta	(FUNC_ARG_L)
+
+	; apply
+	jsr	input_apply_keys
+
+@cancel:
+	; set keyboard handler
+	lda	#<khdl_menu
+	sta	input_menu_opcode+1
+	lda	#>khdl_menu
+	sta	input_menu_opcode+2
+
+	; draw items
+	jmp	menu_update
+
 ;;;;;;;;;;;;;;;;;;;;;
+
+;;;
+; prompt strings
+;;;
+
+mtxt_key_in_0:
+	.asciiz	"Press a new key"
+mtxt_key_in_1:
+	.asciiz	"or ESC to cancel."
 
 ;;;
 ; menu strings
@@ -754,52 +884,52 @@ mptr_keyboard:
 	.word	mtxt_keyboard
 ;;	; item 0 [S]
 	.word	mtxt_ctrl_movement & $7FFF
-	.word	$0000	; TODO
+	.word	$0000
 	; item 1
 	.word	mtxt_ctrl_forward
-	.word	$0000	; TODO
+	.word	sel_key_set
 	; item 2
 	.word	mtxt_ctrl_backward
-	.word	$0000	; TODO
+	.word	sel_key_set
 	; item 3
 	.word	mtxt_ctrl_jump
-	.word	$0000	; TODO
+	.word	sel_key_set
 	; item 4
 	.word	mtxt_ctrl_crouch
-	.word	$0000	; TODO
+	.word	sel_key_set
 ;;	; item 5 [S]
 	.word	mtxt_ctrl_strafing & $7FFF
-	.word	$0000	; TODO
+	.word	$0000
 	; item 6
 	.word	mtxt_ctrl_left
-	.word	$0000	; TODO
+	.word	sel_key_set
 	; item 7
 	.word	mtxt_ctrl_right
-	.word	$0000	; TODO
+	.word	sel_key_set
 ;;	; item 8 [S]
 	.word	mtxt_ctrl_turning & $7FFF
-	.word	$0000	; TODO
+	.word	$0000
 	; item 9
 	.word	mtxt_ctrl_left
-	.word	$0000	; TODO
+	.word	sel_key_set
 	; item 10
 	.word	mtxt_ctrl_right
-	.word	$0000	; TODO
+	.word	sel_key_set
 ;;	; item 11 [S]
 	.word	mtxt_ctrl_attack & $7FFF
-	.word	$0000	; TODO
+	.word	$0000
 	; item 12
 	.word	mtxt_ctrl_primary
-	.word	$0000	; TODO
+	.word	sel_key_set
 	; item 13
 	.word	mtxt_ctrl_secondary
-	.word	$0000	; TODO
+	.word	sel_key_set
 ;;	; item 14 [S]
 	.word	mtxt_ctrl_other & $7FFF
-	.word	$0000	; TODO
+	.word	$0000
 	; item 15
 	.word	mtxt_ctrl_use
-	.word	$0000	; TODO
+	.word	sel_key_set
 
 ;;;
 ; MENU: options
@@ -819,7 +949,7 @@ mptr_options:
 	.word	mtxt_options
 	; item 0
 	.word	mtxt_keyboard
-	.word	mptr_keyboard
+	.word	mptr_keyboard & $7FFF
 	; item 1
 	.word	mtxt_test
 	.word	$0000	; TODO
@@ -845,7 +975,7 @@ mptr_main:
 	.word	$0000	; TODO
 	; item 1
 	.word	mtxt_options
-	.word	mptr_options
+	.word	mptr_options & $7FFF
 	; item 2
 	.word	mtxt_load_game
 	.word	$0000	; TODO
@@ -1053,4 +1183,3 @@ key_table:
 	.byte	0
 	.byte	0
 	.byte	0
-key_table_end:

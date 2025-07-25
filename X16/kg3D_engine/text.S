@@ -8,7 +8,8 @@
 .include "engine.inc"
 .include "tables.inc"
 
-.export text_write
+.export text_write_la
+.export text_write_ca
 .export text_width
 .export text_clean
 
@@ -30,7 +31,15 @@ MAX_CHARACTERS = 96
 ; TAB_TEXT_I is sprite slot index
 ; uses MATH_VAR_*
 
-text_write:
+text_write_ca:
+	jsr	text_width
+	sec
+	lda	#160
+	sbc	RET_TEXT_LEN
+	lsr
+	sta	ARG_TEXT_X
+
+text_write_la:
 	phy
 	phx
 

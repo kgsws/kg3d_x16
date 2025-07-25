@@ -14,6 +14,8 @@
 .export input_clear
 .export input_process
 .export input_apply_keys
+.export input_menu_opcode
+.export input_handle_key
 
 ; input key bits L (do not touch - used with 'move_angle' lookup)
 INBIT_FORWARD = %00000001
@@ -107,7 +109,7 @@ ex_input_process:
 
 	stz	INPUT_WEAPON_SLOT
 
-@loop:
+in_loop:
 	; PS2 poll
 	lda	#e_ps2data_fetch
 	jsr	k_extapi
@@ -115,63 +117,22 @@ ex_input_process:
 	; get input
 	lda	#e_ps2data_raw
 	jsr	k_extapi
-	beq	@loop_stop
+	beq	in_loop_stop
 
 	; check keyboard
 	ora	#0
-	beq	@skip_keys
+	beq	in_skip_keys
 
-	; check in-menu
-	ldy	TAB_MENU_ACTIVE
-	beq	:+
-
-	; pass to menu system
+	; pass to handler
 	phx
-	jsr	menu_input
+input_menu_opcode:
+	jsr	input_handle_key
 	plx
-	bra	@skip_keys
-:
-	; check ESC
-	cmp	#$EE
-	bne	:+
-	phx
-	jsr	menu_toggle
-	plx
-	bra	@skip_keys
-:
-	; check weapon slots
-	cmp	#$82
-	bcc	:+
-	cmp	#$8C
-	bcs	:+
-	sbc	#$80
-	sta	INPUT_WEAPON_SLOT
-	bra	@skip_keys
-:
-	; check key binding
-	tay
-	bpl	:+
-	and	#$7F
-	tay
 
-	; unset
-	lda	TAB_INPUT_BITS_L,y
-	trb	INPUT_STATE_L
-	lda	TAB_INPUT_BITS_H,y
-	trb	INPUT_STATE_H
-
-	bra	@skip_keys
-:
-	; set
-	lda	TAB_INPUT_BITS_L,y
-	tsb	INPUT_STATE_L
-	lda	TAB_INPUT_BITS_H,y
-	tsb	INPUT_STATE_H
-
-@skip_keys:
+in_skip_keys:
 	; check mouse
 	txa
-	beq	@loop
+	beq	in_loop
 
 	; X
 	clc
@@ -186,9 +147,9 @@ ex_input_process:
 	sta	INPUT_MOUSE_TMP_Y
 
 	; loop check
-	bra	@loop
+	bra	in_loop
 
-@loop_stop:
+in_loop_stop:
 
 	;;;;;;;;;;;;;;;;;;;;;;;;
 	; generate tick command
@@ -573,6 +534,48 @@ input_apply_keys:
 	lda	#INBIT_USE
 	sta	TAB_INPUT_BITS_L,y
 
+	rts
+
+;;;
+; game input handler
+;;;
+
+input_handle_key:
+	; check ESC
+	cmp	#$EE
+	bne	:+
+	phx
+	jsr	menu_toggle
+	plx
+	rts
+:
+	; check weapon slots
+	cmp	#$82
+	bcc	:+
+	cmp	#$8C
+	bcs	:+
+	sbc	#$80
+	sta	INPUT_WEAPON_SLOT
+	rts
+:
+	; check key binding
+	tay
+	bpl	:+
+	and	#$7F
+	tay
+
+	; unset
+	lda	TAB_INPUT_BITS_L,y
+	trb	INPUT_STATE_L
+	lda	TAB_INPUT_BITS_H,y
+	trb	INPUT_STATE_H
+	rts
+:
+	; set
+	lda	TAB_INPUT_BITS_L,y
+	tsb	INPUT_STATE_L
+	lda	TAB_INPUT_BITS_H,y
+	tsb	INPUT_STATE_H
 	rts
 
 ;;;;;;;;;;;;;;;;
