@@ -26,7 +26,7 @@
 #define NUM_STATE_COLS	9
 #define NUM_STATE_ROWS	9
 
-#define UI_ATTR_HEIGHT	18
+#define UI_ATTR_HEIGHT	17
 #define UI_TITLE_HEIGHT	18
 #define UI_SPACE_HEIGHT	10
 #define UI_STATE_HEIGHT	18
@@ -67,6 +67,7 @@ enum
 	ARGT_CHANCE,
 	ARGT_SPAWN_SLOT,
 	ARGT_XY_SPREAD,
+	ARGT_BLOCK_FLAGS,
 };
 
 enum
@@ -102,7 +103,7 @@ enum
 typedef struct
 {
 	const uint8_t *text;
-	void (*func)(uint8_t*);
+	void *func;
 } arg_parse_t;
 
 typedef struct
@@ -190,8 +191,10 @@ static const export_type_t default_player_info =
 {
 	.radius = 31,
 	.height = 144, // 0.5x for crouching / swimming
-	.blocking = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN),
-	.blockedby = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_PICKUP),
+	.blocking = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN) | BLOCK_FLAG(BLOCKING_CORPSE),
+	.death_bling = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN) | BLOCK_FLAG(BLOCKING_CORPSE),
+	.blockedby = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_SPECIAL),
+	.death_blby = BLOCK_FLAG(BLOCKING_CORPSE),
 	.imass = 64,
 	.gravity = 128,
 	.speed = 13, // 0.5x for crouching / swimming
@@ -222,7 +225,9 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("radius", radius), ATTR_TYPE_U8},
 	{THING_ATTR("alt radius", alt_radius), ATTR_TYPE_ARADIUS},
 	{THING_ATTR("blocking", blocking), ATTR_TYPE_BLOCK_FLAGS},
+	{THING_ATTR("blck (dead)", death_bling), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("blocked by", blockedby), ATTR_TYPE_BLOCK_FLAGS},
+	{THING_ATTR("blby (dead)", death_blby), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("invmass", imass), ATTR_TYPE_U8},
 	{THING_ATTR("gravity", gravity), ATTR_TYPE_U8},
 	{THING_ATTR("speed", speed), ATTR_TYPE_U8},
@@ -400,10 +405,40 @@ const state_action_def_t state_action_def[] =
 ///
 	{
 		.name = "death: simple",
-		.flags = AFLG_THING
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "gravity",
+			.type = ARGT_U8,
+			.def = 128,
+			.lim = {0, 255}
+		},
+		.arg[1] =
+		{
+			.name = "blocking",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 0,
+			.lim = {0, 255}
+		},
+		.arg[2] =
+		{
+			.name = "blocked by",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = BLOCK_FLAG(BLOCKING_CORPSE),
+			.lim = {0, 255}
+		}
 	},
 	// terminator
 	{}
+};
+
+//
+static const uint8_t *block_req_text[] =
+{
+	"Bits which this thing will block.",
+	"Bits which this thing will block after death.",
+	"Bits by which this thing is blocked.",
+	"Bits by which this thing is blocked after death.",
 };
 
 // state argument type parsers
@@ -411,6 +446,7 @@ const state_action_def_t state_action_def[] =
 static void te_arg_us8(uint8_t*);
 static void te_arg_spawn(uint8_t*);
 static void te_arg_spread(uint8_t*);
+static void af_block_flags();
 
 const arg_parse_t arg_parse[] =
 {
@@ -419,6 +455,7 @@ const arg_parse_t arg_parse[] =
 	[ARGT_CHANCE - 1] = {"Enter a value (%d to %d).", te_arg_us8},
 	[ARGT_SPAWN_SLOT - 1] = {"Enter spawn slot (A to D).", te_arg_spawn},
 	[ARGT_XY_SPREAD - 1] = {"Enter two values (0, 1, 2, 4, 8, 16, 32, 64).", te_arg_spread},
+	[ARGT_BLOCK_FLAGS - 1] = {NULL, af_block_flags},
 };
 
 //
@@ -989,6 +1026,9 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 		case ARGT_XY_SPREAD:
 			temp = val->u8;
 			sprintf(text, "X(%u) Y(%u)", (1 << (temp & 15)) >> 1, (1 << (temp >> 4)) >> 1);
+		break;
+		case ARGT_BLOCK_FLAGS:
+			edit_put_blockbits(text, val->u8)[0] = 0;
 		break;
 	}
 
@@ -1788,7 +1828,7 @@ int32_t uin_thing_attr(glui_element_t *elm, int32_t x, int32_t y)
 			x16t_update_thing_view(0);
 		return 1;
 		case ATTR_TYPE_BLOCK_FLAGS:
-			edit_ui_blocking_select(ta->offs == offsetof(export_type_t, blocking) ? "Bits which this thing will block." : "Bits by which this thing is blocked.", src, 0);
+			edit_ui_blocking_select(block_req_text[ta->offs - offsetof(export_type_t, blocking)], src, 0);
 		return 1;
 	}
 
@@ -2058,6 +2098,11 @@ static void te_arg_spread(uint8_t *text)
 	x16t_update_thing_view(0);
 }
 
+static void af_block_flags()
+{
+	edit_ui_blocking_select("Block bits for argument.", arg_dst, 0);
+}
+
 static uint32_t select_state(uint32_t idx)
 {
 	idx += top_state;
@@ -2195,8 +2240,15 @@ static int32_t uin_state_arg(glui_element_t *elm, int32_t x, int32_t y)
 
 	ap = arg_parse + arg - 1;
 
-	sprintf(text, ap->text, (int32_t)arg_lim[0], (int32_t)arg_lim[1]);
-	edit_ui_textentry(text, 16, ap->func);
+	if(ap->text)
+	{
+		sprintf(text, ap->text, (int32_t)arg_lim[0], (int32_t)arg_lim[1]);
+		edit_ui_textentry(text, 16, ap->func);
+	} else
+	{
+		void (*cb)() = ap->func;
+		cb();
+	}
 
 	return 1;
 }
@@ -2255,7 +2307,8 @@ static void thing_cleanup()
 		ti = thing_info + THING_WEAPON_FIRST + i;
 		sprintf(ti->name.text, "Weapon #%X", i);
 		ti->name.hash = x16c_crc(ti->name.text, -1, THING_CRC_XOR);
-		ti->info.blocking = BLOCK_FLAG(BLOCKING_PICKUP);
+		ti->info.blocking = BLOCK_FLAG(BLOCKING_SPECIAL);
+		ti->info.blockedby = BLOCK_FLAG(BLOCKING_SOLID);
 	}
 }
 

@@ -338,12 +338,17 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 
 			th->next_state = thing_anim[th->type][ANIM_DEATH].state;
 			th->ticks = 1;
+
+			th->blocking = info->death_bling;
+			th->blockedby = info->death_blby;
+
+			th->iflags |= THING_IFLAG_CORPSE;
 		} else
 			th->health = hp;
 	}
 
 	if(	hp > 0 &&
-		!(th->iflags & THING_IFLAG_GOTHIT) &&
+		!(th->iflags & (THING_IFLAG_GOTHIT|THING_IFLAG_CORPSE)) &&
 		info->pain_chance &&
 		info->pain_chance > (rng_get() & 0x7F)
 	){
@@ -1149,8 +1154,8 @@ static void projectile_death(thing_t *th)
 	th->mz = 0;
 
 	// unblock
-	th->blocking = 0;
-	th->blockedby = 0;
+	th->blocking = ti->death_bling;
+	th->blockedby = ti->death_blby;
 
 	// radius
 	radius = th->radius;

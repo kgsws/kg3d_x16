@@ -176,8 +176,9 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		break;
 		case 8: // death: simple
 		{
-			th->blocking = 0;
-			th->gravity = 128;
+			th->gravity = st->arg[0];
+			th->blocking = st->arg[1];
+			th->blockedby = st->arg[2];
 		}
 		break;
 	}

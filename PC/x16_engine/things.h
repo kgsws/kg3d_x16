@@ -11,6 +11,7 @@
 
 #define THING_IFLAG_NOJUMP	0x01
 #define THING_IFLAG_GOTHIT	0x02
+#define THING_IFLAG_CORPSE	0x04
 #define THING_IFLAG_USED	0x20
 #define THING_IFLAG_JUMPED	0x40
 #define THING_IFLAG_HEIGHTCHECK	0x80
@@ -58,7 +59,9 @@ typedef struct
 	uint8_t radius;
 	uint8_t height;
 	uint8_t blocking;
+	uint8_t death_bling;
 	uint8_t blockedby;
+	uint8_t death_blby;
 	uint8_t imass;
 	uint8_t gravity;
 	uint8_t speed;

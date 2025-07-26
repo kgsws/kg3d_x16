@@ -560,11 +560,28 @@ thing_damage:
 	lda	THTYPE_ANIM_DEATH_H,x
 	pha	; <next frame HI>
 
-@set_anim:
+	; new block flags
+	lda	THTYPE_STRUCT_DTH_BLING,x
+	pha	; <death blocking>
+	lda	THTYPE_STRUCT_DTH_BLBY,x
+	pha	; <death blocked by>
+
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
+	; corpsify
+	lda	THING_STRUCT_IFLAGS,y
+	ora	#THING_IFLAG_CORPSE
+	sta	THING_STRUCT_IFLAGS,y
+
+	; new block flags
+	pla	; <death blocked by>
+	sta	THING_STRUCT_BLOCKEDBY,y
+	pla	; <death blocking>
+	sta	THING_STRUCT_BLOCKING,y
+
+@set_anim:
 	; set ticks
 	lda	#1
 	sta	THING_STRUCT_TICKS,y
@@ -580,7 +597,7 @@ thing_damage:
 @skip_death:
 	; if(!(th->iflags & THING_IFLAG_GOTHIT))
 	lda	THING_STRUCT_IFLAGS,y
-	and	#THING_IFLAG_GOTHIT
+	and	#(THING_IFLAG_GOTHIT|THING_IFLAG_CORPSE)
 	bne	@skip_pain
 
 	; thing type
@@ -607,6 +624,10 @@ thing_damage:
 	pha	; <next frame LO>
 	lda	THTYPE_ANIM_PAIN_H,x
 	pha	; <next frame HI>
+
+	; thing structure bank
+	lda	#BANK_THING_STRUCT
+	sta	REG_RAM_BANK
 
 	bra	@set_anim
 
@@ -4958,11 +4979,6 @@ projectile_death:
 	lda	THING_STRUCT_HEIGHT,y
 	sta	THMOVE_HEIGHT
 
-	; unblock
-	lda	#0
-	sta	THING_STRUCT_BLOCKING,y
-	sta	THING_STRUCT_BLOCKEDBY,y
-
 	; thing type
 	ldx	THING_STRUCT_TYPE,y
 
@@ -4980,9 +4996,21 @@ projectile_death:
 	lda	THTYPE_ANIM_DEATH_H,x
 	pha	; <next frame HI>
 
+	; new block flags
+	lda	THTYPE_STRUCT_DTH_BLING,x
+	pha	; <death blocking>
+	lda	THTYPE_STRUCT_DTH_BLBY,x
+	pha	; <death blocked by>
+
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
+
+	; unblock
+	pla	; <death blocked by>
+	sta	THING_STRUCT_BLOCKEDBY,y
+	pla	; <death blocking>
+	sta	THING_STRUCT_BLOCKING,y
 
 	; unflag + noclip
 	lda	THING_STRUCT_EFLAGS,y
