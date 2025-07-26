@@ -2187,7 +2187,8 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 
 	xdiff = x1 - x0;
 	if(xdiff <= 0)
-		return;
+		// always show thin sprite
+		x1 = x0 + 1;
 
 	// X reject
 	if(x1 <= projection.x0d)

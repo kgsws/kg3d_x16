@@ -171,7 +171,10 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				th->mz = st->arg[1] << 8;
 		}
 		break;
-		case 7: // death: simple
+		case 7: // ticks: add
+			th->ticks += rng_get() & st->arg[0];
+		break;
+		case 8: // death: simple
 		{
 			th->blocking = 0;
 			th->gravity = 128;

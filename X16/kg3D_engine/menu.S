@@ -983,8 +983,6 @@ mptr_main:
 	.word	mtxt_save_game
 	.word	$0000	; TODO
 
-;;;;;;;;;;;;;;;;
-
 ;;;
 ; top offset of key config
 ;;;
@@ -1006,6 +1004,8 @@ keys_conf_top:
 	.byte	<TAB_CFG_KEY_ATK_S
 	.byte	<TAB_CFG_KEY_USE	; [S]
 	.byte	<TAB_CFG_KEY_USE
+
+;;;;;;;;;;;;;;;;
 
 .align  256
 

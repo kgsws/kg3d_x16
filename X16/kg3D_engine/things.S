@@ -20,6 +20,8 @@
 .export thing_apply_position
 .export thing_check_heights
 .export thing_apply_heights
+.export thing_act_cont
+.export thing_act_rept
 
 .export wall_sizes
 
@@ -912,7 +914,7 @@ thing_tick:
 	sty	TICK_IDX
 
 	; the loop
-@thing_loop:
+ttf_thing_loop:
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
@@ -924,7 +926,7 @@ thing_tick:
 	lda	THING_STRUCT_TYPE,y
 	sta	THMOVE_THING_TYPE
 	bpl	:+
-	jmp	@skip_thing
+	jmp	ttf_skip_thing
 :
 	; TODO: remove this
 	; set hit flag
@@ -987,7 +989,7 @@ thing_tick:
 	; if(i == player_thing)
 	cpy	G_PLAYER_THING
 	beq	:+
-	jmp	@skip_player
+	jmp	ttf_skip_player
 :
 	; check if frozen
 	lda	MATH_TEMP_A
@@ -1007,7 +1009,7 @@ thing_tick:
 	lda	THING_STRUCT_PITCH,y
 	sta	TICK_CMD_PITCH
 
-	jmp	@skip_player
+	jmp	ttf_skip_player
 :
 	;; player stuff
 
@@ -1021,12 +1023,12 @@ thing_tick:
 	and	#<~THING_IFLAG_USED
 	sta	THING_STRUCT_IFLAGS,y
 
-	bra	@skip_use
+	bra	ttf_skip_use
 :
 	; check use flag
 	lda	THING_STRUCT_IFLAGS,y
 	and	#THING_IFLAG_USED
-	bne	@skip_use
+	bne	ttf_skip_use
 
 	; set use flag
 	lda	THING_STRUCT_IFLAGS,y
@@ -1035,10 +1037,10 @@ thing_tick:
 
 	jsr	player_use
 
-@skip_use:
+ttf_skip_use:
 	; if(ticcmd.bits & TCMD_MOVING)
 	ldx	TICK_CMD_BITS_L
-	bpl	@skip_pmove
+	bpl	ttf_skip_pmove
 
 	; get type
 	ldx	THMOVE_THING_TYPE
@@ -1064,7 +1066,7 @@ thing_tick:
 	; move
 	jsr	thing_launch_ang
 
-@skip_pmove:
+ttf_skip_pmove:
 	; th->angle = ticcmd.angle
 	lda	TICK_CMD_ANGLE
 	sta	THING_STRUCT_ANGLE,y
@@ -1096,7 +1098,7 @@ thing_tick:
 
 	; check sector 'water' flag
 	lda	SECTOR_STRUCT_FLAGS,x
-	bmi	@player_float
+	bmi	ttf_player_float
 
 	; player: flying
 	lda	#THING_TYPE_PLAYER_F
@@ -1104,7 +1106,7 @@ thing_tick:
 
 	; check gravity
 	lda	THMOVE_GRAVITY
-	beq	@player_float
+	beq	ttf_player_float
 
 	;; player crouch
 
@@ -1135,16 +1137,16 @@ thing_tick:
 	and	#<~THING_IFLAG_JUMPED
 	sta	THING_STRUCT_IFLAGS,y
 
-	bra	@skip_jump
+	bra	ttf_skip_jump
 :
 	; if(on_floor)
 	lda	ARG_THING_CHECK_ONFLOOR
-	beq	@skip_jump
+	beq	ttf_skip_jump
 
 	; check jump flag
 	lda	THING_STRUCT_IFLAGS,y
 	and	#(THING_IFLAG_JUMPED|THING_IFLAG_NOJUMP)
-	bne	@skip_jump
+	bne	ttf_skip_jump
 
 	; set jump flag
 	ora	#THING_IFLAG_JUMPED
@@ -1171,15 +1173,15 @@ thing_tick:
 	lda	MATH_TEMP_A
 	sta	THING_STRUCT_MZ_L,y
 
-	bra	@skip_jump
+	bra	ttf_skip_jump
 
-@player_float:
+ttf_player_float:
 	;; player float
 
 	; check up / down
 	lda	TICK_CMD_BITS_L
 	and	#(TCMD_GO_UP|TCMD_GO_DOWN)
-	beq	@skip_jump
+	beq	ttf_skip_jump
 
 	; get float player type
 	ldx	THMOVE_NEW_PTYPE
@@ -1207,7 +1209,7 @@ thing_tick:
 	sbc	MATH_TEMP_A
 	sta	THING_STRUCT_MZ_L,y
 
-	bra	@skip_jump
+	bra	ttf_skip_jump
 :
 	; go up
 	clc
@@ -1215,15 +1217,15 @@ thing_tick:
 	adc	MATH_TEMP_A
 	sta	THING_STRUCT_MZ_L,y
 
-@skip_jump:
+ttf_skip_jump:
 
 	;; check type change
 
 	lda	THMOVE_THING_TYPE
 	cmp	#THING_TYPE_PLAYER_F
-	bcc	@skip_pchange
+	bcc	ttf_skip_pchange
 	cmp	THMOVE_NEW_PTYPE
-	beq	@skip_pchange
+	beq	ttf_skip_pchange
 
 	ldx	THMOVE_NEW_PTYPE
 
@@ -1241,7 +1243,7 @@ thing_tick:
 
 	; check if enabled
 	lda	THTYPE_STRUCT_HEIGHT,x
-	beq	@skip_pchange
+	beq	ttf_skip_pchange
 
 	; new height
 	sta	THMOVE_PTC_HEIGHT
@@ -1258,20 +1260,20 @@ thing_tick:
 	; check direction
 	cmp	THMOVE_PTC_OLD_HEIGHT
 	bcs	:+
-	jmp	@ptc_hi_lo
+	jmp	ttf_ptc_hi_lo
 :
-	jmp	@ptc_lo_hi
+	jmp	ttf_ptc_lo_hi
 
-@done_pchange:
+ttf_done_pchange:
 	; restore thing index
 	ldy	TICK_IDX
 
-@skip_pchange:
+ttf_skip_pchange:
 
-@skip_player:
+ttf_skip_player:
 	; if(i == camera_thing)
 	cpy	G_CAMERA_THING
-	bne	@skip_camera
+	bne	ttf_skip_camera
 
 	;; camera stuff
 
@@ -1292,8 +1294,8 @@ thing_tick:
 	; projection.wd = 0
 	stz	G_VIEWDELTA
 :
-@skip_camera:
-@multi_move:
+ttf_skip_camera:
+ttf_multi_move:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
@@ -1311,7 +1313,7 @@ thing_tick:
 	ora	THING_STRUCT_MX_L,y
 	ora	THING_STRUCT_MY_S,y
 	ora	THING_STRUCT_MY_L,y
-	bne	@do_xy_move
+	bne	ttf_do_xy_move
 
 	; no XY movement, check overlap flag
 	lda	THING_STRUCT_IFLAGS,y
@@ -1331,12 +1333,12 @@ thing_tick:
 	jsr	thing_apply_heights
 :
 	; done
-	jmp	@no_xymove
+	jmp	ttf_no_xymove
 
 	;; XY movement
-@do_xy_move:
+ttf_do_xy_move:
 	stz	THMOVE_TRY_COUNT
-@try_move_full:
+ttf_try_move_full:
 	; th->x += th->mx
 	stz	MATH_TEMP_A
 	lda	THING_STRUCT_MX_L,y
@@ -1372,7 +1374,7 @@ thing_tick:
 	sta	ARG_THING_CHECK_Y_H
 
 	;; check new position
-@try_move_cut:
+ttf_try_move_cut:
 	jsr	thing_check_position
 
 	; thing structure bank
@@ -1381,23 +1383,23 @@ thing_tick:
 
 	; check result
 	lda	THMOVE_BLOCKED
-	bmi	@move_stop
+	bmi	ttf_move_stop
 	lda	RET_THING_CHECK_NEWSEC
-	bne	@move_ok
+	bne	ttf_move_ok
 
 	; check projectile flag
 	lda	THING_STRUCT_EFLAGS,y
 	and	#THING_EFLAG_PROJECTILE
-	beq	@not_projectile
+	beq	ttf_not_projectile
 
 	; projectile death
 	jsr	projectile_death
-	jmp	@do_animation
+	jmp	ttf_do_animation
 
-@not_projectile:
+ttf_not_projectile:
 	; check sliding flag
 	lda	THING_STRUCT_EFLAGS,y
-	bpl	@move_stop
+	bpl	ttf_move_stop
 
 	;; try sliding
 	lda	THMOVE_TRY_COUNT
@@ -1405,9 +1407,9 @@ thing_tick:
 	ina
 	ina
 	sta	THMOVE_TRY_COUNT
-	jmp	(@slide_try_jmp,x)
+	jmp	(ttf_slide_try_jmp,x)
 
-@move_stop:
+ttf_move_stop:
 	; can't move, stop
 	lda	#0
 	sta	THING_STRUCT_MX_S,y
@@ -1415,9 +1417,9 @@ thing_tick:
 	sta	THING_STRUCT_MY_S,y
 	sta	THING_STRUCT_MY_L,y
 
-	bra	@move_skip
+	bra	ttf_move_skip
 
-@move_ok:
+ttf_move_ok:
 	; do the movement
 	lda	ARG_THING_CHECK_X_S
 	sta	THING_STRUCT_X_S,y
@@ -1451,13 +1453,13 @@ thing_tick:
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
-@move_skip:
+ttf_move_skip:
 	;; XY friction
 
 	; check flag
 	lda	THING_STRUCT_EFLAGS,y
 	and	#THING_EFLAG_PROJECTILE
-	bne	@no_xy_friction
+	bne	ttf_no_xy_friction
 
 	; thing
 	ldx	TICK_IDX
@@ -1491,8 +1493,8 @@ thing_tick:
 	stz	THING_STRUCT_MY_S,x
 :
 
-@no_xy_friction:
-@no_xymove:
+ttf_no_xy_friction:
+ttf_no_xymove:
 	; load height limits
 	lda	THING_STRUCT_FLOORZ_L,y
 	sta	THMOVE_FLOORZ_L
@@ -1534,7 +1536,7 @@ thing_tick:
 	sbc	THING_STRUCT_Z_L,y
 	lda	THMOVE_CEILZ_H
 	sbc	THING_STRUCT_Z_H,y
-	bpl	@ceiling_ok
+	bpl	ttf_ceiling_ok
 
 	; th->z = th->ceilingz << 8
 	lda	THMOVE_CEILZ_L
@@ -1559,9 +1561,9 @@ thing_tick:
 
 	; explode
 	jsr	projectile_death
-	jmp	@do_animation
+	jmp	ttf_do_animation
 :
-@ceiling_ok:
+ttf_ceiling_ok:
 	; floor zdiff
 	sec
 	lda	THING_STRUCT_Z_L,y
@@ -1569,13 +1571,13 @@ thing_tick:
 	sta	MATH_TEMP_A
 	lda	THING_STRUCT_Z_H,y
 	sbc	THMOVE_FLOORZ_H
-	bpl	@not_in_floor
+	bpl	ttf_not_in_floor
 
 	;; inside floor
 
 	; if(i == camera_thing)
 	cpy	G_CAMERA_THING
-	bne	@no_camera_dip
+	bne	ttf_no_camera_dip
 
 	; if(old_fz < th->floorz)
 	sec
@@ -1611,7 +1613,7 @@ thing_tick:
 :
 	sta	G_VIEWDELTA
 
-@no_camera_dip:
+ttf_no_camera_dip:
 	; th->z = th->floorz << 8
 	lda	THMOVE_FLOORZ_L
 	sta	THING_STRUCT_Z_L,y
@@ -1638,16 +1640,16 @@ thing_tick:
 
 	; explode
 	jsr	projectile_death
-	jmp	@do_animation
+	jmp	ttf_do_animation
 :
-@not_in_floor:
+ttf_not_in_floor:
 	; get thing flags
 	lda	THING_STRUCT_EFLAGS,y
 	sta	THMOVE_EFLAGS
 
 	; get thing gravity
 	lda	THING_STRUCT_GRAVITY,y
-	beq	@do_z_friction
+	beq	ttf_do_z_friction
 
 	; prepare gravity
 	tax
@@ -1667,12 +1669,12 @@ thing_tick:
 
 	; check sector 'water' flag
 	lda	SECTOR_STRUCT_FLAGS,x
-	bpl	@no_water
+	bpl	ttf_no_water
 
 	; check water special flag
 	lda	THMOVE_EFLAGS
 	and	#THING_EFLAG_WATERSPEC
-	beq	@do_z_friction
+	beq	ttf_do_z_friction
 
 	; double the gravity value
 	asl	TMP_THING_GRAVITY_S
@@ -1686,7 +1688,7 @@ thing_tick:
 	ldx	THMOVE_THING_TYPE
 	lda	THTYPE_STRUCT_WATER_HEIGHT,x
 	cmp	THTYPE_STRUCT_VIEW_HEIGHT,x
-	bcc	@apply_float
+	bcc	ttf_apply_float
 
 	; invert gravity
 	lda	TMP_THING_GRAVITY_L
@@ -1699,7 +1701,7 @@ thing_tick:
 	bne	:+
 	inc	TMP_THING_GRAVITY_L
 :
-@apply_float:
+ttf_apply_float:
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
@@ -1710,15 +1712,15 @@ thing_tick:
 	lda	TMP_THING_GRAVITY_L
 	sta	THING_STRUCT_MZ_L,y
 
-	bra	@skip_z_friction
+	bra	ttf_skip_z_friction
 
-@no_water:
+ttf_no_water:
 	;;;
 	; gravity
 
 	; floor check
 	lda	ARG_THING_CHECK_ONFLOOR
-	bne	@skip_z_friction
+	bne	ttf_skip_z_friction
 
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
@@ -1733,9 +1735,9 @@ thing_tick:
 	sbc	TMP_THING_GRAVITY_L
 	sta	THING_STRUCT_MZ_L,y
 
-	bra	@skip_z_friction
+	bra	ttf_skip_z_friction
 
-@do_z_friction:
+ttf_do_z_friction:
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
@@ -1743,7 +1745,7 @@ thing_tick:
 	; check flag
 	lda	THING_STRUCT_EFLAGS,y
 	and	#THING_EFLAG_PROJECTILE
-	bne	@skip_z_friction
+	bne	ttf_skip_z_friction
 
 	ldx	TICK_IDX
 
@@ -1761,7 +1763,7 @@ thing_tick:
 :
 	stz	THING_STRUCT_MZ_S,x
 :
-@skip_z_friction:
+ttf_skip_z_friction:
 
 	;;;
 	; linked sectors
@@ -1776,7 +1778,7 @@ thing_tick:
 	; check links
 	lda	SECTOR_STRUCT_FLOOR_LINK,x
 	ora	SECTOR_STRUCT_CEILING_LINK,x
-	beq	@skip_links
+	beq	ttf_skip_links
 
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
@@ -1813,7 +1815,7 @@ thing_tick:
 
 	; check floor
 	lda	SECTOR_STRUCT_FLOOR_LINK,x
-	beq	@skip_floor_link
+	beq	ttf_skip_floor_link
 
 	; if(zz < sec->floor.height)
 	sec
@@ -1821,16 +1823,16 @@ thing_tick:
 	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
 	lda	THMOVE_ZZZ_H
 	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
-	bpl	@skip_floor_link
+	bpl	ttf_skip_floor_link
 
 	; apply new main sector
 	lda	SECTOR_STRUCT_FLOOR_LINK,x
-	bra	@do_swap
+	bra	ttf_do_swap
 
-@skip_floor_link:
+ttf_skip_floor_link:
 	; check ceiling
 	lda	SECTOR_STRUCT_CEILING_LINK,x
-	beq	@skip_ceiling_link
+	beq	ttf_skip_ceiling_link
 
 	; if(zz > sec->ceiling.height)
 	sec
@@ -1838,11 +1840,11 @@ thing_tick:
 	sbc	THMOVE_ZZZ_L
 	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
 	sbc	THMOVE_ZZZ_H
-	bpl	@skip_ceiling_link
+	bpl	ttf_skip_ceiling_link
 
 	; apply new main sector
 	lda	SECTOR_STRUCT_CEILING_LINK,x
-@do_swap:
+ttf_do_swap:
 	sta	RET_THING_CHECK_NEWSEC
 	jsr	swap_main_sector
 
@@ -1855,8 +1857,8 @@ thing_tick:
 	ora	#THING_IFLAG_HEIGHTCHECK
 	sta	THING_STRUCT_IFLAGS,y
 
-@skip_ceiling_link:
-@skip_links:
+ttf_skip_ceiling_link:
+ttf_skip_links:
 
 	; check for double move for projectiles
 	lda	THMOVE_MOVE_AGAIN
@@ -1877,9 +1879,9 @@ thing_tick:
 
 	; move again
 	dec	THMOVE_MOVE_AGAIN
-	jmp	@multi_move
+	jmp	ttf_multi_move
 :
-@do_animation:
+ttf_do_animation:
 	;;;
 	; animation
 
@@ -1889,22 +1891,25 @@ thing_tick:
 
 	; if(th->ticks)
 	lda	THING_STRUCT_TICKS,y
-	beq	@done_thing
+	beq	ttf_done_thing
 
 	; th->ticks--
 	dea
 	sta	THING_STRUCT_TICKS,y
 
 	; if(!th->ticks)
-	bne	@done_thing
+	bne	ttf_done_thing
 
-@act_again:
+	; no tick add
+	stz	TMP_STACT_TICK_ADD
+
+thing_act_rept:
 	; if(th->next_state)
 	lda	THING_STRUCT_NXTFRM_H,y
 	and	#$7F
 	ora	THING_STRUCT_NXTFRM_L,y
 	bne	:+
-	jmp	@remove_thing
+	jmp	ttf_remove_thing
 :
 	; get new state
 	lda	THING_STRUCT_NXTFRM_L,y
@@ -1929,21 +1934,17 @@ thing_tick:
 
 	; action
 	lda	(THANIM_PTR_L)
-	beq	@no_action
+	beq	ttf_no_action
 
 	; run action
-	jsr	action_run
-	bcc	:+
+	jmp	action_run
 
-	; repeat
-	ldy	TICK_IDX
-	bra	@act_again
-:
+thing_act_cont:
 	; thing states bank
 	lda	#BANK_THING_STATES
 	sta	REG_RAM_BANK
 
-@no_action:
+ttf_no_action:
 	; next (lo)
 	ldy	#THSTATE_STRUCT_NEXT
 	lda	(THANIM_PTR_L),y
@@ -1961,7 +1962,9 @@ thing_tick:
 
 	; ticks
 	iny
+	clc
 	lda	(THANIM_PTR_L),y
+	adc	TMP_STACT_TICK_ADD
 	pha	; <ticks>
 
 	; thing structure bank
@@ -1999,7 +2002,7 @@ thing_tick:
 	sta	THING_STRUCT_TICKS,y
 
 	; done
-@done_thing:
+ttf_done_thing:
 	; TIME
 	jsr	time_update
 
@@ -2008,52 +2011,24 @@ thing_tick:
 	bne	:+
 	lda	G_PLAYER_THING
 	sta	TICK_IDX
-	bra	@skip_thing
+	bra	ttf_skip_thing
 :
 	cmp	G_PLAYER_THING
-	bne	@skip_thing
+	bne	ttf_skip_thing
 
 	stz	TICK_IDX
 	ldy	#0
-	jmp	@do_animation
+	jmp	ttf_do_animation
 
-@skip_thing:
+ttf_skip_thing:
 	; next
 	inc	TICK_IDX
 	bmi	:+
-	jmp	@thing_loop
+	jmp	ttf_thing_loop
 :
 	rts
 
-@remove_thing:
-	; check if weapon
-	ldy	TICK_IDX
-	bne	:+
-
-	; get thing type
-	ldx	THING_STRUCT_TYPE
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
-	; read animation
-	lda	THTYPE_ANIM_READY_L,x
-	pha
-	lda	THTYPE_ANIM_READY_H,x
-	tax
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-	; set state
-	pla
-	sta	THING_STRUCT_NXTFRM_L
-	stx	THING_STRUCT_NXTFRM_H
-
-	jmp	@act_again
-:
+ttf_remove_thing:
 	; remove from all sectors
 	stz	RET_THING_CHECK_NEWSEC
 	jsr	thing_apply_position
@@ -2068,7 +2043,7 @@ thing_tick:
 
 	; remove links from other things
 	ldy	#0
-@loop_del_lnk:
+ttf_loop_del_lnk:
 	; origin
 	lda	THING_STRUCT_TH_ORIGIN,y
 	cmp	TICK_IDX
@@ -2085,12 +2060,12 @@ thing_tick:
 :
 	; next
 	dey
-	bne	@loop_del_lnk
+	bne	ttf_loop_del_lnk
 
 	; skip states
-	bra	@done_thing
+	bra	ttf_done_thing
 
-@slide_try_0:
+ttf_slide_try_0:
 	; modify momentnum using wall angle
 	; try to slide using wall angle
 
@@ -2302,9 +2277,9 @@ thing_tick:
 	sta	THING_STRUCT_MY_L,y
 
 	; try new position
-	jmp	@try_move_full
+	jmp	ttf_try_move_full
 
-@slide_try_1:
+ttf_slide_try_1:
 	; stop
 	lda	#0
 	sta	THING_STRUCT_MX_S,y
@@ -2362,17 +2337,17 @@ thing_tick:
 	sta	ARG_THING_CHECK_Y_H
 
 	; try new position
-	jmp	@try_move_cut
+	jmp	ttf_try_move_cut
 
-@slide_try_jmp:
-	.word	@slide_try_0
-	.word	@slide_try_1
-	.word	@move_stop
+ttf_slide_try_jmp:
+	.word	ttf_slide_try_0
+	.word	ttf_slide_try_1
+	.word	ttf_move_stop
 
 	;;;
 	; player change (HI -> LO)
 
-@ptc_hi_lo:
+ttf_ptc_hi_lo:
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
@@ -2464,12 +2439,12 @@ thing_tick:
 	stz	G_VIEWDELTA
 :
 	; done
-	jmp	@done_pchange
+	jmp	ttf_done_pchange
 
 	;;;
 	; player change (LO -> HI)
 
-@ptc_lo_hi:
+ttf_ptc_lo_hi:
 	; thing structure bank
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
@@ -2509,7 +2484,7 @@ thing_tick:
 	bpl	:+
 
 	; failed (new height is too big)
-	jmp	@done_pchange
+	jmp	ttf_done_pchange
 :
 	; wiff = ti->view_height - thing_type[th->type].view_height
 	sec
@@ -2580,7 +2555,7 @@ thing_tick:
 
 	; if(i == camera_thing)
 	cpx	G_CAMERA_THING
-	bne	@skip_lo_hi_cam
+	bne	ttf_skip_lo_hi_cam
 
 	; projection.wh += wiff
 	clc
@@ -2614,9 +2589,9 @@ thing_tick:
 :
 	sta	G_VIEWDELTA
 
-@skip_lo_hi_cam:
+ttf_skip_lo_hi_cam:
 	; done
-	jmp	@done_pchange
+	jmp	ttf_done_pchange
 
 ;;;
 ; swap thing main sector

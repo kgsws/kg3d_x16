@@ -231,6 +231,7 @@ typedef struct hud_element_s
 	const uint8_t *name;
 	int32_t width, height, scale;
 	uint32_t shader;
+	glui_container_t *cont;
 	void (*import)(uint8_t*);
 	void *(*texgen)(const struct hud_element_s *);
 	void *(*pregen)(const struct hud_element_s *);
@@ -373,21 +374,25 @@ typedef struct
 typedef struct
 {
 	uint8_t data[64];
-	int8_t space;
+	uint8_t space;
 } nums_char_t;
 
 typedef struct
 {
 	struct
 	{
-		struct
+		union
 		{
-			uint8_t title;
-			uint8_t item;
-			uint8_t group;
-			uint8_t select;
-			uint8_t extra;
-			uint8_t exsel;
+			uint8_t raw[6];
+			struct
+			{	// order is defined in game ASM and UI buttons
+				uint8_t title;
+				uint8_t item;
+				uint8_t group;
+				uint8_t select;
+				uint8_t extra;
+				uint8_t exsel;
+			};
 		} color;
 	} menu;
 } hud_cfg_t;
@@ -514,10 +519,20 @@ static const hud_cfg_t hud_cfg_def =
 {
 	.menu.color.title = 15,
 	.menu.color.item = 14,
-	.menu.color.select = 13,
-	.menu.color.group = 12,
+	.menu.color.group = 13,
+	.menu.color.select = 12,
 	.menu.color.extra = 11,
 	.menu.color.exsel = 10,
+};
+
+static const uint8_t *const menu_color_name[] =
+{
+	"Title",
+	"Item",
+	"Group",
+	"Select",
+	"Extra",
+	"Exsel",
 };
 
 static const uint8_t vram_ranges[] =
@@ -700,17 +715,18 @@ static const hud_element_t hud_element[NUM_HUD_ELM] =
 {
 	[HUDE_FONT] =
 	{
-		.name = "text font",
+		.name = "text and menu",
 		.width = 16 * 8,
 		.height = 6 * 8,
 		.scale = 3,
+		.cont = &ui_gfx_hud_font_colors,
 		.import = hud_import_font,
 		.texgen = hud_texgen_font,
 		.pregen = hud_pregen_font
 	},
 	[HUDE_NUMS] =
 	{
-		"numeric font",
+		"numeric and stbar",
 		.width = 8 * 8,
 		.height = 2 * 16,
 		.scale = 3,
@@ -2199,7 +2215,7 @@ static int32_t cbor_gfx_nums(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 
 	cbor_font[CBOR_FONT_DATA].ptr = nc->data;
 	cbor_font[CBOR_FONT_DATA].extra = 16 * 8 / 2;
-	cbor_font[CBOR_FONT_SPACE].u8 = (uint8_t*)&nc->space;
+	cbor_font[CBOR_FONT_SPACE].u8 = &nc->space;
 
 	ctx->entry_cb = cbor_gfx_font_entry;
 
@@ -4195,6 +4211,9 @@ static void gfx_cleanup()
 	for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
 		font_char[i].space = 9;
 
+	for(uint32_t i = 0; i < NUMS_CHAR_COUNT; i++)
+		nums_char[i].space = 9;
+
 	font_char[0].yoffs = 10;
 }
 
@@ -5413,12 +5432,20 @@ static void *hud_pregen_font(const hud_element_t *elm)
 	};
 	const uint8_t *const *itxt;
 	const uint8_t *const *etxt = extra_list;
+	uint8_t text[32];
 	uint8_t *data;
 	int32_t y, xl, xr;
 
 	data = calloc(160, 120);
 	if(!data)
 		return NULL;
+
+	// color buttons
+	for(uint32_t i = 0; i < sizeof(hud_cfg.menu.color); i++)
+	{
+		sprintf(text, "%s: %u", menu_color_name[i], hud_cfg.menu.color.raw[i]);
+		glui_set_text(&ui_gfx_hud_font_colors.elements[i]->text, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+	}
 
 	// title
 	hud_font_write(data, 80, font_char[0].yoffs * 1, hud_cfg.menu.color.title, "Menu Title", 1);
@@ -5537,6 +5564,16 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 	void *data;
 	uint16_t *cmap;
 	uint8_t text[32];
+
+	for(uint32_t i = 0; i < NUM_HUD_ELM; i++)
+	{
+		glui_container_t *cont = hud_element[i].cont;
+		if(cont)
+			cont->base.disabled = 1;
+	}
+
+	if(elm->cont)
+		elm->cont->base.disabled = 0;
 
 	ui_gfx_hud_texture.base.disabled = 1;
 	ui_gfx_hud_demo.base.disabled = 1;
@@ -8249,7 +8286,7 @@ static void hud_import_nums(uint8_t *file)
 		nums_char_t *nc = nums_char + i;
 		uint8_t *dst = nc->data;
 
-		nc->space = -9;
+		nc->space = 9;
 
 		for(uint32_t x = 0; x < 128; x += 2)
 		{
@@ -8259,8 +8296,7 @@ static void hud_import_nums(uint8_t *file)
 			if(in >= 16)
 			{
 				in = 0;
-				if(nc->space < 0)
-					nc->space = (x & 7) + (in - 16);
+				nc->space = x & 7;
 			}
 			out = in << 4;
 
@@ -8268,16 +8304,12 @@ static void hud_import_nums(uint8_t *file)
 			if(in >= 16)
 			{
 				in = 0;
-				if(nc->space < 0)
-					nc->space = (x & 7) + (in - 15);
+				nc->space = x & 7;
 			}
 			out |= in;
 
 			*dst++ = out;
 		}
-
-		if(nc->space < 0)
-			nc->space = -nc->space;
 	}
 
 	free(img);
@@ -8320,6 +8352,20 @@ int32_t uin_gfx_hud_color(glui_element_t *elm, int32_t x, int32_t y)
 int32_t uin_gfx_hud_demo(glui_element_t *elm, int32_t x, int32_t y)
 {
 	edit_ui_textentry("Enter some text.", sizeof(hud_demo_text), te_hud_text);
+	return 1;
+}
+
+int32_t uin_gfx_hud_menu_color(glui_element_t *elm, int32_t x, int32_t y)
+{
+	uint32_t idx = elm->base.custom;
+	uint8_t *ptr = hud_cfg.menu.color.raw + idx;
+
+	*ptr = *ptr + 1;
+	if(*ptr >= 16)
+		*ptr = 0;
+
+	update_gfx_mode(0);
+
 	return 1;
 }
 

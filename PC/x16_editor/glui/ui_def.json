@@ -1687,6 +1687,84 @@
 								"align": "center",
 								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE_ALT]",
 								"shader": "palette"
+							},
+							{
+								"name": "ui_gfx_hud_font_colors",
+								"elements":
+								[
+									{
+										"click": "uin_gfx_hud_menu_color",
+										"custom": 0,
+										"x": 128,
+										"y": 384,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_hud_menu_color",
+										"custom": 1,
+										"x": 128,
+										"y": 432,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_hud_menu_color",
+										"custom": 2,
+										"x": 128,
+										"y": 480,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_hud_menu_color",
+										"custom": 3,
+										"x": 128,
+										"y": 528,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_hud_menu_color",
+										"custom": 4,
+										"x": 128,
+										"y": 576,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_hud_menu_color",
+										"custom": 5,
+										"x": 128,
+										"y": 624,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									}
+								]
 							}
 						]
 					},

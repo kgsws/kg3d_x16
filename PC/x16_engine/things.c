@@ -1747,22 +1747,17 @@ act_next:
 
 					st = thing_state + decode_state(th->next_state);
 
+					th->ticks = st->ticks;
+
 					if(action_func(i, st->action, st))
 						goto act_next;
 
 					th->next_state = st->next | ((st->frm_nxt & 0xE0) << 8);
 
-					th->ticks = st->ticks;
 					if(st->sprite & 0x80)
 						th->sprite = 0xFF; // 'NONE'
 					else
 						th->sprite = sprite_remap[st->sprite] + (st->frm_nxt & 0x1F);
-				} else
-				if(!i)
-				{
-					th->next_state = thing_anim[th->type][ANIM_READY].state;
-					if(th->next_state)
-						goto act_next;
 				} else
 				{
 					poscheck.thing = i;

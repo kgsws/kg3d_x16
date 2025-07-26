@@ -728,7 +728,8 @@ static void prepare_sprite(kge_thing_t *th, uint8_t light)
 
 	xdiff = x1 - x0;
 	if(xdiff <= 0)
-		return;
+		// always show thin sprite
+		x1 = x0 + 1;
 
 	// X reject
 	if(x1 <= projection.x0d)

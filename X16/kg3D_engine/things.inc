@@ -8,5 +8,7 @@
 .import thing_tick
 .import thing_check_position
 .import thing_apply_position
+.import thing_act_cont
+.import thing_act_rept
 
 .import wall_sizes

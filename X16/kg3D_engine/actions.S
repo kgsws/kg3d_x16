@@ -15,12 +15,13 @@
 ;;;
 ; NOTES: action callback
 ;;;
-; Y is current thing; 0 = player weapon; (does not have to be preserved)
+; Y is current thing; 0 = player weapon; (does not have to be preserved) (also available in TICK_IDX)
 ; THANIM_PTR_* points to current frame
 ; ARG_THING_SPAWN_SECTOR is current thing sector; invalid for weapons
 ; BANK_THING_STATES is active bank
-; use 'clc + rts' to continue
-; use 'sec + rts' for frame change; active bank must be 'BANK_THING_STRUCT'
+; jump to 'thing_act_cont' to continue
+; jump to 'thing_act_rept' to repeat
+; set TMP_STACT_TICK_ADD to add extra state duration
 
 ;;;
 ; CODE
@@ -289,8 +290,7 @@ act_wpn_ready:
 
 @skip_alt:
 	; no changes
-	clc
-	rts
+	jmp	thing_act_cont
 
 ;;;
 ; action: weapon raise
@@ -330,8 +330,7 @@ act_wpn_raise:
 	jmp	apply_animation
 :
 	; no changes
-	clc
-	rts
+	jmp	thing_act_cont
 
 ;;;
 ; action: weapon lower
@@ -352,8 +351,7 @@ act_wpn_lower:
 	bcs	:+
 
 	; no changes
-	clc
-	rts
+	jmp	thing_act_cont
 :
 	; th->height = 64
 	lda	#64
@@ -441,8 +439,7 @@ act_atk_projectile:
 	pla
 
 	; no changes
-	clc
-	rts
+	jmp	thing_act_cont
 
 ;;;
 ; action: projectile attack
@@ -481,8 +478,7 @@ act_atk_hitscan:
 	bne	@loop
 
 	; no changes
-	clc
-	rts
+	jmp	thing_act_cont
 
 ;;;
 ; effect: blood splat
@@ -544,8 +540,22 @@ act_eff_blood:
 
 @no_boost:
 	; no changes
-	clc
-	rts
+	jmp	thing_act_cont
+
+;;;
+; ticks: add
+;;;
+
+act_tick_add:
+	; rng mask add from arg0
+	jsr	rng_get
+	ldy	#THSTATE_STRUCT_ARG0
+	lda	(THANIM_PTR_L),y
+	and	MATH_TEMP
+	sta	TMP_STACT_TICK_ADD
+
+	; no changes
+	jmp	thing_act_cont
 
 ;;;
 ; death: simple
@@ -563,8 +573,7 @@ act_die_simple:
 	sta	THING_STRUCT_GRAVITY,y
 
 	; no changes
-	clc
-	rts
+	jmp	thing_act_cont
 
 ;;;
 ; apply new animation
@@ -583,8 +592,7 @@ apply_animation_ex:
 	sta	THING_STRUCT_NXTFRM_H
 
 	; apply
-	sec
-	rts
+	jmp	thing_act_rept
 
 ;;;
 ; randomize
@@ -664,6 +672,7 @@ action_table:
 	.word	act_atk_projectile
 	.word	act_atk_hitscan
 	.word	act_eff_blood
+	.word	act_tick_add
 	.word	act_die_simple
 
 ;;;

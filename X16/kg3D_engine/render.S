@@ -4251,12 +4251,18 @@ prepare_sprite:
 
 	; if(xdiff <= 0)
 	bpl	:+
-@too_small:
-	rts
+	stz	SPRITE_XDIFF_L
+	lda	#0
 :
 	ora	SPRITE_XDIFF_L
-	beq	@too_small
+	bne	:+
 
+	; x1 = x0 + 1
+	lda	SPRITE_X0_L
+	ina
+	sta	SPRITE_X1_L
+	stz	SPRITE_X1_H
+:
 	; if(x1 <= projection.x0d)
 	sec
 	lda	SPRITE_X1_L

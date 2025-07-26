@@ -387,6 +387,18 @@ const state_action_def_t state_action_def[] =
 	},
 ///
 	{
+		.name = "ticks: add",
+		.flags = AFLG_THING | AFLG_WEAPON,
+		.arg[0] =
+		{
+			.name = "rng mask",
+			.type = ARGT_U8,
+			.def = 1,
+			.lim = {1, 255}
+		}
+	},
+///
+	{
 		.name = "death: simple",
 		.flags = AFLG_THING
 	},
@@ -1186,7 +1198,7 @@ u8:
 						ui_thing_state_bbox.base.disabled = 1;
 
 						ui_thing_state_preview.base.x = ui_thing_state_origin.base.x;
-						ui_thing_state_preview.base.y = ui_thing_state_origin.base.y;
+						ui_thing_state_preview.base.y = 472;
 
 						ui_thing_state_preview.base.width = 160 * 3;
 						ui_thing_state_preview.base.height = 120 * 3;
@@ -2400,6 +2412,33 @@ const uint8_t *x16t_save(const uint8_t *file)
 }
 
 //
+// export state fix
+
+static void fix_action_args(export_state_t *st)
+{
+#if 0
+	const state_action_def_t *sd;
+
+	if(!st->action)
+		return;
+
+	sd = state_action_def + st->action;
+
+	for(uint32_t i = 0; i < 3; i++)
+	{
+		const state_arg_def_t *ad = sd->arg + i;
+
+		if(ad->type == )
+			st->arg[i] = ;
+	}
+#endif
+}
+
+static void fix_action_anim(export_state_t *st)
+{
+}
+
+//
 // API
 
 uint32_t x16t_init()
@@ -2940,6 +2979,8 @@ void x16t_export()
 				dst->arg[1] = st->arg[1];
 				dst->arg[2] = st->arg[2];
 
+				fix_action_args(dst);
+
 				state_idx++;
 			}
 
@@ -2965,14 +3006,16 @@ void x16t_export()
 			tdst[j * 256] = tsrc[j];
 	}
 
-	// fix st->next animations
+	// fix animation jumps
 	for(uint32_t i = 0; i < state_idx; i++)
 	{
+		export_state_t *dst = state_data + i;
 		uint8_t in = st_next[i];
+
+		fix_action_anim(dst);
 
 		if(in & 0x80)
 		{
-			export_state_t *dst = state_data + i;
 			thing_anim_t *ta;
 			uint32_t next;
 
