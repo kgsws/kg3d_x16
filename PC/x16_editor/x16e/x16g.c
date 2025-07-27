@@ -201,6 +201,9 @@ enum
 	CBOR_HUD_MENU_COLOR_SELECT,
 	CBOR_HUD_MENU_COLOR_EXTRA,
 	CBOR_HUD_MENU_COLOR_EXSEL,
+	CBOR_HUD_STAT_COLOR_MSG,
+	CBOR_HUD_STAT_COLOR_HP,
+	CBOR_HUD_STAT_COLOR_AMMO,
 	//
 	NUM_CBOR_HUD
 };
@@ -379,22 +382,30 @@ typedef struct
 
 typedef struct
 {
-	struct
+	// order is defined in game ASM and UI buttons
+	union
 	{
-		union
+		uint8_t raw[6];
+		struct
 		{
-			uint8_t raw[6];
-			struct
-			{	// order is defined in game ASM and UI buttons
-				uint8_t title;
-				uint8_t item;
-				uint8_t group;
-				uint8_t select;
-				uint8_t extra;
-				uint8_t exsel;
-			};
-		} color;
-	} menu;
+			uint8_t title;
+			uint8_t item;
+			uint8_t group;
+			uint8_t select;
+			uint8_t extra;
+			uint8_t exsel;
+		};
+	} menu_color;
+	union
+	{
+		uint8_t raw[1];
+		struct
+		{
+			uint8_t msg;
+			uint8_t hp;
+			uint8_t ammo;
+		};
+	} stat_color;
 } hud_cfg_t;
 
 //
@@ -517,12 +528,21 @@ uint8_t x16_sky_name[LEN_X16_SKY_NAME];
 
 static const hud_cfg_t hud_cfg_def =
 {
-	.menu.color.title = 15,
-	.menu.color.item = 14,
-	.menu.color.group = 13,
-	.menu.color.select = 12,
-	.menu.color.extra = 11,
-	.menu.color.exsel = 10,
+	.menu_color =
+	{
+		.title = 15,
+		.item = 14,
+		.group = 13,
+		.select = 12,
+		.extra = 11,
+		.exsel = 10,
+	},
+	.stat_color =
+	{
+		.msg = 9,
+		.hp = 8,
+		.ammo = 8,
+	}
 };
 
 static const uint8_t *const menu_color_name[] =
@@ -533,6 +553,13 @@ static const uint8_t *const menu_color_name[] =
 	"Select",
 	"Extra",
 	"Exsel",
+};
+
+static const uint8_t *const stat_color_name[] =
+{
+	"Message",
+	"Health",
+	"Ammo",
 };
 
 static const uint8_t vram_ranges[] =
@@ -710,6 +737,8 @@ static void *hud_texgen_font(const hud_element_t*);
 static void *hud_pregen_font(const hud_element_t*);
 static void hud_import_nums(uint8_t*);
 static void *hud_texgen_nums(const hud_element_t*);
+static void *hud_pregen_nums(const hud_element_t*);
+static int32_t uin_gfx_hud_demo(glui_element_t*, int32_t, int32_t);
 
 static const hud_element_t hud_element[NUM_HUD_ELM] =
 {
@@ -719,7 +748,7 @@ static const hud_element_t hud_element[NUM_HUD_ELM] =
 		.width = 16 * 8,
 		.height = 6 * 8,
 		.scale = 3,
-		.cont = &ui_gfx_hud_font_colors,
+		.cont = &ui_gfx_hud_menu_opts,
 		.import = hud_import_font,
 		.texgen = hud_texgen_font,
 		.pregen = hud_pregen_font
@@ -730,8 +759,10 @@ static const hud_element_t hud_element[NUM_HUD_ELM] =
 		.width = 8 * 8,
 		.height = 2 * 16,
 		.scale = 3,
+		.cont = &ui_gfx_hud_stat_opts,
 		.import = hud_import_nums,
 		.texgen = hud_texgen_nums,
+		.pregen = hud_pregen_nums
 	},
 };
 
@@ -1256,42 +1287,63 @@ static edit_cbor_obj_t cbor_hud[] =
 		.name = "menu.color.title",
 		.nlen = 16,
 		.type = EDIT_CBOR_TYPE_U8,
-		.u8 = &hud_cfg.menu.color.title
+		.u8 = &hud_cfg.menu_color.title
 	},
 	[CBOR_HUD_MENU_COLOR_ITEM] =
 	{
 		.name = "menu.color.item",
 		.nlen = 15,
 		.type = EDIT_CBOR_TYPE_U8,
-		.u8 = &hud_cfg.menu.color.item
+		.u8 = &hud_cfg.menu_color.item
 	},
 	[CBOR_HUD_MENU_COLOR_GROUP] =
 	{
 		.name = "menu.color.group",
 		.nlen = 16,
 		.type = EDIT_CBOR_TYPE_U8,
-		.u8 = &hud_cfg.menu.color.group
+		.u8 = &hud_cfg.menu_color.group
 	},
 	[CBOR_HUD_MENU_COLOR_SELECT] =
 	{
 		.name = "menu.color.select",
 		.nlen = 17,
 		.type = EDIT_CBOR_TYPE_U8,
-		.u8 = &hud_cfg.menu.color.select
+		.u8 = &hud_cfg.menu_color.select
 	},
 	[CBOR_HUD_MENU_COLOR_EXTRA] =
 	{
 		.name = "menu.color.extra",
 		.nlen = 16,
 		.type = EDIT_CBOR_TYPE_U8,
-		.u8 = &hud_cfg.menu.color.extra
+		.u8 = &hud_cfg.menu_color.extra
 	},
 	[CBOR_HUD_MENU_COLOR_EXSEL] =
 	{
 		.name = "menu.color.exsel",
 		.nlen = 16,
 		.type = EDIT_CBOR_TYPE_U8,
-		.u8 = &hud_cfg.menu.color.exsel
+		.u8 = &hud_cfg.menu_color.exsel
+	},
+	[CBOR_HUD_STAT_COLOR_MSG] =
+	{
+		.name = "stat.color.message",
+		.nlen = 18,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_color.msg
+	},
+	[CBOR_HUD_STAT_COLOR_HP] =
+	{
+		.name = "stat.color.health",
+		.nlen = 17,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_color.hp
+	},
+	[CBOR_HUD_STAT_COLOR_AMMO] =
+	{
+		.name = "stat.color.ammo",
+		.nlen = 15,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_color.ammo
 	},
 	// terminator
 	[NUM_CBOR_HUD] = {}
@@ -5440,15 +5492,17 @@ static void *hud_pregen_font(const hud_element_t *elm)
 	if(!data)
 		return NULL;
 
+	ui_gfx_hud_demo.base.click = uin_gfx_hud_demo;
+
 	// color buttons
-	for(uint32_t i = 0; i < sizeof(hud_cfg.menu.color); i++)
+	for(uint32_t i = 0; i < sizeof(hud_cfg.menu_color); i++)
 	{
-		sprintf(text, "%s: %u", menu_color_name[i], hud_cfg.menu.color.raw[i]);
-		glui_set_text(&ui_gfx_hud_font_colors.elements[i]->text, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+		sprintf(text, "%s: %u", menu_color_name[i], hud_cfg.menu_color.raw[i]);
+		glui_set_text(&ui_gfx_hud_menu_opts.elements[i]->text, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 	}
 
 	// title
-	hud_font_write(data, 80, font_char[0].yoffs * 1, hud_cfg.menu.color.title, "Menu Title", 1);
+	hud_font_write(data, 80, font_char[0].yoffs * 1, hud_cfg.menu_color.title, "Menu Title", 1);
 
 	// width
 	xl = 0;
@@ -5480,7 +5534,7 @@ static void *hud_pregen_font(const hud_element_t *elm)
 	for(itxt = item_list; *itxt; itxt++, etxt++)
 	{
 		const uint8_t *txt = *itxt;
-		int32_t color = hud_cfg.menu.color.item;
+		int32_t color = hud_cfg.menu_color.item;
 		int32_t center = 0;
 		int32_t xx = xl;
 
@@ -5494,18 +5548,18 @@ static void *hud_pregen_font(const hud_element_t *elm)
 		{
 group:
 			center = 1;
-			color = hud_cfg.menu.color.group;
+			color = hud_cfg.menu_color.group;
 			xx = 80;
 		}
 
 		// extra
 		if(*etxt)
-			hud_font_write(data, xr, y, txt[0] == 0xC0 ? hud_cfg.menu.color.exsel : hud_cfg.menu.color.extra, *etxt, -1);
+			hud_font_write(data, xr, y, txt[0] == 0xC0 ? hud_cfg.menu_color.exsel : hud_cfg.menu_color.extra, *etxt, -1);
 
 		if(txt[0] == 0xC0)
 		{
 			txt++;
-			color = hud_cfg.menu.color.select;
+			color = hud_cfg.menu_color.select;
 		}
 
 		// item / group
@@ -5553,6 +5607,122 @@ static void *hud_texgen_nums(const hud_element_t *elm)
 		}
 		dst += 15 * 8 * 8;
 	}
+
+	return data;
+}
+
+static int32_t hud_nums_width(const uint8_t *text)
+{
+	int32_t x = 0;
+
+	while(1)
+	{
+		uint8_t in = *text++;
+		nums_char_t *nc;
+
+		if(!in)
+			break;
+
+		in -= 0x30;
+		if(in > 10)
+			in = 10;
+
+		nc = nums_char + in;
+		x += nc->space;
+	}
+
+	return x;
+}
+
+static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, const uint8_t *text, int32_t align)
+{
+	if(align)
+	{
+		int32_t w = hud_nums_width(text);
+		if(align >= 0)
+			w /= 2;
+		x -= w;
+	}
+
+	color <<= 4;
+
+	while(1)
+	{
+		uint8_t in = *text++;
+		uint8_t *dst, *src;
+		nums_char_t *nc;
+
+		if(!in)
+			break;
+
+		in -= 0x30;
+		if(in > 10)
+			in = 10;
+
+		nc = nums_char + in;
+
+		if(y < 0)
+			continue;
+		if(y + 16 > 120)
+			continue;
+		if(x < 0)
+			continue;
+		if(x + 8 > 160)
+			continue;
+
+		src = nc->data;
+		dst = data + x + 160 * y;
+		x += nc->space;
+
+		if(x > 160)
+			break;
+
+		for(uint32_t y = 0; y < 16; y++)
+		{
+			for(uint32_t x = 0; x < 4; x++)
+			{
+				uint8_t ni = *src++;
+
+				if(!*dst && ni & 0xF0)
+					*dst = (ni >> 4) | color;
+				dst++;
+
+				if(!*dst && ni & 0x0F)
+					*dst = (ni & 15) | color;
+				dst++;
+			}
+			dst += 160 - 8;
+		}
+	}
+}
+
+static void *hud_pregen_nums(const hud_element_t *elm)
+{
+	uint8_t *data;
+	uint8_t text[32];
+
+	data = calloc(160, 120);
+	if(!data)
+		return NULL;
+
+	ui_gfx_hud_demo.base.click = NULL;
+
+	// color buttons
+	for(uint32_t i = 0; i < sizeof(hud_cfg.stat_color); i++)
+	{
+		sprintf(text, "%s: %u", stat_color_name[i], hud_cfg.stat_color.raw[i]);
+		glui_set_text(&ui_gfx_hud_stat_opts.elements[i]->text, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+	}
+
+	// center message
+	hud_font_write(data, 80, 60 - font_char[0].yoffs, hud_cfg.stat_color.msg, "Special center", 1);
+	hud_font_write(data, 80, 60, hud_cfg.stat_color.msg, "message text.", 1);
+
+	// health
+	hud_nums_write(data, 2, 120 - 18, hud_cfg.stat_color.hp, "100", 0);
+
+	// ammo
+	hud_nums_write(data, 159, 120 - 18, hud_cfg.stat_color.ammo, " 423", -1);
 
 	return data;
 }
@@ -8349,7 +8519,7 @@ int32_t uin_gfx_hud_color(glui_element_t *elm, int32_t x, int32_t y)
 	return 1;
 }
 
-int32_t uin_gfx_hud_demo(glui_element_t *elm, int32_t x, int32_t y)
+static int32_t uin_gfx_hud_demo(glui_element_t *elm, int32_t x, int32_t y)
 {
 	edit_ui_textentry("Enter some text.", sizeof(hud_demo_text), te_hud_text);
 	return 1;
@@ -8358,7 +8528,21 @@ int32_t uin_gfx_hud_demo(glui_element_t *elm, int32_t x, int32_t y)
 int32_t uin_gfx_hud_menu_color(glui_element_t *elm, int32_t x, int32_t y)
 {
 	uint32_t idx = elm->base.custom;
-	uint8_t *ptr = hud_cfg.menu.color.raw + idx;
+	uint8_t *ptr = hud_cfg.menu_color.raw + idx;
+
+	*ptr = *ptr + 1;
+	if(*ptr >= 16)
+		*ptr = 0;
+
+	update_gfx_mode(0);
+
+	return 1;
+}
+
+int32_t uin_gfx_hud_stat_color(glui_element_t *elm, int32_t x, int32_t y)
+{
+	uint32_t idx = elm->base.custom;
+	uint8_t *ptr = hud_cfg.stat_color.raw + idx;
 
 	*ptr = *ptr + 1;
 	if(*ptr >= 16)

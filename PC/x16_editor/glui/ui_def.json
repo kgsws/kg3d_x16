@@ -1681,7 +1681,6 @@
 							},
 							{
 								"name": "ui_gfx_hud_demo",
-								"click": "uin_gfx_hud_demo",
 								"x": 512,
 								"y": 336,
 								"align": "center",
@@ -1689,7 +1688,7 @@
 								"shader": "palette"
 							},
 							{
-								"name": "ui_gfx_hud_font_colors",
+								"name": "ui_gfx_hud_menu_opts",
 								"elements":
 								[
 									{
@@ -1757,6 +1756,48 @@
 										"custom": 5,
 										"x": 128,
 										"y": 624,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									}
+								]
+							},
+							{
+								"name": "ui_gfx_hud_stat_opts",
+								"elements":
+								[
+									{
+										"click": "uin_gfx_hud_stat_color",
+										"custom": 0,
+										"x": 128,
+										"y": 384,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_hud_stat_color",
+										"custom": 1,
+										"x": 128,
+										"y": 432,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_hud_stat_color",
+										"custom": 2,
+										"x": 128,
+										"y": 480,
 										"width": 192,
 										"height": 32,
 										"align": "center",
