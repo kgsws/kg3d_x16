@@ -2219,8 +2219,10 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 		return;
 
 	// bot clip
-	if(sec->floor.link || sec->floordist)
-	{
+	if(	th->eflags & THING_EFLAG_SPRCLIP ||
+		sec->floor.link ||
+		sec->floordist
+	){
 		zdiff = projection.z - sec->floor.height;
 		y1 = (dist * zdiff) >> 8;
 		y1 += projection.ycw;
@@ -2230,8 +2232,9 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 		y1 = 255;
 
 	// top clip
-	if(sec->ceiling.link)
-	{
+	if(	th->eflags & THING_EFLAG_SPRCLIP ||
+		sec->ceiling.link
+	){
 		zdiff = projection.z - sec->ceiling.height;
 		y0 = (dist * zdiff) >> 8;
 		y0 += projection.ycw;

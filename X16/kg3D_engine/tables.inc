@@ -48,10 +48,15 @@ TAB_MENU_LOGO = TAB_TEMP_VAR_BASE + $10
 TAB_MENU_MAX = TAB_TEMP_VAR_BASE + $11
 TAB_MENU_ACTIVE = TAB_TEMP_VAR_BASE + $12	; u16 BE
 
-;; config file
+;; these are in 'BANK_CODE'
+
+; precached sprites
+TAB_PRELOAD_REMAP = $BE00
+
+; config file
 ; default config blob is in input.S
-TAB_CONFIG_SIZE = 13	; 16 is max
-TAB_CONFIG_BASE = TAB_TEMP_VAR_BASE + $18
+TAB_CONFIG_SIZE = 13	; 128 is max
+TAB_CONFIG_BASE = $BE80
 
 ; this order must match the menu
 ; keys must be first
@@ -71,10 +76,7 @@ TAB_CFG_KEY_USE = TAB_CONFIG_BASE + $0A
 TAB_CFG_MOUSE_SENS_H = TAB_CONFIG_BASE + $0B
 TAB_CFG_MOUSE_SENS_V = TAB_CONFIG_BASE + $0C
 
-;; precached sprites in 'BANK_CODE'
-TAB_PRELOAD_REMAP = $BE00
-
-;; input bits in 'BANK_CODE'
+; input bit table
 TAB_INPUT_BITS_L = $BF00
 TAB_INPUT_BITS_H = $BF80
 

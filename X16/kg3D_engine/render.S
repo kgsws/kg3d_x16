@@ -3888,6 +3888,11 @@ prepare_sprite:
 	lda	#BANK_THING_STRUCT
 	sta	REG_RAM_BANK
 
+	; thing clip flag
+	lda	THING_STRUCT_EFLAGS,y
+	and	#THING_EFLAG_SPRCLIP
+	sta	SPRITE_CLIP_FLAG
+
 	; thing sprite
 	lda	THING_STRUCT_SPRITE,y
 	sta	THTEMP_PTR_L
@@ -4466,8 +4471,14 @@ prepare_sprite:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	; check if required (dist)
+	; the sector
 	ldy	SECTOR_PTR_I
+
+	; check if required (flag)
+	lda	SPRITE_CLIP_FLAG
+	bne	:+
+
+	; check if required (dist)
 	lda	SECTOR_STRUCT_FLOOR_DIST,y
 	bne	:+
 
@@ -4512,10 +4523,14 @@ prepare_sprite:
 	;; TOP CLIP
 	stz	SPRITE_CLIP_Y0
 
+	; check if required (flag)
+	lda	SPRITE_CLIP_FLAG
+	bne	:+
+
 	; check if required
 	lda	SECTOR_STRUCT_CEILING_LINK,y
 	beq	@no_top_clip
-
+:
 	;; y1 = (dist * (projection.z - sec->height_ceiling)) >> 8;
 
 	; reset accumulator
