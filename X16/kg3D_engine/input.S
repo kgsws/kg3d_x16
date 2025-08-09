@@ -17,6 +17,8 @@
 .export input_menu_opcode
 .export input_handle_key
 
+;; keybind lookup bits
+
 ; input key bits L (do not touch - used with 'move_angle' lookup)
 INBIT_FORWARD = %00000001
 INBIT_BACKWARD = %00000010
@@ -624,4 +626,6 @@ default_config:
 	; mouse
 	.byte	$90
 	.byte	$80
-
+	.byte	$01
+	.byte	$02
+	.byte	$04	; TODO

@@ -825,6 +825,10 @@ mtxt_save_game:
 	.asciiz	"Save Game"
 mtxt_keyboard:
 	.asciiz	"Keyboard"
+mtxt_mouse:
+	.asciiz	"Mouse"
+mtxt_video:
+	.asciiz	"Video"
 
 ;; keyboard
 
@@ -857,10 +861,21 @@ mtxt_ctrl_other:
 mtxt_ctrl_use:
 	.asciiz	"Use"
 
-;;;;
+;; mouse and video
 
-mtxt_test:
-	.asciiz	"... TeSt ..."
+mtxt_scale:
+	.asciiz	"Scale"
+mtxt_horizontal:
+	.asciiz	"Horizontal"
+mtxt_vertical:
+	.asciiz	"Vertical"
+
+;; mouse
+
+mtxt_buttons:
+	.asciiz	"Buttons"
+mtxt_middle:
+	.asciiz	"Middle"
 
 ;;;;;;;;;;;;;;;;
 
@@ -932,6 +947,70 @@ mptr_keyboard:
 	.word	sel_key_set
 
 ;;;
+; MENU: mouse
+;;;
+
+mptr_mouse:
+	; position
+	.byte	1
+	.byte	0
+	; numitems
+	.byte	7
+	; special
+	.byte	0
+	; previous
+	.word	mptr_options
+	; title
+	.word	mtxt_mouse
+;;	; item 0 [S]
+	.word	mtxt_buttons & $7FFF
+	.word	$0000
+	; item 1
+	.word	mtxt_ctrl_left
+	.word	$0000	; TODO
+	; item 2
+	.word	mtxt_ctrl_right
+	.word	$0000	; TODO
+	; item 3
+	.word	mtxt_middle
+	.word	$0000	; TODO
+;;	; item 4 [S]
+	.word	mtxt_scale & $7FFF
+	.word	$0000
+	; item 5
+	.word	mtxt_horizontal
+	.word	$0000	; TODO
+	; item 6
+	.word	mtxt_vertical
+	.word	$0000	; TODO
+
+;;;
+; MENU: video
+;;;
+
+mptr_video:
+	; position
+	.byte	1
+	.byte	0
+	; numitems
+	.byte	3
+	; special
+	.byte	0
+	; previous
+	.word	mptr_options
+	; title
+	.word	mtxt_video
+;;	; item 0 [S]
+	.word	mtxt_scale & $7FFF
+	.word	$0000
+	; item 1
+	.word	mtxt_horizontal
+	.word	$0000	; TODO
+	; item 2
+	.word	mtxt_vertical
+	.word	$0000	; TODO
+
+;;;
 ; MENU: options
 ;;;
 
@@ -940,7 +1019,7 @@ mptr_options:
 	.byte	0
 	.byte	0
 	; numitems
-	.byte	2
+	.byte	3
 	; special
 	.byte	0
 	; previous
@@ -951,8 +1030,11 @@ mptr_options:
 	.word	mtxt_keyboard
 	.word	mptr_keyboard & $7FFF
 	; item 1
-	.word	mtxt_test
-	.word	$0000	; TODO
+	.word	mtxt_mouse
+	.word	mptr_mouse & $7FFF
+	; item 2
+	.word	mtxt_video
+	.word	mptr_video & $7FFF
 
 ;;;
 ; MENU: main

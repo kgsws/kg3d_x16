@@ -55,7 +55,7 @@ TAB_PRELOAD_REMAP = $BE00
 
 ; config file
 ; default config blob is in input.S
-TAB_CONFIG_SIZE = 13	; 128 is max
+TAB_CONFIG_SIZE = 16	; 128 is max
 TAB_CONFIG_BASE = $BE80
 
 ; this order must match the menu
@@ -75,8 +75,15 @@ TAB_CFG_KEY_USE = TAB_CONFIG_BASE + $0A
 ; mouse
 TAB_CFG_MOUSE_SENS_H = TAB_CONFIG_BASE + $0B
 TAB_CFG_MOUSE_SENS_V = TAB_CONFIG_BASE + $0C
+TAB_CFG_MOUSE_BTN_L = TAB_CONFIG_BASE + $0D
+TAB_CFG_MOUSE_BTN_R = TAB_CONFIG_BASE + $0E
+TAB_CFG_MOUSE_BTN_M = TAB_CONFIG_BASE + $0F
+
+; video
 
 ; input bit table
+; maps keypress to bit
+; max is $6E
 TAB_INPUT_BITS_L = $BF00
 TAB_INPUT_BITS_H = $BF80
 
