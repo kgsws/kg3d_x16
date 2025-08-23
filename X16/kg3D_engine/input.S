@@ -628,4 +628,10 @@ default_config:
 	.byte	$80
 	.byte	$01
 	.byte	$02
-	.byte	$04	; TODO
+	.byte	$03
+	; video
+	.byte	32
+	.byte	32
+	.byte	0
+	.byte	0
+

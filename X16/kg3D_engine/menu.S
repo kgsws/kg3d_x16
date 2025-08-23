@@ -450,7 +450,11 @@ menu_update:
 	; draw special part
 	lda	(TMP_PTR_L),y
 	tax
+	lda	ARG_TEXT_Y
+	pha
 	jsr	draw_special
+	pla
+	sta	ARG_TEXT_Y
 
 @not_special:
 	; calculate X
@@ -576,29 +580,31 @@ prepare_draw:
 ;;;
 
 draw_special:
-	lda	ARG_TEXT_Y
-	pha
 	jmp	(@spec_tab-2,x)
 
 @spec_tab:
 	.word	draw_keys
+	.word	draw_mouse
+	.word	draw_video
 
-draw_keys:
-	; key config
+;;;
+; config special drawing
+;;;
+; MENUCFG_PTR_* is config offset table for each entry
+; FUNC_ARG_* is entry drawer
+
+draw_config:
+	; config source
 	ldy	#STRUCT_MENU_TOP
 	lda	(TMP_PTR_L),y
-	tax
-	lda	keys_conf_top,x
-	sta	FUNC_ARG_L
+	tay
+	lda	(MENUCFG_PTR_L),y
+	sta	MENUCFG_PTR_L
 	lda	#>TAB_CONFIG_BASE
-	sta	FUNC_ARG_H
+	sta	MENUCFG_PTR_H
 
 	; prepare entry list
 	jsr	prepare_draw
-
-	; base text pointer
-	lda	#>key_names_start
-	sta	ARG_TEXT_PTR_H
 
 	; item loop
 @loop_item:
@@ -624,11 +630,68 @@ draw_keys:
 	pla
 	bpl	@skip
 
+	; entry drawer
+	jsr	func_jsr
+
+@skip:
+	; Y += font_height
+	clc
+	lda	ARG_TEXT_Y
+	adc	TAB_FONT_HEIGHT
+	sta	ARG_TEXT_Y
+
+	; next
+	dex
+	bne	@loop_item
+
+	; done
+	rts
+
+;;;
+; write special entry text
+;;;
+
+write_spec_ent:
+	; X
+	jsr	text_width
+	sec
+	lda	TMP_PTR_I
+	sbc	RET_TEXT_LEN
+	sta	ARG_TEXT_X
+
+	; write
+	jmp	text_write_la
+
+;;;
+; special: keyboard
+;;;
+
+draw_keys:
+	; base text pointer
+	lda	#>key_names_start
+	sta	ARG_TEXT_PTR_H
+
+	; entry drawer
+	lda	#<@ent_draw
+	sta	FUNC_ARG_L
+	lda	#>@ent_draw
+	sta	FUNC_ARG_H
+
+	; config source
+	lda	#<conf_top_keys
+	sta	MENUCFG_PTR_L
+	lda	#>conf_top_keys
+	sta	MENUCFG_PTR_H
+
+	; draw
+	jmp	draw_config
+
+@ent_draw:
 	phx
 
 	; read config
-	lda	(FUNC_ARG_L)
-	inc	FUNC_ARG_L
+	lda	(MENUCFG_PTR_L)
+	inc	MENUCFG_PTR_L
 	tax
 	lda	key_table,x
 
@@ -670,31 +733,90 @@ draw_keys:
 	sta	ARG_TEXT_PTR_L
 
 @write:
-	; X
-	jsr	text_width
-	sec
-	lda	TMP_PTR_I
-	sbc	RET_TEXT_LEN
-	sta	ARG_TEXT_X
-
 	; write
-	jsr	text_write_la
+	jsr	write_spec_ent
 
 	plx
+	rts
 
-@skip:
-	; Y += font_height
+;;;
+; special: mouse
+;;;
+
+draw_mouse:
+	; entry drawer
+	lda	#<@ent_draw
+	sta	FUNC_ARG_L
+	lda	#>@ent_draw
+	sta	FUNC_ARG_H
+
+	; config source
+	lda	#<conf_top_mouse
+	sta	MENUCFG_PTR_L
+	lda	#>conf_top_mouse
+	sta	MENUCFG_PTR_H
+
+	; draw
+	jmp	draw_config
+
+@ent_draw:
+	; read config
+	lda	(MENUCFG_PTR_L)
+	inc	MENUCFG_PTR_L
+
+	; TEST
+	and	#$1F
 	clc
-	lda	ARG_TEXT_Y
-	adc	TAB_FONT_HEIGHT
-	sta	ARG_TEXT_Y
+	adc	#$40
+	sta	knam_nib_lo
 
-	; next
-	dex
-	bne	@loop_item
+	; write
+	lda	#<knam_nib_lo
+	sta	ARG_TEXT_PTR_L
+	lda	#>knam_nib_lo
+	sta	ARG_TEXT_PTR_H
+	jsr	write_spec_ent
 
-	pla
-	sta	ARG_TEXT_Y
+	rts
+
+;;;
+; special: video
+;;;
+
+draw_video:
+	; entry drawer
+	lda	#<@ent_draw
+	sta	FUNC_ARG_L
+	lda	#>@ent_draw
+	sta	FUNC_ARG_H
+
+	; config source
+	lda	#<conf_top_video
+	sta	MENUCFG_PTR_L
+	lda	#>conf_top_video
+	sta	MENUCFG_PTR_H
+
+	; draw
+	jmp	draw_config
+
+@ent_draw:
+	; read config
+	lda	(MENUCFG_PTR_L)
+	inc	MENUCFG_PTR_L
+
+	; TEST
+	and	#$1F
+	clc
+	adc	#$60
+	sta	knam_nib_lo
+
+	; write
+	lda	#<knam_nib_lo
+	sta	ARG_TEXT_PTR_L
+	lda	#>knam_nib_lo
+	sta	ARG_TEXT_PTR_H
+	jsr	write_spec_ent
+
 	rts
 
 ;;;
@@ -776,7 +898,7 @@ khdl_setkey:
 	; config option
 	lda	(TMP_PTR_L)
 	tax
-	lda	keys_conf_top,x
+	lda	conf_top_keys,x
 
 	; config pointer
 	sta	FUNC_ARG_L
@@ -870,6 +992,11 @@ mtxt_horizontal:
 mtxt_vertical:
 	.asciiz	"Vertical"
 
+;; video
+
+mtxt_offset:
+	.asciiz	"Offset"
+
 ;; mouse
 
 mtxt_buttons:
@@ -957,31 +1084,31 @@ mptr_mouse:
 	; numitems
 	.byte	7
 	; special
-	.byte	0
+	.byte	4
 	; previous
 	.word	mptr_options
 	; title
 	.word	mtxt_mouse
 ;;	; item 0 [S]
-	.word	mtxt_buttons & $7FFF
-	.word	$0000
-	; item 1
-	.word	mtxt_ctrl_left
-	.word	$0000	; TODO
-	; item 2
-	.word	mtxt_ctrl_right
-	.word	$0000	; TODO
-	; item 3
-	.word	mtxt_middle
-	.word	$0000	; TODO
-;;	; item 4 [S]
 	.word	mtxt_scale & $7FFF
 	.word	$0000
-	; item 5
+	; item 1
 	.word	mtxt_horizontal
 	.word	$0000	; TODO
-	; item 6
+	; item 2
 	.word	mtxt_vertical
+	.word	$0000	; TODO
+;;	; item 3 [S]
+	.word	mtxt_buttons & $7FFF
+	.word	$0000
+	; item 4
+	.word	mtxt_ctrl_left
+	.word	$0000	; TODO
+	; item 5
+	.word	mtxt_ctrl_right
+	.word	$0000	; TODO
+	; item 6
+	.word	mtxt_middle
 	.word	$0000	; TODO
 
 ;;;
@@ -993,9 +1120,9 @@ mptr_video:
 	.byte	1
 	.byte	0
 	; numitems
-	.byte	3
+	.byte	6
 	; special
-	.byte	0
+	.byte	6
 	; previous
 	.word	mptr_options
 	; title
@@ -1007,6 +1134,15 @@ mptr_video:
 	.word	mtxt_horizontal
 	.word	$0000	; TODO
 	; item 2
+	.word	mtxt_vertical
+	.word	$0000	; TODO
+;;	; item 3 [S]
+	.word	mtxt_offset & $7FFF
+	.word	$0000
+	; item 4
+	.word	mtxt_horizontal
+	.word	$0000	; TODO
+	; item 5
 	.word	mtxt_vertical
 	.word	$0000	; TODO
 
@@ -1066,10 +1202,13 @@ mptr_main:
 	.word	$0000	; TODO
 
 ;;;
-; top offset of key config
+; top offsets
 ;;;
+; list of elements must be sequential as it is used as start index
+; separator entry must match entry below it
+; (separators are the only reason these tables exist)
 
-keys_conf_top:
+conf_top_keys:
 	.byte	<TAB_CFG_KEY_FORWARD	; [S]
 	.byte	<TAB_CFG_KEY_FORWARD
 	.byte	<TAB_CFG_KEY_BACKWARD
@@ -1086,6 +1225,23 @@ keys_conf_top:
 	.byte	<TAB_CFG_KEY_ATK_S
 	.byte	<TAB_CFG_KEY_USE	; [S]
 	.byte	<TAB_CFG_KEY_USE
+
+conf_top_mouse:
+	.byte	<TAB_CFG_MOUSE_SENS_H	; [S]
+	.byte	<TAB_CFG_MOUSE_SENS_H
+	.byte	<TAB_CFG_MOUSE_SENS_V
+	.byte	<TAB_CFG_MOUSE_BTN_L	; [S]
+	.byte	<TAB_CFG_MOUSE_BTN_L
+	.byte	<TAB_CFG_MOUSE_BTN_R
+	.byte	<TAB_CFG_MOUSE_BTN_M
+
+conf_top_video:
+	.byte	<TAB_CFG_VIDEO_SCALE_X	; [S]
+	.byte	<TAB_CFG_VIDEO_SCALE_X
+	.byte	<TAB_CFG_VIDEO_SCALE_Y
+	.byte	<TAB_CFG_VIDEO_OFFS_X	; [S]
+	.byte	<TAB_CFG_VIDEO_OFFS_X
+	.byte	<TAB_CFG_VIDEO_OFFS_Y
 
 ;;;;;;;;;;;;;;;;
 
