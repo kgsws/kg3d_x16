@@ -14,6 +14,9 @@
 .export	math_idiv_ns
 .export	math_atan
 .export math_p2a
+.export math_u16
+.export math_intclip
+.export math_txtint
 
 .segment "CODE"
 
@@ -429,3 +432,115 @@ math_p2a:
 	.word	@p2a_oct2
 	.word	@p2a_oct5
 
+;;;
+; print integer as string
+;;;
+; assuming math is enabled
+; VERA_FX_CACHE_L and VERA_FX_CACHE_M is value to convert
+; result is in 'math_txtint'
+; limit is 9999
+
+math_u16:
+	; backup
+	lda	REG_RAM_BANK
+	pha
+	phx
+
+	; character conversion bank
+	lda	#BANK_PRINTINT
+	sta	REG_RAM_BANK
+
+	; 20972 // (256 / 100) * 8192 + 1
+	lda	#$EC
+	sta	VERA_FX_CACHE_H
+	lda	#$51
+	sta	VERA_FX_CACHE_U
+
+	; calculate
+	jsr	@do_calc
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; convert
+	lda	TAB_PRINTINT,x
+	sta	math_txtint+3
+	inx
+	lda	TAB_PRINTINT,x
+	sta	math_txtint+2
+
+	; calculate
+	jsr	@do_calc
+
+	; convert
+	lda	TAB_PRINTINT,x
+	sta	math_txtint+1
+	inx
+	lda	TAB_PRINTINT,x
+	sta	math_txtint+0
+
+	; done
+	plx
+	pla
+	sta	REG_RAM_BANK
+	rts
+
+@do_calc:
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; accumulate (8x)
+	ldx	#7
+@loop_acc:
+	lda	VERA_FX_ACCUM
+	dex
+	bne	@loop_acc
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 16)
+	lda	VERA_DATA0
+	lda	VERA_DATA0
+	and	#$FE
+	tax
+
+	rts
+
+;;;
+; clip leading zeros in string
+;;;
+
+math_intclip:
+	phy
+	phx
+	ldx	#0
+@loop_find:
+	lda	math_txtint,x
+	beq	@solo
+	cmp	#'0'
+	bne	@stop
+	inx
+	bra	@loop_find
+@stop:
+	ldy	#0
+@loop_copy:
+	lda	math_txtint,x
+	sta	math_txtint,y
+	beq	@done
+	iny
+	inx
+	bra	@loop_copy
+@done:
+	plx
+	ply
+	rts
+@solo:
+	stz	math_txtint+1
+	plx
+	ply
+	rts
+
+math_txtint:
+	.asciiz	"9999"

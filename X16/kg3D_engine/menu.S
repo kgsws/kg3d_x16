@@ -8,6 +8,7 @@
 .include "engine.inc"
 .include "tables.inc"
 .include "render.inc"
+.include "video.inc"
 .include "input.inc"
 .include "text.inc"
 
@@ -203,11 +204,20 @@ khdl_menu:
 	cmp	#$54
 	beq	@move_down
 
-	; ENTER
+	; ENTER (release)
 	cmp	#$AB
 	beq	@select
 
+	; LEFT
+	cmp	#$4F
+	beq	@select
+
+	; RIGHT
+	cmp	#$59
+	beq	@select
+
 	; none
+@done:
 	rts
 
 @move_up:
@@ -269,6 +279,9 @@ khdl_menu:
 	bra	@check_move
 
 @select:
+	; save scan code
+	sta	MATH_TEMP
+
 	; current
 	lda	(TMP_PTR_L)
 	asl
@@ -283,19 +296,25 @@ khdl_menu:
 	iny
 	lda	(TMP_PTR_L),y
 	bmi	:+
-
-	; fix pointer
 	ora	#$80
+	tay
 
-	; change menu
-	sta	TAB_MENU_ACTIVE+0
+	; check key release
+	lda	MATH_TEMP
+	bpl	@done
+
+	; save pointer
+	sty	TAB_MENU_ACTIVE+0
 	lda	MATH_VAR_L
 	sta	TAB_MENU_ACTIVE+1
+
+	; change menu
 	jsr	set_menu_ptr
 	bra	menu_update
 :
 	; run item callback
 	sta	MATH_VAR_H
+	lda	MATH_TEMP
 	jmp	(MATH_VAR_L)
 
 ;;;
@@ -651,6 +670,13 @@ draw_config:
 ; write special entry text
 ;;;
 
+write_spec_int:
+	; conversion result
+	lda	#<math_txtint
+	sta	ARG_TEXT_PTR_L
+	lda	#>math_txtint
+	sta	ARG_TEXT_PTR_H
+
 write_spec_ent:
 	; X
 	jsr	text_width
@@ -739,91 +765,11 @@ draw_keys:
 	plx
 	rts
 
-;;;
-; special: mouse
-;;;
-
-draw_mouse:
-	; entry drawer
-	lda	#<@ent_draw
-	sta	FUNC_ARG_L
-	lda	#>@ent_draw
-	sta	FUNC_ARG_H
-
-	; config source
-	lda	#<conf_top_mouse
-	sta	MENUCFG_PTR_L
-	lda	#>conf_top_mouse
-	sta	MENUCFG_PTR_H
-
-	; draw
-	jmp	draw_config
-
-@ent_draw:
-	; read config
-	lda	(MENUCFG_PTR_L)
-	inc	MENUCFG_PTR_L
-
-	; TEST
-	and	#$1F
-	clc
-	adc	#$40
-	sta	knam_nib_lo
-
-	; write
-	lda	#<knam_nib_lo
-	sta	ARG_TEXT_PTR_L
-	lda	#>knam_nib_lo
-	sta	ARG_TEXT_PTR_H
-	jsr	write_spec_ent
-
-	rts
-
-;;;
-; special: video
-;;;
-
-draw_video:
-	; entry drawer
-	lda	#<@ent_draw
-	sta	FUNC_ARG_L
-	lda	#>@ent_draw
-	sta	FUNC_ARG_H
-
-	; config source
-	lda	#<conf_top_video
-	sta	MENUCFG_PTR_L
-	lda	#>conf_top_video
-	sta	MENUCFG_PTR_H
-
-	; draw
-	jmp	draw_config
-
-@ent_draw:
-	; read config
-	lda	(MENUCFG_PTR_L)
-	inc	MENUCFG_PTR_L
-
-	; TEST
-	and	#$1F
-	clc
-	adc	#$60
-	sta	knam_nib_lo
-
-	; write
-	lda	#<knam_nib_lo
-	sta	ARG_TEXT_PTR_L
-	lda	#>knam_nib_lo
-	sta	ARG_TEXT_PTR_H
-	jsr	write_spec_ent
-
-	rts
-
-;;;
-; prepare key change
-;;;
-
 sel_key_set:
+	cmp	#$AB
+	beq	:+
+	rts
+:
 	; set keyboard handler
 	lda	#<khdl_setkey
 	sta	input_menu_opcode+1
@@ -874,10 +820,6 @@ sel_key_set:
 	; re-enable math
 	jmp	math_setup_vera
 
-;;;
-; prepare key handler
-;;;
-
 khdl_setkey:
 	; check key release
 	bmi	:+
@@ -918,6 +860,162 @@ khdl_setkey:
 	sta	input_menu_opcode+1
 	lda	#>khdl_menu
 	sta	input_menu_opcode+2
+
+	; draw items
+	jmp	menu_update
+
+;;;
+; special: mouse
+;;;
+
+draw_mouse:
+	; entry drawer
+	lda	#<@ent_draw
+	sta	FUNC_ARG_L
+	lda	#>@ent_draw
+	sta	FUNC_ARG_H
+
+	; config source
+	lda	#<conf_top_mouse
+	sta	MENUCFG_PTR_L
+	lda	#>conf_top_mouse
+	sta	MENUCFG_PTR_H
+
+	; draw
+	jmp	draw_config
+
+@ent_draw:
+	; read config
+	lda	(MENUCFG_PTR_L)
+	inc	MENUCFG_PTR_L
+	pha
+
+	; enable math
+	jsr	math_setup_vera
+
+	; value
+	pla
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; convert
+	jsr	math_u16
+	jsr	math_intclip
+
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
+	; disable cache write
+	stz	VERA_FX_CTRL
+
+	; write
+	jsr	write_spec_int
+
+	rts
+
+sel_mouse_set:
+	bpl	:+
+	rts
+:
+	; opcode DEC or INC // $CE or $EE
+	asl
+	eor	#$50
+	ora	#$0E
+	sta	@opcode
+
+	; config option
+	lda	(TMP_PTR_L)
+	tax
+	lda	conf_top_mouse,x
+
+	; config pointer
+	sta	@opcode+1
+
+	; change
+@opcode:
+	inc	TAB_CONFIG_BASE
+
+	; update mouse
+;	jsr	video_set_scale
+
+	; draw items
+	jmp	menu_update
+
+;;;
+; special: video
+;;;
+
+draw_video:
+	; entry drawer
+	lda	#<@ent_draw
+	sta	FUNC_ARG_L
+	lda	#>@ent_draw
+	sta	FUNC_ARG_H
+
+	; config source
+	lda	#<conf_top_video
+	sta	MENUCFG_PTR_L
+	lda	#>conf_top_video
+	sta	MENUCFG_PTR_H
+
+	; draw
+	jmp	draw_config
+
+@ent_draw:
+	; read config
+	lda	(MENUCFG_PTR_L)
+	inc	MENUCFG_PTR_L
+	pha
+
+	; enable math
+	jsr	math_setup_vera
+
+	; value
+	pla
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; convert
+	jsr	math_u16
+	jsr	math_intclip
+
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
+	; disable cache write
+	stz	VERA_FX_CTRL
+
+	; write
+	jsr	write_spec_int
+
+	rts
+
+sel_video_set:
+	bpl	:+
+	rts
+:
+	; opcode DEC or INC // $CE or $EE
+	asl
+	eor	#$50
+	ora	#$0E
+	sta	@opcode
+
+	; config option
+	lda	(TMP_PTR_L)
+	tax
+	lda	conf_top_video,x
+
+	; config pointer
+	sta	@opcode+1
+
+	; change
+@opcode:
+	inc	TAB_CONFIG_BASE
+
+	; update video
+	jsr	video_set_scale
 
 	; draw items
 	jmp	menu_update
@@ -1094,22 +1192,22 @@ mptr_mouse:
 	.word	$0000
 	; item 1
 	.word	mtxt_horizontal
-	.word	$0000	; TODO
+	.word	sel_mouse_set
 	; item 2
 	.word	mtxt_vertical
-	.word	$0000	; TODO
+	.word	sel_mouse_set
 ;;	; item 3 [S]
 	.word	mtxt_buttons & $7FFF
 	.word	$0000
 	; item 4
 	.word	mtxt_ctrl_left
-	.word	$0000	; TODO
+	.word	sel_mouse_set
 	; item 5
 	.word	mtxt_ctrl_right
-	.word	$0000	; TODO
+	.word	sel_mouse_set
 	; item 6
 	.word	mtxt_middle
-	.word	$0000	; TODO
+	.word	sel_mouse_set
 
 ;;;
 ; MENU: video
@@ -1132,19 +1230,19 @@ mptr_video:
 	.word	$0000
 	; item 1
 	.word	mtxt_horizontal
-	.word	$0000	; TODO
+	.word	sel_video_set
 	; item 2
 	.word	mtxt_vertical
-	.word	$0000	; TODO
+	.word	sel_video_set
 ;;	; item 3 [S]
 	.word	mtxt_offset & $7FFF
 	.word	$0000
 	; item 4
 	.word	mtxt_horizontal
-	.word	$0000	; TODO
+	.word	sel_video_set
 	; item 5
 	.word	mtxt_vertical
-	.word	$0000	; TODO
+	.word	sel_video_set
 
 ;;;
 ; MENU: options

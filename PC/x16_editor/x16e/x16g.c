@@ -601,7 +601,7 @@ static palette_options_t palette_options =
 	.tint.ag = 0,
 	// damage
 	.dmg.des = 33,
-	.dmg.add = 5,
+	.dmg.add = 2,
 	.dmg.r = 100,
 	.dmg.g = 0,
 	.dmg.b = 0,
@@ -3738,7 +3738,7 @@ static void stex_x16_export_sprite(uint8_t *buffer, uint8_t *txt)
 			*((uint32_t*)ptr) = vi->hash;
 			ptr += sizeof(uint32_t);
 
-			*ptr++ = vi->sw.width * 2; // 'half pixel' width
+			*ptr++ = vi->sw.width * 2 + 1; // 'half pixel' width
 			*ptr++ = vi->sw.height * 2; // 'half pixel' height
 
 			ptl = ptr;

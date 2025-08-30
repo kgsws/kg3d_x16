@@ -85,6 +85,9 @@ typedef union
 		uint8_t planex_l[256];	// @ 0xB800 (bank 63) [plane texture stuff]
 		uint8_t planex_h[256];	// @ 0xB900 (bank 63) [plane texture stuff]
 		uint8_t pitch2yc[256];	// @ 0xBA00 (bank 63)
+		uint8_t vidoffs_x[128];	// @ 0xBB00 (bank 63)
+		uint8_t vidoffs_y[128];	// @ 0xBB80 (bank 63)
+		uint8_t printint[256];	// @ 0xBC00 (bank 63)
 		// 0xBD00 contains portals (512 bytes)
 		// 0xBF00 contains keyboard input table (256 bytes)
 	};
@@ -2135,6 +2138,7 @@ void x16r_render_8bpp(kge_thing_t *camera, uint8_t *dst)
 void x16r_generate()
 {
 	uint8_t *ptr;
+	uint32_t last;
 
 	edit_busy_window("Generating tables ...");
 
@@ -2396,6 +2400,30 @@ void x16r_generate()
 	// pitch to Y center
 	for(uint32_t i = 0; i < 256; i++)
 		tables_A000.pitch2yc[i] = pitch2yc[i];
+
+	// screen scale to size
+	for(uint32_t i = 0; i < 97; i++)
+	{
+		uint32_t ii = i + 31;
+		float ff = 128.0f / (float)(i + 32);
+
+		tables_A000.vidoffs_x[ii] = (40.0f * ff) + 0.25f;
+		tables_A000.vidoffs_y[ii] = (60.0f * ff) + 0.45f;
+	}
+
+	// integer print table
+	last = 0;
+	for(uint32_t i = 0; i < 101; i++)
+	{
+		uint32_t ii = (float)i * 1.28f;
+		for(uint32_t j = last; j < ii; j++)
+		{
+			uint32_t iii = i - 1;
+			tables_A000.printint[j * 2 + 0] = (iii % 10) + '0';
+			tables_A000.printint[j * 2 + 1] = (iii / 10) + '0';
+		}
+		last = ii;
+	}
 
 	// EXPORT
 	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES1.BIN", tables_A000.raw, sizeof(tables_A000));

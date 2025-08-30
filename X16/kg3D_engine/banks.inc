@@ -15,6 +15,12 @@ BANK_RANDOM = 63
 BANK_PLANE_X = 63
 BANK_Y_CENTER = 63
 
+; video
+BANK_VIDOFFS = 63
+
+; print decimal value
+BANK_PRINTINT = 63
+
 ; sector portals
 BANK_PORTALS = 63
 

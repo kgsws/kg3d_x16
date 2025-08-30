@@ -159,6 +159,10 @@ entry:
 	lda	VERA_DC_VIDEO
 	and	#%00001111
 	sta	REG_VIDEO_MODE
+	and	#2
+	asl
+	asl
+	tax
 
 	; disable all layers
 	sta	VERA_DC_VIDEO
@@ -175,9 +179,27 @@ entry:
 	stz	VERA_L1_VSCROLL_L
 	stz	VERA_L1_VSCROLL_H
 
+	; dcsel = 1, addrsel = 0
+	lda	#$02
+	sta	VERA_CTRL
+
+	; set offset
+	lda	video_table+0,x
+	sta	VERA_DC_HSTART
+	lda	video_table+1,x
+	sta	VERA_DC_HSTOP
+	lda	video_table+2,x
+	sta	VERA_DC_VSTART
+	lda	video_table+3,x
+	sta	VERA_DC_VSTOP
+
+	; dcsel = 0, addrsel = 0
+	stz	VERA_CTRL
+
 	; set scale
-	lda	#64
+	lda	video_table+4,x
 	sta	VERA_DC_HSCALE
+	lda	video_table+5,x
 	sta	VERA_DC_VSCALE
 
 	; enable layer 1
@@ -1034,6 +1056,28 @@ sprite_data:
 	.word	0
 	.word	64
 	.word	$F00C
+
+;;;
+; video scale and offset
+;;;
+
+video_table:
+	; VGA
+	.byte	0
+	.byte	160
+	.byte	0
+	.byte	240
+	.byte	64
+	.byte	64
+	.byte	0, 0
+	; composite
+	.byte	9
+	.byte	151
+	.byte	13
+	.byte	226
+	.byte	72
+	.byte	72
+	.byte	0, 0
 
 ;;;
 ; strings

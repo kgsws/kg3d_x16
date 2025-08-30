@@ -6,6 +6,9 @@
 .import	math_idiv_ns
 .import	math_atan
 .import math_p2a
+.import math_u16
+.import math_intclip
+.import math_txtint
 
 .macro  math_read_sin	dest_l, dest_h
 	lda	TAB_SIN_L,x

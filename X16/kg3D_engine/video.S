@@ -155,6 +155,11 @@ video_setup:
 :
 	jsr	video_set_scale
 
+	; enable sprites
+	lda	REG_VIDEO_MODE
+	ora	#%01000000
+	sta	VERA_DC_VIDEO
+
 	rts
 
 ;;;
@@ -163,40 +168,118 @@ video_setup:
 ; X is index to mode table
 
 video_set_scale:
-	; disable sprites
-	lda	REG_VIDEO_MODE
-	sta	VERA_DC_VIDEO
+	phx
+	phy
+
+	; extra code bank
+	lda	#BANK_EXTRA_CODE
+	sta	REG_RAM_BANK
+
+	; check X scale
+	lda	TAB_CFG_VIDEO_SCALE_X
+	cmp	#32
+	bcs	:+
+	lda	#32
+	sta	TAB_CFG_VIDEO_SCALE_X
+:
+	cmp	#129
+	bcc	:+
+	lda	#128
+	sta	TAB_CFG_VIDEO_SCALE_X
+:
+	; check Y scale
+	lda	TAB_CFG_VIDEO_SCALE_Y
+	cmp	#32
+	bcs	:+
+	lda	#32
+	sta	TAB_CFG_VIDEO_SCALE_Y
+:
+	cmp	#129
+	bcc	:+
+	lda	#128
+	sta	TAB_CFG_VIDEO_SCALE_Y
+:
+	; check X position
+	lda	TAB_CFG_VIDEO_OFFS_X
+	cmp	#255
+	bne	:+
+	stz	TAB_CFG_VIDEO_OFFS_X
+	bra	:++
+:
+	cmp	#65
+	bcc	:+
+	lda	#64
+	sta	TAB_CFG_VIDEO_OFFS_X
+:
+	; check Y position
+	lda	TAB_CFG_VIDEO_OFFS_Y
+	cmp	#255
+	bne	:+
+	stz	TAB_CFG_VIDEO_OFFS_Y
+	bra	:++
+:
+	cmp	#129
+	bcc	:+
+	lda	#128
+	sta	TAB_CFG_VIDEO_OFFS_Y
+:
+	; offset lookup
+	ldx	TAB_CFG_VIDEO_SCALE_X
+	dex
+	ldy	TAB_CFG_VIDEO_SCALE_Y
+	dey
+
+	; video offset bank
+	lda	#BANK_VIDOFFS
+	sta	REG_RAM_BANK
+
+	; read scale values
+	lda	TAB_VIDOFFS_X,x
+	sta	REG_0_L
+	lda	TAB_VIDOFFS_Y,y
+	sta	REG_0_H
+
+	; extra code bank
+	lda	#BANK_EXTRA_CODE
+	sta	REG_RAM_BANK
 
 	; dcsel = 1, addrsel = 0
 	lda	#$02
 	sta	VERA_CTRL
 
 	; horizontal
-	lda	scale_table+0,x
+	lda	TAB_CFG_VIDEO_OFFS_X
 	sta	VERA_DC_HSTART
-	lda	scale_table+1,x
+	clc
+	adc	REG_0_L
+	bcc	:+
+	lda	#160
+:
 	sta	VERA_DC_HSTOP
 
 	; vertical
-	lda	scale_table+2,x
+	lda	TAB_CFG_VIDEO_OFFS_Y
 	sta	VERA_DC_VSTART
-	lda	scale_table+3,x
+	clc
+	adc	REG_0_H
+	bcc	:+
+	lda	#240
+:
 	sta	VERA_DC_VSTOP
 
 	; dcsel = 0, addrsel = 0
 	stz	VERA_CTRL
 
-	; video scale
-	lda	scale_table+4,x
+	; X scale
+	lda	TAB_CFG_VIDEO_SCALE_X
 	sta	VERA_DC_HSCALE
-	lda	scale_table+5,x
+
+	; Y scale
+	lda	TAB_CFG_VIDEO_SCALE_Y
 	sta	VERA_DC_VSCALE
 
-	; enable sprites
-	lda	REG_VIDEO_MODE
-	ora	#%01000000
-	sta	VERA_DC_VIDEO
-
+	ply
+	plx
 	rts
 
 ;;;
@@ -869,24 +952,3 @@ video_copy_remap:
 	sta	FUNC_ARG_H
 
 	jmp	video_copy_blocks
-
-;;;
-; screen scale table
-;;;
-
-scale_table:
-	; 4x
-	.byte	0
-	.byte	160
-	.byte	0
-	.byte	240
-	.byte	32
-	.byte	32
-	; composite test
-	.byte	9
-	.byte	155
-	.byte	7
-	.byte	230
-	.byte	35
-	.byte	34
-

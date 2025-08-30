@@ -104,11 +104,13 @@ ex_input_process:
 	; read input device(s)
 
 	lda	INPUT_MOUSE_BTN
+	sta	INPUT_MOUSE_TMP_BTN
 	sta	INPUT_MOUSE_A
 
-	stz	INPUT_MOUSE_TMP_X
-	stz	INPUT_MOUSE_TMP_Y
-
+	stz	INPUT_MOUSE_TMP_XL
+	stz	INPUT_MOUSE_TMP_XH
+	stz	INPUT_MOUSE_TMP_YL
+	stz	INPUT_MOUSE_TMP_YH
 	stz	INPUT_WEAPON_SLOT
 
 in_loop:
@@ -136,17 +138,35 @@ in_skip_keys:
 	txa
 	beq	in_loop
 
+	; B
+	lda	INPUT_MOUSE_A
+	ora	INPUT_MOUSE_TMP_BTN
+
 	; X
+	stz	INPUT_MOUSE_TMP_SIGN
+	lda	INPUT_MOUSE_B
+	bpl	:+
+	dec	INPUT_MOUSE_TMP_SIGN
+:
 	clc
-	lda	INPUT_MOUSE_TMP_X
-	adc	INPUT_MOUSE_B
-	sta	INPUT_MOUSE_TMP_X
+	adc	INPUT_MOUSE_TMP_XL
+	sta	INPUT_MOUSE_TMP_XL
+	lda	INPUT_MOUSE_TMP_XH
+	adc	INPUT_MOUSE_TMP_SIGN
+	sta	INPUT_MOUSE_TMP_XH
 
 	; Y
+	stz	INPUT_MOUSE_TMP_SIGN
+	lda	INPUT_MOUSE_C
+	bpl	:+
+	dec	INPUT_MOUSE_TMP_SIGN
+:
 	clc
-	lda	INPUT_MOUSE_TMP_Y
-	adc	INPUT_MOUSE_C
-	sta	INPUT_MOUSE_TMP_Y
+	adc	INPUT_MOUSE_TMP_YL
+	sta	INPUT_MOUSE_TMP_YL
+	lda	INPUT_MOUSE_TMP_YH
+	adc	INPUT_MOUSE_TMP_SIGN
+	sta	INPUT_MOUSE_TMP_YH
 
 	; loop check
 	bra	in_loop
@@ -167,7 +187,8 @@ in_loop_stop:
 	rts
 :
 	;; mouse X
-	lda	INPUT_MOUSE_TMP_X
+	lda	INPUT_MOUSE_TMP_XL
+	ora	INPUT_MOUSE_TMP_XH
 	beq	@skip_mouse_x
 
 	;; dx = mx * sensitivity
@@ -176,13 +197,11 @@ in_loop_stop:
 	lda	VERA_FX_ACCUM_RESET
 
 	; mx
-	stz	VERA_FX_CACHE_M
-	lda	INPUT_MOUSE_TMP_X
+	lda	INPUT_MOUSE_TMP_XL
 	sta	VERA_FX_CACHE_L
-	bpl	:+
-	lda	#$FF
+	lda	INPUT_MOUSE_TMP_XH
 	sta	VERA_FX_CACHE_M
-:
+
 	; sensitivity
 	lda	TAB_CFG_MOUSE_SENS_H
 	sta	VERA_FX_CACHE_H
@@ -243,9 +262,9 @@ in_loop_stop:
 	stz	INPUT_MOUSE_X_H
 
 @skip_mouse_x:
-
 	;; mouse Y
-	lda	INPUT_MOUSE_TMP_Y
+	lda	INPUT_MOUSE_TMP_YL
+	ora	INPUT_MOUSE_TMP_YH
 	beq	@skip_mouse_y
 
 	;; dy = my * sensitivity
@@ -254,13 +273,11 @@ in_loop_stop:
 	lda	VERA_FX_ACCUM_RESET
 
 	; my
-	stz	VERA_FX_CACHE_M
-	lda	INPUT_MOUSE_TMP_Y
+	lda	INPUT_MOUSE_TMP_YL
 	sta	VERA_FX_CACHE_L
-	bpl	:+
-	lda	#$FF
+	lda	INPUT_MOUSE_TMP_YH
 	sta	VERA_FX_CACHE_M
-:
+
 	; sensitivity
 	lda	TAB_CFG_MOUSE_SENS_V
 	sta	VERA_FX_CACHE_H
@@ -382,11 +399,14 @@ in_loop_stop:
 	sta	TICK_CMD_BITS_L
 :
 	;; (mouse) buttons
-	lda	INPUT_MOUSE_A
-	sta	INPUT_MOUSE_BTN
+	lda	INPUT_MOUSE_TMP_BTN
 	and	#3
 	asl
 	tsb	TICK_CMD_BITS_L
+
+	; last button state
+	lda	INPUT_MOUSE_A
+	sta	INPUT_MOUSE_BTN
 
 	;; (key) buttons
 
@@ -470,6 +490,20 @@ ex_input_init:
 	sta	TAB_CONFIG_BASE,x
 	dex
 	bpl	@loop_defcfg
+
+	; patch default config for composite
+	lda	REG_VIDEO_MODE
+	and	#2
+	beq	:+
+	lda	#9
+	sta	TAB_CFG_VIDEO_OFFS_X
+	sta	TAB_CFG_VIDEO_OFFS_Y
+	lda	#36
+	sta	TAB_CFG_VIDEO_SCALE_X
+	lda	#35
+	sta	TAB_CFG_VIDEO_SCALE_Y
+:
+	; TODO: load config from file
 
 	; apply
 	jsr	input_apply_keys
@@ -624,11 +658,11 @@ default_config:
 	.byte	0
 	.byte	19
 	; mouse
-	.byte	$90
-	.byte	$80
-	.byte	$01
-	.byte	$02
-	.byte	$03
+	.byte	80
+	.byte	72
+	.byte	1
+	.byte	2
+	.byte	3
 	; video
 	.byte	32
 	.byte	32
