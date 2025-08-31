@@ -448,23 +448,20 @@ entry:
 	bra	@skip_msg
 
 	jsr	write_text
-	.word	$0606
+	.word	$0706
 	.word	text_demo_wait0
 	jsr	write_text
-	.word	$0708
+	.word	$080C
 	.word	text_demo_wait1
 	jsr	write_text
-	.word	$0904
+	.word	$0A0A
 	.word	text_demo_wait3
 	jsr	write_text
-	.word	$0A0A
+	.word	$0B16
 	.word	text_demo_wait4
 	jsr	write_text
-	.word	$0B08
+	.word	$0C10
 	.word	text_demo_wait5
-	jsr	write_text
-	.word	$0C08
-	.word	text_demo_wait6
 	jsr	write_text
 	.word	$0E0E
 	.word	text_demo_start
@@ -1118,13 +1115,11 @@ text_demo_wait0:
 text_demo_wait1:
 	.asciiz	"isn't any gameplay ... yet."
 text_demo_wait3:
-	.asciiz	"Use WASD to move and MOUSE to turn."
-text_demo_wait4:
-	.asciiz	"Use MOUSE to aim and attack."
-text_demo_wait5:
-	.asciiz	"Use SPACE to jump C to crouch."
-text_demo_wait6:
 	.asciiz	"Use numbers to switch weapons."
+text_demo_wait4:
+	.asciiz	"Use MOUSE to aim."
+text_demo_wait5:
+	.asciiz	"Press ESC to enter menu."
 text_demo_start:
 	.asciiz	"Press any key to start ..."
 

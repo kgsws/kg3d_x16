@@ -1299,6 +1299,34 @@ mptr_options:
 	.word	mptr_video & $7FFF
 
 ;;;
+; MENU: dummy TO BE REMOVED
+;;;
+
+dtxt_no:
+	.asciiz	"this item is"
+dtxt_pe:
+	.asciiz	"not implemented"
+
+mptr_dummy:
+	; position
+	.byte	0
+	.byte	0
+	; numitems
+	.byte	2
+	; special
+	.byte	0
+	; previous
+	.word	mptr_main
+	; title
+	.word	$0000	; replaced with LOGO
+	; item 0
+	.word	dtxt_no
+	.word	menu_toggle
+	; item 1
+	.word	dtxt_pe & $7FFF
+	.word	menu_toggle
+
+;;;
 ; MENU: main
 ;;;
 
@@ -1316,16 +1344,16 @@ mptr_main:
 	.word	$0000	; replaced with LOGO
 	; item 0
 	.word	mtxt_new_game
-	.word	$0000	; TODO
+	.word	mptr_dummy & $7FFF ; TODO
 	; item 1
 	.word	mtxt_options
 	.word	mptr_options & $7FFF
 	; item 2
 	.word	mtxt_load_game
-	.word	$0000	; TODO
+	.word	mptr_dummy & $7FFF ; TODO
 	; item 3
 	.word	mtxt_save_game
-	.word	$0000	; TODO
+	.word	mptr_dummy & $7FFF ; TODO
 
 ;;;
 ; top offsets
