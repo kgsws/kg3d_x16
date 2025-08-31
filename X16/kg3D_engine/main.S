@@ -34,10 +34,7 @@ start:
 	jsr	map_init
 	jsr	input_init	; this also loads config
 	jsr	menu_init	; after input init (BANK_EXTRA_CODE)
-	jsr	video_init
-
-	; set video mode
-	jsr	video_setup
+	jsr	video_init	; changes video mode
 
 	;; run engine
 

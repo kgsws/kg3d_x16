@@ -137,6 +137,9 @@ menu_toggle:
 	jmp	menu_update
 
 @disable:
+	; save config
+	jsr	input_save_config
+
 	; set keyboard handler
 	lda	#<input_handle_key
 	sta	input_menu_opcode+1
@@ -885,9 +888,18 @@ draw_mouse:
 	jmp	draw_config
 
 @ent_draw:
+	; check buttons
+	lda	MENUCFG_PTR_L
+	cmp	#<TAB_CFG_MOUSE_BTN_L
+
 	; read config
 	lda	(MENUCFG_PTR_L)
 	inc	MENUCFG_PTR_L
+
+	; buttons branch
+	bcs	@btn_draw
+
+	; config stuff
 	pha
 
 	; enable math
@@ -914,6 +926,22 @@ draw_mouse:
 
 	rts
 
+@btn_draw:
+	phx
+
+	; text lookup
+	tax
+	lda	mnam_offs,x
+	sta	ARG_TEXT_PTR_L
+	lda	#>mnam_offs
+	sta	ARG_TEXT_PTR_H
+
+	; write
+	jsr	write_spec_ent
+
+	plx
+	rts
+
 sel_mouse_set:
 	bpl	:+
 	rts
@@ -937,7 +965,7 @@ sel_mouse_set:
 	inc	TAB_CONFIG_BASE
 
 	; update mouse
-;	jsr	video_set_scale
+	jsr	input_apply_mouse
 
 	; draw items
 	jmp	menu_update
@@ -1348,6 +1376,7 @@ conf_top_video:
 ;;;
 ; key names
 ;;;
+; all strings must fit into 256 byte block
 
 key_names_start:
 	.byte	'$'
@@ -1397,6 +1426,22 @@ knam_pgup:
 	.asciiz	"pgUp"
 knam_pgdn:
 	.asciiz	"pgDn"
+
+;;;
+; mouse actions
+;;;
+; all strings must fit into 256 byte block
+
+mnam_atkpri:
+	.asciiz	"pri.atk"
+mnam_atkalt:
+	.asciiz	"alt.atk"
+mnam_use:
+	.asciiz	"use"
+mnam_none:
+	.asciiz	"none"
+mnam_offs:
+	.byte	<mnam_atkpri, <mnam_atkalt, <mnam_use, <mnam_none
 
 ;;;
 ; key name list

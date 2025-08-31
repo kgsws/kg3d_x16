@@ -1,6 +1,7 @@
 .include "../kernal.inc"
 .include "../vera.inc"
 .include "../smc.inc"
+.include "main.inc"
 .include "banks.inc"
 .include "zeropage.inc"
 .include "tables.inc"
@@ -12,14 +13,6 @@
 .export file_read_16_wram
 .export file_read_16_vram
 .export file_restore_handle
-
-;;;
-; settings
-;;;
-
-LOAD_FILE_HANDLE = 1
-BLOCK_READ_SIZE = 240
-DEVICE_ID = 8
 
 ;;;
 ; CODE
@@ -36,8 +29,8 @@ DEVICE_ID = 8
 
 file_load_wram:
 	jsr	k_SETNAM
-	lda	#LOAD_FILE_HANDLE
-	ldx	#DEVICE_ID
+	lda	#FILE_LOAD_HANDLE
+	ldx	#FILE_DEVICE_ID
 	ldy	#2
 	jsr	k_SETLFS
 	lda	#0
@@ -58,7 +51,7 @@ file_open_rd:
 
 	; set open mode
 	lda	TAB_FILE_HANDLE
-	ldx	#DEVICE_ID
+	ldx	#FILE_DEVICE_ID
 	tay
 	jsr	k_SETLFS
 
@@ -116,13 +109,13 @@ file_read_16_wram:
 
 read16_start:
 	; first block size
-	lda	#BLOCK_READ_SIZE
+	lda	#FILE_BLOCK_READ
 	sta	FILE_LOAD_RDSIZE
 	lda	TAB_FILE_BUF_SIZE+1
 	bne	:+
 	lda	TAB_FILE_BUF_SIZE+0
 	beq	:+
-	cmp	#BLOCK_READ_SIZE
+	cmp	#FILE_BLOCK_READ
 	bcs	:+
 	sta	FILE_LOAD_RDSIZE
 :
@@ -163,7 +156,7 @@ read16_ai:
 	bne	read16_loop
 	lda	TAB_FILE_BUF_SIZE+0
 	beq	@end
-	cmp	#BLOCK_READ_SIZE
+	cmp	#FILE_BLOCK_READ
 	bcs	read16_loop
 	sta	FILE_LOAD_RDSIZE
 	bra	read16_loop

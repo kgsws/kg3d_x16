@@ -3286,6 +3286,7 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 	// go trough columns
 	for(uint32_t x = 0; x < img->width; x++)
 	{
+		uint16_t *special = NULL;
 		uint16_t *px = data;
 		uint16_t *last, *head, *top;
 		uint32_t len;
@@ -3314,7 +3315,13 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 		for(uint32_t y = 0; y < img->height && *px == 0xFF00; y++)
 			px++;
 
-		if(*px != 0xFF00)
+		if(input_shift && *px != 0xFF00)
+		{
+			special = px;
+			px = data;
+		}
+
+		if(*px != 0xFF00 || special)
 		{
 			last_used = x + 1;
 
@@ -3324,12 +3331,20 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 			head = dst;
 			dst += 2;
 
-			// find last non-transparent pixel
-			while(px < data + img->height)
+			if(special)
 			{
-				if(*px != 0xFF00)
-					last = px;
-				px++;
+				// use all pixels
+				px = data + img->height;
+				last = px - 1;
+			} else
+			{
+				// find last non-transparent pixel
+				while(px < data + img->height)
+				{
+					if(*px != 0xFF00)
+						last = px;
+					px++;
+				}
 			}
 
 			// pixel count

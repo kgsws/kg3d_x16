@@ -9,7 +9,6 @@
 
 .export video_init
 .export video_load
-.export video_setup
 .export video_palette
 .export video_set_scale
 .export video_swap
@@ -39,7 +38,36 @@ video_init:
 	lda	#$1F
 	sta	VIDEO_PAGE_H
 	stz	VIDEO_PAGE
-	jmp	video_swap
+	jsr	video_swap
+
+	; disable all layers
+	lda	REG_VIDEO_MODE
+	sta	VERA_DC_VIDEO
+
+	; set main palette
+	lda	#0
+	jsr	video_palette
+
+	;; set video scale
+	ldx	#0
+	lda	REG_VIDEO_MODE
+	and	#3
+	cmp	#1
+	beq	:+
+	ldx	#6
+:
+	jsr	video_set_scale
+
+	; config not changed
+	; (reverts code in set scale)
+	stz	TAB_CONFIG_MAGIC
+
+	; enable sprites
+	lda	REG_VIDEO_MODE
+	ora	#%01000000
+	sta	VERA_DC_VIDEO
+
+	rts
 
 ;;;
 ; load video tables to VRAM
@@ -133,36 +161,6 @@ video_load:
 	rts
 
 ;;;
-; video setup
-;;;
-
-video_setup:
-	; disable all layers
-	lda	REG_VIDEO_MODE
-	sta	VERA_DC_VIDEO
-
-	; set main palette
-	lda	#0
-	jsr	video_palette
-
-	;; set video scale
-	ldx	#0
-	lda	REG_VIDEO_MODE
-	and	#3
-	cmp	#1
-	beq	:+
-	ldx	#6
-:
-	jsr	video_set_scale
-
-	; enable sprites
-	lda	REG_VIDEO_MODE
-	ora	#%01000000
-	sta	VERA_DC_VIDEO
-
-	rts
-
-;;;
 ; set screen scale
 ;;;
 ; X is index to mode table
@@ -174,6 +172,10 @@ video_set_scale:
 	; extra code bank
 	lda	#BANK_EXTRA_CODE
 	sta	REG_RAM_BANK
+
+	; config changed
+	lda	#CONFIG_VERSION
+	sta	TAB_CONFIG_MAGIC
 
 	; check X scale
 	lda	TAB_CFG_VIDEO_SCALE_X

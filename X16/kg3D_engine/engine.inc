@@ -37,7 +37,7 @@ THING_WEAPON_FIRST = 112
 TCMD_GO_DOWN = $01	; forced by code
 TCMD_ATK = $02	; forced by code (mouse input)
 TCMD_ALT = $04	; forced by code (mouse input)
-TCMD_USE = $20
+TCMD_USE = $08	; forced by code (mouse input)
 TCMD_GO_UP = $40	; forced by code
 TCMD_MOVING = $80	; forced by code
 

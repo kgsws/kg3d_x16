@@ -14,8 +14,14 @@
 .export input_clear
 .export input_process
 .export input_apply_keys
+.export input_apply_mouse
+.export input_save_config
 .export input_menu_opcode
 .export input_handle_key
+
+;; stuff
+MOUSE_ACT_COUNT = 3	; 'none' is not counted
+MOUSE_BTN_COUNT = 3	; this is forced by config and menu
 
 ;; keybind lookup bits
 
@@ -96,6 +102,23 @@ input_process:
 .segment "CODE_EXTRA"
 
 ;;;
+; set file IO for config
+;;;
+
+set_conf_file:
+	pha
+	lda	#(fn_config_end-fn_config)
+	ldx	#<fn_config
+	ldy	#>fn_config
+	jsr	k_SETNAM
+	lda	#FILE_LOAD_HANDLE
+	ldx	#FILE_DEVICE_ID
+	ply
+	jsr	k_SETLFS
+	lda	#0
+	rts
+
+;;;
 ; input process
 ;;;
 
@@ -104,7 +127,6 @@ ex_input_process:
 	; read input device(s)
 
 	lda	INPUT_MOUSE_BTN
-	sta	INPUT_MOUSE_TMP_BTN
 	sta	INPUT_MOUSE_A
 
 	stz	INPUT_MOUSE_TMP_XL
@@ -140,7 +162,7 @@ in_skip_keys:
 
 	; B
 	lda	INPUT_MOUSE_A
-	ora	INPUT_MOUSE_TMP_BTN
+	ora	INPUT_MOUSE_BTN
 
 	; X
 	stz	INPUT_MOUSE_TMP_SIGN
@@ -399,9 +421,10 @@ in_loop_stop:
 	sta	TICK_CMD_BITS_L
 :
 	;; (mouse) buttons
-	lda	INPUT_MOUSE_TMP_BTN
-	and	#3
-	asl
+	lda	INPUT_MOUSE_BTN
+	and	#7
+	tax
+	lda	mouse_btn,x
 	tsb	TICK_CMD_BITS_L
 
 	; last button state
@@ -503,10 +526,32 @@ ex_input_init:
 	lda	#35
 	sta	TAB_CFG_VIDEO_SCALE_Y
 :
-	; TODO: load config from file
+	; reset
+	stz	TAB_TEMP_DATA
 
+	; load config from file
+	lda	#2
+	jsr	set_conf_file
+	ldx	#<TAB_TEMP_DATA
+	ldy	#>TAB_TEMP_DATA
+	jsr	k_LOAD
+	bcs	:+
+	lda	TAB_TEMP_DATA
+	cmp	#CONFIG_VERSION
+	bne	:+
+
+	; copy config
+	ldx	#TAB_CONFIG_SIZE
+@loop_cpy:
+	lda	TAB_TEMP_DATA,x
+	sta	TAB_CONFIG_BASE,x
+	dex
+	bpl	@loop_cpy
+:
 	; apply
 	jsr	input_apply_keys
+	jsr	input_apply_mouse
+	stz	TAB_CONFIG_MAGIC
 
 	; done
 	rts
@@ -516,6 +561,10 @@ ex_input_init:
 ;;;
 
 input_apply_keys:
+	; config changed
+	lda	#CONFIG_VERSION
+	sta	TAB_CONFIG_MAGIC
+
 	; clear all input bits
 	lda	#0
 	tay
@@ -573,6 +622,95 @@ input_apply_keys:
 	rts
 
 ;;;
+; apply mouse from config
+;;;
+
+input_apply_mouse:
+	; config changed
+	lda	#CONFIG_VERSION
+	sta	TAB_CONFIG_MAGIC
+
+	; check limits and clear
+	ldx	#MOUSE_ACT_COUNT-1
+@loop_chk:
+	lda	TAB_CFG_MOUSE_BTN_L,x
+	bpl	:+
+	lda	#MOUSE_ACT_COUNT
+	sta	TAB_CFG_MOUSE_BTN_L,x
+	bra	:++
+:
+	cmp	#MOUSE_ACT_COUNT+1
+	bcc	:+
+	stz	TAB_CFG_MOUSE_BTN_L,x
+:
+	dex
+	bpl	@loop_chk
+
+	; clear bits
+	ldx	#(1 << MOUSE_BTN_COUNT)-1
+@loop_clr:
+	stz	mouse_btn,x
+	dex
+	bpl	@loop_clr
+
+	; assign bits
+	lda	#(1 << MOUSE_BTN_COUNT)
+	sta	INPUT_MOUSE_B
+	ldy	#MOUSE_BTN_COUNT-1
+@loop_bit:
+	lda	TAB_CFG_MOUSE_BTN_L,y
+	tax
+	lda	mouse_bit,x
+	sta	INPUT_MOUSE_A
+	lsr	INPUT_MOUSE_B
+	ldx	#7
+@loop_opt:
+	txa
+	and	INPUT_MOUSE_B
+	beq	:+
+	lda	INPUT_MOUSE_A
+	ora	mouse_btn,x
+	sta	mouse_btn,x
+:
+	dex
+	bpl	@loop_opt
+	dey
+	bpl	@loop_bit
+
+	rts
+
+;;;
+; save config but only if changed
+;;;
+
+input_save_config:
+	lda	TAB_CONFIG_MAGIC
+	beq	:+
+
+	; copy config
+	ldx	#TAB_CONFIG_SIZE
+@loop_cpy:
+	lda	TAB_CONFIG_BASE,x
+	sta	TAB_TEMP_DATA,x
+	dex
+	bpl	@loop_cpy
+
+	; save
+	lda	#1
+	jsr	set_conf_file
+	ldx	#<TAB_TEMP_DATA+TAB_CONFIG_SIZE
+	ldy	#>TAB_TEMP_DATA
+	sty	FUNC_ARG_H
+	lda	#<TAB_TEMP_DATA
+	sta	FUNC_ARG_L
+	lda	#FUNC_ARG_L
+	jsr	k_BSAVE
+
+	stz	TAB_CONFIG_MAGIC
+:
+	rts
+
+;;;
 ; game input handler
 ;;;
 
@@ -619,6 +757,26 @@ input_handle_key:
 .align  256
 
 ;;;
+; mouse buttons to tick command
+;;;
+
+mouse_btn:
+	.byte	$00
+	.byte	$02
+	.byte	$04
+	.byte	$06
+	.byte	$08
+	.byte	$0A
+	.byte	$0C
+	.byte	$0E
+
+mouse_bit:
+	.byte	$02
+	.byte	$04
+	.byte	$08
+	.byte	$00
+
+;;;
 ; movement angles
 ;;;
 
@@ -645,6 +803,8 @@ move_angle:
 ;;;
 
 default_config:
+	; magic
+	.byte	0
 	; keys
 	.byte	18
 	.byte	32
@@ -660,12 +820,19 @@ default_config:
 	; mouse
 	.byte	80
 	.byte	72
+	.byte	0
 	.byte	1
 	.byte	2
-	.byte	3
 	; video
 	.byte	32
 	.byte	32
 	.byte	0
 	.byte	0
 
+;;;
+; config name
+;;;
+
+fn_config:
+	.byte	"CONFIG"
+fn_config_end:

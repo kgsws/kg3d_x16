@@ -123,8 +123,7 @@ INPUT_MOUSE_TMP_XH = $E1
 INPUT_MOUSE_TMP_YL = $E2
 INPUT_MOUSE_TMP_YH = $E3
 INPUT_MOUSE_TMP_SIGN = $E4
-INPUT_MOUSE_TMP_BTN = $E5
-INPUT_WEAPON_SLOT = $E6
+INPUT_WEAPON_SLOT = $E5
 
 ; video (drawing)
 VIDEO_PAGE_L = $50	; forced by tables, do not change address
