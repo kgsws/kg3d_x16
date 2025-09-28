@@ -81,7 +81,7 @@ typedef struct
 
 typedef struct
 {
-	uint8_t type;
+	ticker_base_t ticker;
 	//
 	int32_t x, y, z; // 24 bits
 	int16_t mx, my, mz;
@@ -150,7 +150,6 @@ extern thing_state_t *const thing_state;
 extern uint32_t num_sprlnk_thg;
 extern uint32_t logo_spr_idx;
 
-extern thing_t things[128];
 extern uint8_t thingsec[128][16]; // list of sectors which specific thing is in, slot 0 is main sector
 extern uint8_t thingces[128][16]; // slot (index) in sector this specific thing is at for sector given by 'thingsec'
 
@@ -170,8 +169,11 @@ uint32_t thing_init(const char *file);
 int32_t thing_find_type(uint32_t hash);
 
 void thing_clear();
+void thing_tick();
+void thing_tick_plr();
 
 uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t type, uint8_t origin);
+void thing_spawn_player();
 void thing_remove(uint8_t);
 
 void thing_launch(uint8_t tdx, uint8_t speed);
@@ -179,9 +181,14 @@ void thing_launch_ang(uint8_t tdx, uint8_t ang, uint8_t speed);
 
 void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage);
 
-uint32_t thing_check_pos(uint8_t tdx, int32_t *nx, int32_t *ny, int16_t z, uint32_t on_floor, uint8_t sdx);
+uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx);
 void thing_apply_position();
 
-void things_tick();
-
 uint32_t decode_state(uint16_t ss);
+
+//
+
+static inline thing_t *thing_ptr(uint32_t idx)
+{
+	return (thing_t*)&ticker[idx];
+}

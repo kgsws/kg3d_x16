@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "defs.h"
+#include "tick.h"
 #include "things.h"
 #include "hitscan.h"
 
@@ -71,7 +72,7 @@ static void scan_things(uint32_t (*cb)(thing_t*,int16_t))
 		for(uint32_t i = 0; i < 31; i++)
 		{
 			uint8_t tdx = sectorth[sdx][i];
-			thing_t *th = things + tdx;
+			thing_t *th = thing_ptr(tdx);
 
 			if(	tdx &&
 				tdx != hitscan.origin &&
@@ -269,7 +270,7 @@ do_hit:
 		scan_things(cb_attack_thing);
 		if(hitscan.thing_pick)
 		{
-			thing_type_t *info = thing_type + things[hitscan.thing_pick].type;
+			thing_type_t *info = thing_type + thing_ptr(hitscan.thing_pick)->ticker.type;
 
 			hitscan.sector = hitscan.thing_sdx;
 
@@ -300,7 +301,7 @@ do_spawn:
 	if(!tdx)
 		return 1;
 
-	th = things + tdx;
+	th = thing_ptr(tdx);
 	th->target = hitscan.origin;
 	th->angle = hitscan.angle;
 
@@ -312,7 +313,7 @@ do_spawn:
 
 void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 {
-	thing_t *th = things + tdx;
+	thing_t *th = thing_ptr(tdx);
 	uint8_t sdx = thingsec[tdx][0];
 	int16_t x = th->x >> 8;
 	int16_t y = th->y >> 8;
@@ -409,7 +410,7 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 
 void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, uint8_t type)
 {
-	thing_t *th = things + tdx;
+	thing_t *th = thing_ptr(tdx);
 	thing_type_t *info = thing_type + type;
 
 	hitscan.origin = tdx;

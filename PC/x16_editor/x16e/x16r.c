@@ -59,10 +59,11 @@ typedef union
 		uint8_t yoffs_h[128];	// @ 0x1D80
 		uint8_t htan_l[128];	// @ 0x1E00
 		uint8_t htan_h[128];	// @ 0x1E80
-		uint8_t sin_l[320];	// @ 0x1F00
-		uint8_t sin_h[320];	// @ 0x2040
-		uint8_t pxloop[0x1553];	// @ 0x2180
-		// 0x36D3
+		uint8_t sign[256];	// @ 0x1F00
+		uint8_t sin_l[320];	// @ 0x2000
+		uint8_t sin_h[320];	// @ 0x2140
+		uint8_t pxloop[0x1553];	// @ 0x2280
+		// 0x37D3
 	};
 } tables_1100_t;
 
@@ -2337,6 +2338,10 @@ void x16r_generate()
 		ptr = put_code(ptr, pxspr, sizeof(pxspr));
 	*ptr++ = 0x60; // RTS
 //	printf("pthg end 0x%04X\n", ptr - tables_1100.pxloop);
+
+	// sign extension
+	for(uint32_t i = 0; i < 256; i++)
+		tables_1100.sign[i] = i < 128 ? 0x00 : 0xFF;
 
 	// EXPORT
 	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES0.BIN", tables_1100.raw, sizeof(tables_1100));

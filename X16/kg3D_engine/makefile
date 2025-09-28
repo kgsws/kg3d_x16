@@ -1,6 +1,6 @@
 program = ENGINE.BIN
 loader = KG3D.PRG
-OBJ = main.o file.o math.o video.o render.o map.o things.o hitscan.o actions.o menu.o text.o input.o sound.o
+OBJ = main.o file.o math.o video.o render.o map.o tick.o things.o menu.o text.o input.o sound.o
 CC = cc65
 AS = ca65
 LD = ld65

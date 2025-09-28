@@ -224,6 +224,8 @@ uint8_t x16e_logo_data[160 * 120];
 
 static uint8_t temp_data[160 * 120];
 
+static uint32_t validcount;
+
 //
 
 static uint32_t marked_lights;
@@ -473,6 +475,8 @@ void x16_export_map()
 	if(edit_check_map())
 		return;
 
+	validcount++;
+
 	marked_lights = 1;
 
 	count_textures = 0;
@@ -608,6 +612,15 @@ void x16_export_map()
 
 			if(line->backsector)
 			{
+				if(line->vc.x16port != validcount)
+				{
+					kge_line_t *ol;
+
+					ol = e2d_find_other_line(line->backsector, sec, line);
+					if(ol)
+						ol->vc.x16port = validcount;
+				}
+
 				ret = mark_texture(line->texture[1].idx, sec->light.idx);
 				if(ret < 0)
 				{
@@ -632,8 +645,9 @@ void x16_export_map()
 						return;
 					}
 
-					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
-						wall->masked.tflags |= 0b00001000;
+					// TODO
+//					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
+//						wall->masked.tflags |= 0b00001000;
 
 					wall->masked.blockmid = line->info.blockmid & 0b01111111;
 					if(line->texture[2].flags & TEXFLAG_PEG_MID_BACK)
@@ -679,8 +693,9 @@ void x16_export_map()
 						return;
 					}
 
-					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
-						wall->masked.tflags |= 0b00001000;
+					// TODO
+//					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
+//						wall->masked.tflags |= 0b00001000;
 
 					wall->portal.backsector = 0;
 					wall->masked.blockmid = 0;
@@ -706,6 +721,9 @@ void x16_export_map()
 
 			if(line->info.flags & WALLFLAG_PEG_X)
 				wall->solid.tflags |= 0b10000000;
+
+			if(line->vc.x16port == validcount)
+				wall->solid.tflags |= 0b00001000;
 
 			if(i == sec->line_count-1)
 				wall->solid.angle |= MARK_LAST;

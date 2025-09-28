@@ -164,7 +164,18 @@ typedef struct
 	uint8_t maskblock;
 } sector_extra_t;
 
+typedef struct
+{
+	int16_t x, y, z;
+	uint8_t sector;
+	uint8_t angle;
+	uint8_t pitch;
+	uint8_t flags;
+} player_start_t;
+
 //
+
+extern player_start_t player_starts[MAX_PLAYER_STARTS * 3];
 
 extern uint32_t frame_counter;
 

@@ -133,6 +133,7 @@ typedef struct kge_sector_validcount_s
 
 typedef struct kge_line_validcount_s
 {
+	uint32_t x16port;
 	uint32_t editor;
 	uint32_t move;
 } kge_line_validcount_t;

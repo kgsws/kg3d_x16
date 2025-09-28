@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "defs.h"
+#include "tick.h"
 #include "things.h"
 #include "hitscan.h"
 #include "actions.h"
@@ -32,12 +33,18 @@ static void aim_rng(thing_t *th, uint8_t *res, uint32_t arg)
 		res[1] += randomize((arg & 0x70) >> 4);
 }
 
+void check_weapon_th(thing_t **ptr)
+{
+	if(*ptr == (thing_t*)ticker)
+		*ptr = (thing_t*)&ticker[player_thing];
+}
+
 //
 // run actions
 
 uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 {
-	thing_t *th = things + tdx;
+	thing_t *th = thing_ptr(tdx);
 
 	switch(act)
 	{
@@ -58,12 +65,12 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 					ticcmd.bits_h &= 0xE0;
 
 					cmd += THING_WEAPON_FIRST;
-					if(cmd != th->type)
+					if(cmd != th->ticker.type)
 					{
 						state = thing_anim[cmd][ANIM_RAISE].state; // TODO: inventory check
 						if(state)
 						{
-							th->next_state = thing_anim[th->type][ANIM_LOWER].state;
+							th->next_state = thing_anim[th->ticker.type][ANIM_LOWER].state;
 							th->counter = cmd;
 							return 1;
 						}
@@ -71,15 +78,15 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				}
 			}
 
-			if(ticcmd.bits_l & TCMD_ATK && thing_anim[th->type][ANIM_ATK].state)
+			if(ticcmd.bits_l & TCMD_ATK && thing_anim[th->ticker.type][ANIM_ATK].state)
 			{
-				th->next_state = thing_anim[th->type][ANIM_ATK].state;
+				th->next_state = thing_anim[th->ticker.type][ANIM_ATK].state;
 				th->iflags = 1;
 				return 1;
 			}
-			if(ticcmd.bits_l & TCMD_ALT && thing_anim[th->type][ANIM_ALT].state)
+			if(ticcmd.bits_l & TCMD_ALT && thing_anim[th->ticker.type][ANIM_ALT].state)
 			{
-				th->next_state = thing_anim[th->type][ANIM_ALT].state;
+				th->next_state = thing_anim[th->ticker.type][ANIM_ALT].state;
 				th->iflags = 2;
 				return 1;
 			}
@@ -91,7 +98,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				th->height = 0;
 			if(!th->height)
 			{
-				th->next_state = thing_anim[th->type][ANIM_READY].state;
+				th->next_state = thing_anim[th->ticker.type][ANIM_READY].state;
 				return 1;
 			}
 		break;
@@ -100,55 +107,51 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 			if(th->height >= 64)
 			{
 				th->height = 64;
-				th->type = th->counter;
-				th->next_state = thing_anim[th->type][ANIM_RAISE].state;
+				th->ticker.type = th->counter;
+				th->next_state = thing_anim[th->ticker.type][ANIM_RAISE].state;
 				return 1;
 			}
 		break;
 		case 4: // attack: projectile
 		{
-			uint32_t type = thing_type[th->type].spawn[st->arg[0]];
+			uint32_t type = thing_type[th->ticker.type].spawn[st->arg[0]];
 			uint8_t aim[2];
 			thing_t *ph;
 			uint32_t tdx, pdx;
 			uint8_t diff;
 
-			if(th == things)
-				th += player_thing;
+			check_weapon_th(&th);
+			tdx = ticker_idx(th);
 
-			tdx = th - things;
-
-			diff = thing_type[th->type].atk_height - thing_type[type].height / 2;
+			diff = thing_type[th->ticker.type].atk_height - thing_type[type].height / 2;
 
 			pdx = thing_spawn(th->x, th->y, th->z + ((uint32_t)diff << 8), thingsec[tdx][0], type, tdx);
 			if(pdx)
 			{
-				ph = things + pdx;
+				ph = thing_ptr(pdx);
 
 				aim_rng(th, aim, st->arg[1]);
 
 				ph->angle = aim[0] + st->arg[2];
 				ph->pitch = aim[1] << 1;
 
-				thing_launch(pdx, thing_type[ph->type].speed);
+				thing_launch(pdx, thing_type[ph->ticker.type].speed);
 			}
 		}
 		break;
 		case 5: // attack: hitscan
 		{
 			uint32_t tdx;
-			uint32_t type = thing_type[th->type].spawn[st->arg[0]];
+			uint32_t type = thing_type[th->ticker.type].spawn[st->arg[0]];
 			uint8_t aim[2];
 
-			if(th == things)
-				th += player_thing;
-
-			tdx = th - things;
+			check_weapon_th(&th);
+			tdx = ticker_idx(th);
 
 			for(uint32_t i = 0; i < st->arg[2]; i++)
 			{
 				aim_rng(th, aim, st->arg[1]);
-				hitscan_attack(tdx, thing_type[th->type].atk_height, aim[0], aim[1], type);
+				hitscan_attack(tdx, thing_type[th->ticker.type].atk_height, aim[0], aim[1], type);
 			}
 		}
 		break;

@@ -8,6 +8,7 @@
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
 #include "defs.h"
+#include "tick.h"
 #include "things.h"
 
 #define VRAM_TEXTURE_START	0x0A000
@@ -91,10 +92,11 @@ typedef union
 		uint8_t yoffs_h[128];	// @ 0x1D80
 		uint8_t htan_l[128];	// @ 0x1E00
 		uint8_t htan_h[128];	// @ 0x1E80
-		uint8_t sin_l[320];	// @ 0x1F00
-		uint8_t sin_h[320];	// @ 0x2040
-		uint8_t pxloop[0x1553];	// @ 0x2180
-		// 0x36D3
+		uint8_t sign[256];	// @ 0x1F00
+		uint8_t sin_l[320];	// @ 0x2000
+		uint8_t sin_h[320];	// @ 0x2140
+		uint8_t pxloop[0x1553];	// @ 0x2280
+		// 0x37D3
 	};
 } tables_1100_t;
 
@@ -224,15 +226,6 @@ typedef struct
 	uint16_t rot[8];
 	uint8_t rotate;
 } sprite_info_t;
-
-typedef struct
-{
-	int16_t x, y, z;
-	uint8_t sector;
-	uint8_t angle;
-	uint8_t pitch;
-	uint8_t flags;
-} player_start_t;
 
 typedef struct
 {
@@ -384,7 +377,7 @@ static uint32_t proj_msk_idx;
 
 uint8_t sectorth[256][32];
 
-static player_start_t player_starts[MAX_PLAYER_STARTS * 3];
+player_start_t player_starts[MAX_PLAYER_STARTS * 3];
 
 //// tables
 
@@ -1917,9 +1910,18 @@ static void do_walls(uint8_t idx)
 		v0 = &wall->solid.vtx;
 		v1 = &waln->vtx;
 
-		// V0 diff
-		d0.x = v0->x - (projection.x >> 8);
-		d0.y = v0->y - (projection.y >> 8);
+		// flip check
+		if(wall->solid.tflags & 0b00001000)
+		{
+			// V1 diff
+			d0.x = v1->x - (projection.x >> 8);
+			d0.y = v1->y - (projection.y >> 8);
+		} else
+		{
+			// V0 diff
+			d0.x = v0->x - (projection.x >> 8);
+			d0.y = v0->y - (projection.y >> 8);
+		}
 
 		// get distance Y
 		ld.y = (d0.x * wall->solid.dist.y - d0.y * wall->solid.dist.x) >> 8;
@@ -1930,7 +1932,9 @@ static void do_walls(uint8_t idx)
 			goto do_next;
 		}
 
-		inside = ld.y == 0 || ld.y == 1;
+		// V0 diff
+		d0.x = v0->x - (projection.x >> 8);
+		d0.y = v0->y - (projection.y >> 8);
 
 		// V0 angle
 		a0 = last_angle;
@@ -1957,7 +1961,7 @@ static void do_walls(uint8_t idx)
 		ad = a1 - a0;
 		if(ad & 2048)
 		{
-			if(!inside || !((a0 ^ a1) & 0x800))
+			if(!((a0 ^ a1) & 0x800))
 			{
 //				printf("behind 0x%04X 0x%04X\n", a0, a1);
 				goto do_next;
@@ -2104,7 +2108,7 @@ do_next:
 
 static void prepare_sprite(uint8_t tdx, sector_t *sec)
 {
-	thing_t *th = things + tdx;
+	thing_t *th = thing_ptr(tdx);
 	uint8_t light = SECTOR_LIGHT(sec);
 	proj_spr_t *spr;
 	vertex_t d0;
@@ -2485,7 +2489,7 @@ static void do_sector(uint8_t idx)
 
 static void do_3d()
 {
-	thing_t *th = things + camera_thing;
+	thing_t *th = thing_ptr(camera_thing);
 	show_wpn_t show_wpn;
 	sector_t *sec;
 	uint32_t pidx;
@@ -2578,7 +2582,7 @@ static void do_3d()
 	show_wpn.idx = 0xFF;
 
 	if(camera_thing == player_thing)
-		show_wpn.idx = things[0].sprite;
+		show_wpn.idx = thing_ptr(0)->sprite;
 
 	if(show_wpn.idx >= 128)
 	{
@@ -2631,20 +2635,22 @@ static void do_3d()
 
 		if(show_wpn.idx < 128)
 		{
+			thing_t *th = thing_ptr(player_thing);
+			thing_t *tw = thing_ptr(0);
 			weapon_part_t *part = weapon_frame[show_wpn.idx].part;
 			int32_t ox, oy;
 			int32_t dist = 0;
 
-			ox = abs(things[player_thing].mx) >> 8;
-			oy = abs(things[player_thing].my) >> 8;
+			ox = abs(th->mx) >> 8;
+			oy = abs(th->my) >> 8;
 			dist = ox > oy ? ox + oy / 2 : oy + ox / 2;
-			dist *= inv_div[thing_type[things[player_thing].type].speed];
+			dist *= inv_div[thing_type[th->ticker.type].speed];
 			dist >>= 8;
 
 			if(dist > 127)
 				dist = 127;
 
-			if(things[0].iflags)
+			if(tw->iflags)
 				dist >>= 2;
 
 			show_wpn_now.avg >>= 1;
@@ -2664,11 +2670,11 @@ static void do_3d()
 				oy = 0;
 			}
 
-			oy += things[0].height;
+			oy += tw->height;
 
-			if(things[player_thing].pitch >= 148)
+			if(th->pitch >= 148)
 			{
-				int32_t diff = (int32_t)things[player_thing].pitch - 148;
+				int32_t diff = (int32_t)th->pitch - 148;
 				oy += diff >> 2;
 			}
 
@@ -2692,6 +2698,7 @@ static void do_3d()
 
 static void render()
 {
+	thing_t *th = thing_ptr(player_thing);
 	float angle;
 
 	frame_counter++;
@@ -2705,7 +2712,7 @@ static void render()
 			camera_damage -= 3;
 
 		level_tick++;
-		things_tick(); // 15 TPS
+		tick_run(); // 15 TPS
 		input_action = 0;
 #if 0
 		thing_t *th = things + player_thing;
@@ -2738,7 +2745,7 @@ static void render()
 
 	glLoadIdentity();
 
-	glTranslatef(-things[player_thing].x >> 8, -things[player_thing].y >> 8, 0);
+	glTranslatef(-th->x >> 8, -th->y >> 8, 0);
 
 	//
 	// special mark
@@ -2761,7 +2768,7 @@ static void render()
 	// camera
 
 	glLoadIdentity();
-	angle = ANG8_TO_DEG(things[player_thing].angle);
+	angle = ANG8_TO_DEG(th->angle);
 	glRotatef(-angle, 0, 0, 1);
 
 	// FOV
@@ -3695,7 +3702,7 @@ static uint32_t load_map()
 	memset(&show_wpn_now, 0xFF, sizeof(show_wpn_t));
 	show_wpn_now.avg = 0;
 
-	memset(things, 0xFF, sizeof(things));
+	tick_clear();
 
 	fd = open("DATA/DEFAULT.MAP", O_RDONLY);
 	if(fd < 0)
@@ -3839,7 +3846,7 @@ static uint32_t load_map()
 			goto error;
 
 		ti = thing_spawn((int32_t)th.x << 8, (int32_t)th.y << 8, (int32_t)th.z << 8, (int32_t)th.sector, type, 0);
-		things[ti].angle = th.angle;
+		thing_ptr(ti)->angle = th.angle;
 	}
 
 	// done
@@ -3945,14 +3952,7 @@ int main(int argc, void **argv)
 
 	printf("seccnt %u datasize %u\n", map_head.count_sectors, map_head.size_data);
 
-	player_thing = thing_spawn((int32_t)player_starts[0].x << 8, (int32_t)player_starts[0].y << 8, (int32_t)player_starts[0].z << 8, (int32_t)player_starts[0].sector, THING_TYPE_PLAYER_N, 0);
-	camera_thing = player_thing;
-	things[player_thing].angle = player_starts[0].angle;
-	ticcmd.angle = player_starts[0].angle;
-	ticcmd.pitch = player_starts[0].pitch;
-	projection.viewheight = thing_type[things[player_thing].type].view_height;
-	projection.wh = projection.viewheight;
-	projection.wd = 0;
+	thing_spawn_player();
 
 	while(!stopped)
 	{

@@ -385,7 +385,7 @@ in_loop_stop:
 	lda	INPUT_STATE_H
 	and	#INBIT_TLEFT
 	beq	:++
-	ldx	TICK_COUNT
+	ldx	G_TICK_COUNT
 :
 	sec
 	lda	TICK_CMD_ANGLE
@@ -398,7 +398,7 @@ in_loop_stop:
 	lda	INPUT_STATE_H
 	and	#INBIT_TRIGHT
 	beq	:++
-	ldx	TICK_COUNT
+	ldx	G_TICK_COUNT
 :
 	clc
 	lda	TICK_CMD_ANGLE

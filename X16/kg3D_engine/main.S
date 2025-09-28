@@ -10,7 +10,7 @@
 .include "menu.inc"
 .include "video.inc"
 .include "render.inc"
-.include "things.inc"
+.include "tick.inc"
 .include "input.inc"
 .include "sound.inc"
 
@@ -79,7 +79,7 @@ start:
 	jsr	time_update
 	lda	G_NEW_TICS
 	beq	@wait_loop
-	sta	TICK_COUNT
+	sta	G_TICK_COUNT
 	stz	G_NEW_TICS
 
 	; enable math
@@ -99,11 +99,11 @@ start:
 	bne	:+
 	inc	G_LEVEL_TICK_H
 :
-	; things
-	jsr	thing_tick
+	; tickers
+	jsr	tick_run
 
 	; next tick
-	dec	TICK_COUNT
+	dec	G_TICK_COUNT
 	bne	@tick_loop
 
 	; debugger framerate

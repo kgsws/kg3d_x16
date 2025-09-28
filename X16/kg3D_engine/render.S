@@ -13,6 +13,7 @@
 .export render_init
 .export render_view
 .export render_wspr_draw
+.export wall_sizes
 
 ;;;
 ; NOTES
@@ -81,8 +82,8 @@ render_init:
 ;;;
 
 render_view:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	;; setup camera position
@@ -464,8 +465,8 @@ render_view:
 	cmp	G_CAMERA_THING
 	bne	wspr_no_gfx
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; show_wpn.idx = things[0].sprite
@@ -1436,7 +1437,41 @@ sky_plane_loop:
 ; render wall
 ;;;
 
+do_v1_diff:
+	; d1.x = v1->x - (projection.x >> 8)
+	sec
+	ldy	#WALL_STRUCT_VTX_X
+	lda	(WALN_PTR_L),y
+	sbc	PROJECTION_X_L
+	sta	WALL_D1_X_L
+	iny
+	lda	(WALN_PTR_L),y
+	sbc	PROJECTION_X_H
+	sta	WALL_D1_X_H
+
+	; d1.y = v1->y - (projection.y >> 8)
+	sec
+	ldy	#WALL_STRUCT_VTX_Y
+	lda	(WALN_PTR_L),y
+	sbc	PROJECTION_Y_L
+	sta	WALL_D1_Y_L
+	iny
+	lda	(WALN_PTR_L),y
+	sbc	PROJECTION_Y_H
+	sta	WALL_D1_Y_H
+
+	; skip second call
+	lda	#$AD
+	sta	v1diff_opcode
+
+	; done
+	rts
+
 render_wall:
+	; reset
+	lda	#$20
+	sta	v1diff_opcode
+
 	;; V0 diff
 
 	; d0.x = v0->x - (projection.x >> 8)
@@ -1445,22 +1480,36 @@ render_wall:
 	lda	(WALL_PTR_L),y
 	sbc	PROJECTION_X_L
 	sta	WALL_D0_X_L
+	sta	WALL_D1_X_L
 	iny
 	lda	(WALL_PTR_L),y
 	sbc	PROJECTION_X_H
 	sta	WALL_D0_X_H
+	sta	WALL_D1_X_H
 
 	; d0.y = v0->y - (projection.y >> 8)
 	sec
-	ldy	#WALL_STRUCT_VTX_Y
+	iny
 	lda	(WALL_PTR_L),y
 	sbc	PROJECTION_Y_L
 	sta	WALL_D0_Y_L
+	sta	WALL_D1_Y_L
 	iny
 	lda	(WALL_PTR_L),y
 	sbc	PROJECTION_Y_H
 	sta	WALL_D0_Y_H
+	sta	WALL_D1_Y_H
 
+	;; flip check
+	ldy	#WALL_STRUCT_TEX_FLAGS
+	lda	(WALL_PTR_L),y
+	and	#$08
+	beq	:+
+
+	;; V1 diff
+	jsr	do_v1_diff
+
+:
 	;; get distance Y
 	; ld.y = (d0.x * wall->dist.y - d0.y * wall->dist.x) >> 8;
 
@@ -1468,9 +1517,9 @@ render_wall:
 	lda	VERA_FX_ACCUM_RESET
 
 	; d0.x
-	lda	WALL_D0_X_L
+	lda	WALL_D1_X_L
 	sta	VERA_FX_CACHE_L
-	lda	WALL_D0_X_H
+	lda	WALL_D1_X_H
 	sta	VERA_FX_CACHE_M
 
 	; wall->dist.y
@@ -1487,10 +1536,10 @@ render_wall:
 	; -d0.y
 	sec
 	lda	#$00
-	sbc	WALL_D0_Y_L
+	sbc	WALL_D1_Y_L
 	sta	VERA_FX_CACHE_L
 	lda	#$00
-	sbc	WALL_D0_Y_H
+	sbc	WALL_D1_Y_H
 	sta	VERA_FX_CACHE_M
 
 	; wall->dist.x
@@ -1522,31 +1571,18 @@ render_wall:
 	; inside the wall, stop
 	rts
 :
-	; inside = 0
-	stz	WALL_PORTAL_INSIDE
-
-	; if(ld.y <= 1)
-	bne	@done_inside
-	lda	WALL_LD_Y_L
-	cmp	#2
-	bcs	@done_inside
-
-	; inside line
-	sty	WALL_PORTAL_INSIDE
-
 	; if(ld.y <= 0)
+	bne	:+
 	lda	WALL_LD_Y_L
-	bne	@done_inside
+	bne	:+
 
 	; check projection sector
 	lda	PROJECTION_SECTOR
 	cmp	SECTOR_PTR_I
-	beq	@done_inside
 
 	; inside the wall, stop
-	bra	@invalidate
-
-@done_inside:
+	bne	@invalidate
+:
 	;; V0 angle
 	lda	WALL_LAST_ANGLE_L
 	sta	WALL_A0_L
@@ -1579,28 +1615,8 @@ render_wall:
 	sta	REG_RAM_BANK
 
 	;; V1 diff
-
-	; d1.x = v1->x - (projection.x >> 8)
-	sec
-	ldy	#WALL_STRUCT_VTX_X
-	lda	(WALN_PTR_L),y
-	sbc	PROJECTION_X_L
-	sta	WALL_D1_X_L
-	iny
-	lda	(WALN_PTR_L),y
-	sbc	PROJECTION_X_H
-	sta	WALL_D1_X_H
-
-	; d1.y = v1->y - (projection.y >> 8)
-	sec
-	ldy	#WALL_STRUCT_VTX_Y
-	lda	(WALN_PTR_L),y
-	sbc	PROJECTION_Y_L
-	sta	WALL_D1_Y_L
-	iny
-	lda	(WALN_PTR_L),y
-	sbc	PROJECTION_Y_H
-	sta	WALL_D1_Y_H
+v1diff_opcode:
+	jsr	do_v1_diff	; modified opcode
 
 	;; V1 angle
 
@@ -1634,16 +1650,8 @@ render_wall:
 	lda	WALL_A1_H
 	sbc	WALL_A0_H
 	and	#$08
-	beq	:++
-
-	; check if inside portal
-	lda	WALL_PORTAL_INSIDE
 	beq	:+
-	lda	WALL_A0_H
-	eor	WALL_A1_H
-	and	#$08
-	bne	:++
-:
+
 	; behind the wall, stop
 	rts
 :
@@ -3884,8 +3892,8 @@ prepare_sprite:
 @bail:
 	rts
 :
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; thing clip flag
@@ -4095,8 +4103,8 @@ prepare_sprite:
 	lda	(THTEMP_PTR_L)
 	sta	SPRITE_DATA_H
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; thing scale
@@ -4330,8 +4338,8 @@ prepare_sprite:
 
 	ldy	SPRITE_THING
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; zdiff = projection.z - ((th->z >> 8) + spr_yoffs)
@@ -5468,14 +5476,17 @@ prepare_masked:
 	rol
 	sta	WALL_MT_BZ_H
 
+	; TODO
 	; mt_xor = wall->masked.tflags & 0b00001000 ? 0x00 : 0xFF
-	stz	WALL_MT_XOR
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	and	#%00001000
-	bne	:+
-	dec	WALL_MT_XOR
-:
+	lda	#$FF
+	sta	WALL_MT_XOR
+;	stz	WALL_MT_XOR
+;	ldy	#WALL_STRUCT_TEX_FLAGS
+;	lda	(WALL_PTR_L),y
+;	and	#%00001000
+;	bne	:+
+;	dec	WALL_MT_XOR
+;:
 	lda	SECTOR_PTR_I
 	sta	MATH_VAR_L
 
@@ -6603,8 +6614,8 @@ update_weapon_swing:
 	; get player thing
 	ldy	G_PLAYER_THING
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; get thing pitch
@@ -6629,7 +6640,7 @@ update_weapon_swing:
 	pha
 
 	; get thing type
-	ldx	THING_STRUCT_TYPE,y
+	ldx	TICKER_STRUCT_TYPE,y
 
 	; thing info bank
 	lda	#BANK_THING_INFO
@@ -6640,8 +6651,8 @@ update_weapon_swing:
 	sta	MATH_VAR_L
 	stz	MATH_VAR_H
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; abs(mx)
@@ -7307,4 +7318,20 @@ texture_set:
 	sta	wall_affine_opcode_B+2
 
 	bra	@flags
+
+;;;
+; wall size by type
+;;;
+
+wall_sizes:
+	; without scrolling
+	.byte	WALL__STRUCT_SIZE_SOLID
+	.byte	WALL__STRUCT_SIZE_SPLIT
+	.byte	WALL__STRUCT_SIZE_PORTAL
+	.byte	WALL__STRUCT_SIZE_MASKED
+	; with scrolling
+	.byte	WALL__STRUCT_SIZE_SOLID + WALL__STRUCT_SIZE_SCROLL * 1
+	.byte	WALL__STRUCT_SIZE_SPLIT + WALL__STRUCT_SIZE_SCROLL * 2
+	.byte	WALL__STRUCT_SIZE_PORTAL + WALL__STRUCT_SIZE_SCROLL * 2
+	.byte	WALL__STRUCT_SIZE_MASKED + WALL__STRUCT_SIZE_SCROLL * 3
 

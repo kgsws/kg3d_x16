@@ -11,6 +11,7 @@
 .include "things.inc"
 .include "render.inc"
 .include "input.inc"
+.include "tick.inc"
 .include "file.inc"
 .include "sound.inc"
 
@@ -148,7 +149,7 @@ MAP_TEMP_WPN_IDX = BACKSEC_PTR_I
 MAP_TEMP_TH_TYPE = TICK_CMD_BITS_H
 MAP_TEMP_COUNT_THING = TICK_CMD_ANGLE
 MAP_TEMP_COUNT_LIGHTS = TICK_CMD_PITCH
-MAP_TEMP_START_COUNT = TICK_IDX
+MAP_TEMP_START_COUNT = G_TICKER_IDX
 MAP_LOAD_WRAM_L = FUNC_ARG_L
 MAP_LOAD_WRAM_H = FUNC_ARG_H
 MAP_LOAD_TEX_TMP = SECTOR_PTR_I
@@ -899,7 +900,7 @@ ex_map_load:
 	jsr	math_setup_vera
 
 	; reset stuff
-	jsr	thing_clear
+	jsr	tick_clear
 
 	; thing load stack pointer
 	; (to prevent sprite load recursion)
@@ -957,48 +958,47 @@ ex_map_load:
 
 	; type
 	lda	MAP_TEMP_TH_TYPE
-	sta	ARG_THING_SPAWN_TYPE
+	sta	ARG_THING_TYPE
 
 	; X
-	stz	ARG_THING_SPAWN_X_S
+	stz	ARG_THING_X_S
 	lda	MAP_TEMP_THING_X_L
-	sta	ARG_THING_SPAWN_X_L
+	sta	ARG_THING_X_L
 	lda	MAP_TEMP_THING_X_H
-	sta	ARG_THING_SPAWN_X_H
+	sta	ARG_THING_X_H
 
 	; Y
-	stz	ARG_THING_SPAWN_Y_S
+	stz	ARG_THING_Y_S
 	lda	MAP_TEMP_THING_Y_L
-	sta	ARG_THING_SPAWN_Y_L
+	sta	ARG_THING_Y_L
 	lda	MAP_TEMP_THING_Y_H
-	sta	ARG_THING_SPAWN_Y_H
+	sta	ARG_THING_Y_H
 
 	; Z
-	stz	ARG_THING_SPAWN_Z_S
+	stz	ARG_THING_Z_S
 	lda	MAP_TEMP_THING_Z_L
-	sta	ARG_THING_SPAWN_Z_L
+	sta	ARG_THING_Z_L
 	lda	MAP_TEMP_THING_Z_H
-	sta	ARG_THING_SPAWN_Z_H
+	sta	ARG_THING_Z_H
 
 	; sector
 	lda	MAP_TEMP_THING_SECTOR
-	sta	ARG_THING_SPAWN_SECTOR
+	sta	ARG_THING_SECTOR
 
 	; spawn thing
 	jsr	thing_spawn
-	ldy	RET_THING_SPAWN
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; set thing angle
 	lda	MAP_TEMP_THING_ANGLE
-	sta	THING_STRUCT_ANGLE,y
+	sta	THING_STRUCT_ANGLE,x
 
 	; set thing pitch
 	lda	#$80
-	sta	THING_STRUCT_PITCH,y
+	sta	THING_STRUCT_PITCH,x
 
 	; next thing
 	dec	MAP_TEMP_COUNT_THING
@@ -1035,64 +1035,64 @@ ex_map_load:
 	sta	TICK_CMD_PITCH
 
 	; thing type
-	lda	#127
-	sta	ARG_THING_SPAWN_TYPE
+	lda	#THING_TYPE_PLAYER_N
+	sta	ARG_THING_TYPE
 
 	; X
-	stz	ARG_THING_SPAWN_X_S
+	stz	ARG_THING_X_S
 	lda	PLRSTART_STRUCT_X_L
-	sta	ARG_THING_SPAWN_X_L
+	sta	ARG_THING_X_L
 	lda	PLRSTART_STRUCT_X_H
-	sta	ARG_THING_SPAWN_X_H
+	sta	ARG_THING_X_H
 
 	; Y
-	stz	ARG_THING_SPAWN_Y_S
+	stz	ARG_THING_Y_S
 	lda	PLRSTART_STRUCT_Y_L
-	sta	ARG_THING_SPAWN_Y_L
+	sta	ARG_THING_Y_L
 	lda	PLRSTART_STRUCT_Y_H
-	sta	ARG_THING_SPAWN_Y_H
+	sta	ARG_THING_Y_H
 
 	; Z
-	stz	ARG_THING_SPAWN_Z_S
+	stz	ARG_THING_Z_S
 	lda	PLRSTART_STRUCT_Z_L
-	sta	ARG_THING_SPAWN_Z_L
+	sta	ARG_THING_Z_L
 	lda	PLRSTART_STRUCT_Z_H
-	sta	ARG_THING_SPAWN_Z_H
+	sta	ARG_THING_Z_H
 
 	; sector
 	lda	PLRSTART_STRUCT_SECTOR
-	sta	ARG_THING_SPAWN_SECTOR
+	sta	ARG_THING_SECTOR
 
 	; spawn thing
 	jsr	thing_spawn
 
 	; save thing ID
-	lda	RET_THING_SPAWN
-	sta	G_PLAYER_THING
-	sta	G_CAMERA_THING
-	tay
+	stx	G_PLAYER_THING
+	stx	G_CAMERA_THING
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
+
+	; change ticker
+	lda	#TICKER_FUNC_PLAYER
+	sta	TICKER_STRUCT_FUNC,x
 
 	; set thing angle
 	lda	TICK_CMD_ANGLE
-	sta	THING_STRUCT_ANGLE,y
+	sta	THING_STRUCT_ANGLE,x
 
 	; set thing pitch
 	lda	TICK_CMD_PITCH
-	sta	THING_STRUCT_PITCH,y
-
-	; get type
-	ldx	THING_STRUCT_TYPE,y
+	sta	THING_STRUCT_PITCH,x
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
 	; camera reset
-	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
+	ldy	ARG_THING_TYPE
+	lda	THTYPE_STRUCT_VIEW_HEIGHT,y
 	sta	G_VIEW_HEIGHT
 	sta	G_VIEWHEIGHT
 	stz	G_VIEWDELTA
