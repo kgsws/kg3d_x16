@@ -115,7 +115,7 @@ MAP_TEMP_PLANE8_EFFECT = $B000
 ;;;
 
 MAP_HEAD__SIZE = $20
-MAP_HEAD__VERSION = 18
+MAP_HEAD__VERSION = 19
 MAP_CMAP__SIZE = 4
 MAP_PLANE__SIZE = 5
 MAP_WALL__SIZE = 5
@@ -988,10 +988,6 @@ ex_map_load:
 	; spawn thing
 	jsr	thing_spawn
 
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
 	; set thing angle
 	lda	MAP_TEMP_THING_ANGLE
 	sta	THING_STRUCT_ANGLE,x
@@ -1069,10 +1065,6 @@ ex_map_load:
 	; save thing ID
 	stx	G_PLAYER_THING
 	stx	G_CAMERA_THING
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
 
 	; change ticker
 	lda	#TICKER_FUNC_PLAYER

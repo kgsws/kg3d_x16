@@ -182,7 +182,7 @@ void thing_launch_ang(uint8_t tdx, uint8_t ang, uint8_t speed);
 void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage);
 
 uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx);
-void thing_apply_position();
+void thing_apply_pos();
 
 uint32_t decode_state(uint16_t ss);
 

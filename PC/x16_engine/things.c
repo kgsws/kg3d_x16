@@ -23,10 +23,11 @@ typedef struct
 	uint8_t portal_rd, portal_wr;
 	uint8_t floors, ceilings;
 	uint8_t thing, iflags;
-	uint8_t onfloor, blockedby;
+	uint8_t blockedby;
 	uint8_t radius, height;
 	uint8_t step_height, water_height;
-	uint8_t sector, back, slot;
+	uint8_t sector, slot;
+	uint8_t maskblock;
 } pos_check_t;
 
 //
@@ -157,8 +158,7 @@ static void prepare_pos_check(uint8_t tdx, int32_t z)
 	poscheck.radius = th->radius;
 	poscheck.height = th->height;
 
-	poscheck.onfloor = (th->z >> 8) <= th->floorz;
-	poscheck.blockedby = th->eflags & THING_EFLAG_NOCLIP ? 0 : th->blockedby;
+	poscheck.blockedby = th->blockedby;
 
 	poscheck.step_height = thing_type[th->ticker.type].step_height;
 	poscheck.water_height = thing_type[th->ticker.type].water_height;
@@ -185,27 +185,17 @@ static void get_sector_ceilingz(sector_t *sec)
 	poscheck.tcz = sec->ceiling.height;
 }
 
-static uint32_t check_backsector(wall_masked_t *wall, int32_t th_z)
+static uint32_t check_backsector(uint8_t sec, int32_t th_z)
 {
 	sector_t *bs;
 	int16_t dist;
 
-	if(!(wall->angle & MARK_PORTAL))
+	if(sectorth[sec][31] >= 31)
 		return 1;
 
-	if(!wall->backsector)
-		return 1;
+	bs = map_sectors + sec;
 
-	if(sectorth[wall->backsector][31] >= 31)
-		return 1;
-
-	if(wall->blocking & poscheck.blockedby & 0x7F)
-		return 1;
-
-	bs = map_sectors + wall->backsector;
-	poscheck.back = wall->backsector;
-
-//	map_secext[wall->backsector].maskblock = poscheck.maskblock;
+	map_secext[sec].maskblock = poscheck.maskblock;
 
 	get_sector_floorz(bs);
 	get_sector_ceilingz(bs);
@@ -253,7 +243,7 @@ static void add_sector(uint8_t sdx, uint8_t islink, uint8_t touch)
 //
 // position
 
-void thing_apply_position()
+void thing_apply_pos()
 {
 	thing_t *th = thing_ptr(poscheck.thing);
 
@@ -303,7 +293,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	{
 		poscheck.step_height &= 0x7F;
 		sec = map_sectors + sdx;
-		if(!poscheck.onfloor)
+		if((th->z >> 8) > th->floorz)
 		{
 			if(	sec->floor.link &&
 				map_sectors[sec->floor.link].flags & SECTOR_FLAG_WATER &&
@@ -315,8 +305,8 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 		}
 	}
 
-	poscheck.back = 0;
 	poscheck.sector = 0;
+	poscheck.maskblock = 0;
 
 	poscheck.portal_rd = 0;
 	poscheck.portal_wr = 1;
@@ -333,33 +323,43 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 
 		get_sector_floorz(sec);
 		if(poscheck.floorz < poscheck.tfz)
+		{
 			poscheck.floorz = poscheck.tfz;
+			poscheck.floors = sdx;
+		}
 
 		get_sector_ceilingz(sec);
-		if(poscheck.ceilingz < poscheck.tfz)
-			poscheck.ceilingz = poscheck.tfz;
+		if(poscheck.tcz < poscheck.ceilingz)
+		{
+			poscheck.ceilingz = poscheck.tcz;
+			poscheck.ceilings = sdx;
+		}
 
 		//if(!poscheck.islink)
 		{
 			void *wall_ptr = map_data + sec->walls;
-			uint8_t inside = !poscheck.sector;
+			uint8_t inside = 1;
+			void *walf = wall_ptr;
 
 			while(1)
 			{
 				wall_masked_t *wall = wall_ptr;
 				uint8_t touch = 0xFF;
-				wall_end_t *waln;
+				wall_solid_t *waln;
 				vertex_t *vtx;
 				uint8_t cross;
 				int32_t dist;
 				vertex_t dd;
 
 				// wall ptr
-				wall_ptr += wall_size_tab[(wall->angle & MARK_TYPE_BITS) >> 12];
-				waln = wall_ptr;
+				wall_ptr += wall_size_tab[(wall->angle & WALL_TYPE_MASK) >> 12];
+				if(wall->angle & WALL_FLAG_LAST)
+					waln = walf;
+				else
+					waln = wall_ptr;
 
 				// flip check
-				if(wall->tflags & 0b00001000)
+				if(wall->angle & WALL_FLAG_SWAP)
 				{
 					// V1 diff
 					vtx = &waln->vtx;
@@ -376,11 +376,11 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				// get distance
 				dist = (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8;
 
-				if(dist >= poscheck.radius)
-					goto do_next;
-
 				if(dist < 0)
 					inside = 0;
+
+				if(dist >= poscheck.radius)
+					goto do_next;
 
 				if(dist + poscheck.radius < 0)
 					touch = 0;
@@ -412,20 +412,22 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				}
 
 				// check backsector
-				if(!check_backsector(wall, zz))
-				{
-					add_sector(poscheck.back, 0, touch);
+				if(	wall->backsector &&
+					!(wall->blocking & poscheck.blockedby & 0x7F) &&
+					!check_backsector(wall->backsector, zz)
+				){
+					add_sector(wall->backsector, 0, touch);
 					goto do_next;
 				}
 
 				return 0;
 
 do_next:
-				if(wall->angle & MARK_LAST)
+				if(wall->angle & WALL_FLAG_LAST)
 					break;
 			}
 
-			if(inside)
+			if(inside && !poscheck.sector)
 				poscheck.sector = sdx;
 		}
 	}
@@ -547,7 +549,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 		th->ceilings = sector;
 		th->floors = sector;
 	} else
-		thing_apply_position();
+		thing_apply_pos();
 
 	return tdx;
 }
@@ -743,7 +745,7 @@ void thing_tick()
 		{
 			th->x = nx;
 			th->y = ny;
-			thing_apply_position();
+			thing_apply_pos();
 		}
 
 		// friction
@@ -802,10 +804,10 @@ void thing_tick()
 		{
 			if(thing_type[th->ticker.type].view_height > thing_type[th->ticker.type].water_height)
 				// floats
-				th->mz = th->gravity << 5;
+				th->mz = th->gravity << 4;
 			else
 				// sinks
-				th->mz = -th->gravity << 5;
+				th->mz = -th->gravity << 4;
 			goto skip_z_friction;
 		}
 	} else

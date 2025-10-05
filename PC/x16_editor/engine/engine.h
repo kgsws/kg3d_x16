@@ -11,7 +11,7 @@
 #define float32bits(x)	*((uint32_t*)&(x))
 
 // texture flags (walls)
-#define TEXFLAG_PEG_Y	1
+#define TEXFLAG_PEG_Y	1	// forced by X16
 #define TEXFLAG_MIRROR_X	2
 #define TEXFLAG_MIRROR_Y_SWAP_XY	4
 

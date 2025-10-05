@@ -10,7 +10,7 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	18
+#define MAP_VERSION	19
 #define MAP_MAGIC	0x36315870614D676B
 
 #define MAX_BANKS	4
@@ -21,122 +21,83 @@
 #define MAX_THINGS	200	// engine limit is 255; but there should be some space for players, projectiles and so on
 #define MAX_PLAYER_STARTS	32	// amount per start type
 
-#define MARK_SPLIT	0x1000
-#define MARK_PORTAL	0x2000
-#define MARK_SCROLL	0x4000
-#define MARK_LAST	0x8000
-#define MARK_TYPE_BITS	(MARK_SCROLL | MARK_PORTAL | MARK_SPLIT)
-#define MARK_MID_BITS	(MARK_PORTAL | MARK_SPLIT)
-#define MARK_MASKED	MARK_MID_BITS
+#define WALL_FLAG_LAST	0x8000	// forced by code
+#define WALL_FLAG_SWAP	0x4000
+#define WALL_TYPE_MASK	0x3000
+
+#define WALL_TYPE_SOLID	0x0000
+#define WALL_TYPE_PORTAL	0x1000
+#define WALL_TYPE_SPLIT	0x2000
+#define WALL_TYPE_MASKED	0x3000	// must contain 'portal' bit
 
 #define ERROR_TEXT_TITLE	"Map export failed!"
 #define ERROR_COMMON_TEXT	"Your map can not be exported!\nThe reason for failed export is:\n\n%s"
 #define ERROR_COLOR	0x2020F0
 #define PASS_COLOR	0xA0A0A0
 
-typedef union
-{
-	uint32_t c;
-	int16_t t[2];
-} tile_combo_t;
-
-typedef struct
-{
-	int8_t x, y;
-} wall_scroll_t;
-
 typedef struct
 {
 	int16_t x, y;
-} vertex_t;
+} __attribute__((packed)) vertex_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-} wall_end_t;
+	uint8_t texture;
+	uint8_t flags;
+	uint8_t ox;
+	uint8_t oy;
+} __attribute__((packed)) tex_info_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture; // F
-	uint8_t tex_ox; // G
-	uint8_t tex_oy; // H
-	// MARK_SCROLL
-	wall_scroll_t scroll;
+	uint16_t angle;
+	uint8_t backsector;
+	uint8_t special;
+	vertex_t vtx;
+	vertex_t dist;
+	tex_info_t top;
 } __attribute__((packed)) wall_solid_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	// this order is forced by 6502 ASM
-	uint8_t backsector; // L
-	uint8_t blocking; // M
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
+	uint16_t angle;
+	uint8_t backsector;
+	uint8_t special;
+	vertex_t vtx;
+	vertex_t dist;
+	tex_info_t top;
+	tex_info_t bot;
+	uint8_t blocking;
 } __attribute__((packed)) wall_portal_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	int16_t height_split; // L M
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
+	uint16_t angle;
+	uint8_t backsector;
+	uint8_t special;
+	vertex_t vtx;
+	vertex_t dist;
+	tex_info_t top;
+	tex_info_t bot;
+	uint16_t height;
 } __attribute__((packed)) wall_split_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	uint8_t backsector; // L
-	uint8_t blocking; // M
-	uint8_t texture_mid;
-	uint8_t tex_mid_ox;
-	uint8_t tex_mid_oy;
+	uint16_t angle;
+	uint8_t backsector;
+	uint8_t special;
+	vertex_t vtx;
+	vertex_t dist;
+	tex_info_t top;
+	tex_info_t bot;
+	uint8_t blocking;
 	uint8_t blockmid;
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
-	wall_scroll_t scroll_mid;
+	tex_info_t mid;
 } __attribute__((packed)) wall_masked_t;
 
 typedef union
 {
-	wall_end_t end;
 	wall_solid_t solid;
 	wall_portal_t portal;
 	wall_split_t split;
@@ -258,15 +219,9 @@ static map_head_t map_head =
 
 static const uint32_t wall_size_tab[] =
 {
-	// without texture scrolling
-	sizeof(wall_solid_t) - sizeof(wall_scroll_t) * 1,
-	sizeof(wall_split_t) - sizeof(wall_scroll_t) * 2,
-	sizeof(wall_portal_t) - sizeof(wall_scroll_t) * 2,
-	sizeof(wall_masked_t) - sizeof(wall_scroll_t) * 3,
-	// with texture scrolling
 	sizeof(wall_solid_t),
-	sizeof(wall_split_t),
 	sizeof(wall_portal_t),
+	sizeof(wall_split_t),
 	sizeof(wall_masked_t),
 };
 
@@ -597,6 +552,7 @@ void x16_export_map()
 			wall_combo_t *wall = wall_ptr;
 			kge_vertex_t *v0, *v1;
 			float dist, xx, yy, dx, dy;
+			uint16_t angle;
 
 			lidx++;
 			if(lidx >= sec->line_count)
@@ -609,6 +565,8 @@ void x16_export_map()
 
 			wall->solid.vtx.x = v0->x;
 			wall->solid.vtx.y = v0->y;
+
+			wall->solid.backsector = 0;
 
 			if(line->backsector)
 			{
@@ -630,11 +588,11 @@ void x16_export_map()
 
 				wall->portal.backsector = list_get_idx(&edit_list_sector, (link_entry_t*)line->backsector - 1) + 1;
 				wall->portal.blocking = line->info.blocking;
-				wall->portal.texture_bot = ret;
-				wall->portal.tex_bot_ox = line->texture[1].ox;
-				wall->portal.tex_bot_oy = line->texture[1].oy;
-				wall->portal.tflags = line->texture[1].flags << 4;
-				wall->portal.angle = MARK_PORTAL;
+				wall->portal.bot.texture = ret;
+				wall->portal.bot.ox = line->texture[1].ox;
+				wall->portal.bot.oy = line->texture[1].oy;
+				wall->portal.bot.flags = line->texture[1].flags;
+				angle = WALL_TYPE_PORTAL;
 
 				if(line->texture[2].idx)
 				{
@@ -645,23 +603,18 @@ void x16_export_map()
 						return;
 					}
 
-					// TODO
-//					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
-//						wall->masked.tflags |= 0b00001000;
-
-					wall->masked.blockmid = line->info.blockmid & 0b01111111;
-					if(line->texture[2].flags & TEXFLAG_PEG_MID_BACK)
-						wall->masked.blockmid |= 0b10000000;
-					else
+					if(!(line->texture[2].flags & TEXFLAG_PEG_MID_BACK))
 					{
 						editor_texture_t *et = editor_texture + line->texture[2].idx;
 						masked_height = et->height + line->texture[2].oy;
 					}
 
-					wall->masked.angle = MARK_MASKED;
-					wall->masked.texture_mid = ret;
-					wall->masked.tex_mid_ox = line->texture[2].ox;
-					wall->masked.tex_mid_oy = line->texture[2].oy;
+					wall->masked.blockmid = line->info.blockmid;
+					wall->masked.mid.texture = ret;
+					wall->masked.mid.ox = line->texture[2].ox;
+					wall->masked.mid.oy = line->texture[2].oy;
+					wall->masked.mid.flags = line->texture[2].flags;
+					angle = WALL_TYPE_MASKED;
 				}
 			} else
 			if(line->texture_split != INFINITY)
@@ -673,16 +626,15 @@ void x16_export_map()
 					return;
 				}
 
-				wall->split.height_split = line->texture_split;
-				wall->split.texture_bot = ret;
-				wall->split.tex_bot_ox = line->texture[1].ox;
-				wall->split.tex_bot_oy = line->texture[1].oy;
-				wall->split.tflags = line->texture[1].flags << 4;
-				wall->split.angle = MARK_SPLIT;
+				wall->split.height = line->texture_split;
+				wall->split.bot.texture = ret;
+				wall->split.bot.ox = line->texture[1].ox;
+				wall->split.bot.oy = line->texture[1].oy;
+				wall->split.bot.flags = line->texture[1].flags;
+				angle = WALL_TYPE_SPLIT;
 			} else
 			{
-				wall->solid.tflags = 0;
-				wall->solid.angle = 0;
+				angle = WALL_TYPE_SOLID;
 
 				if(line->texture[2].idx)
 				{
@@ -693,17 +645,12 @@ void x16_export_map()
 						return;
 					}
 
-					// TODO
-//					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
-//						wall->masked.tflags |= 0b00001000;
-
-					wall->portal.backsector = 0;
 					wall->masked.blockmid = 0;
-					wall->masked.angle = MARK_MASKED;
-					wall->masked.texture_bot = 0;
-					wall->masked.texture_mid = ret;
-					wall->masked.tex_mid_ox = line->texture[2].ox;
-					wall->masked.tex_mid_oy = line->texture[2].oy;
+					wall->masked.mid.texture = ret;
+					wall->masked.mid.ox = line->texture[2].ox;
+					wall->masked.mid.oy = line->texture[2].oy;
+					wall->masked.mid.flags = line->texture[2].flags;
+					angle = WALL_TYPE_MASKED;
 				}
 			}
 
@@ -714,19 +661,19 @@ void x16_export_map()
 				return;
 			}
 
-			wall->solid.texture = ret;
-			wall->solid.tex_ox = line->texture[0].ox;
-			wall->solid.tex_oy = line->texture[0].oy;
-			wall->solid.tflags |= line->texture[0].flags;
+			wall->solid.top.texture = ret;
+			wall->solid.top.ox = line->texture[0].ox;
+			wall->solid.top.oy = line->texture[0].oy;
+			wall->solid.top.flags = line->texture[0].flags;
 
 			if(line->info.flags & WALLFLAG_PEG_X)
-				wall->solid.tflags |= 0b10000000;
+				wall->solid.top.flags |= 0x80; // HAX, applies to all textures
 
 			if(line->vc.x16port == validcount)
-				wall->solid.tflags |= 0b00001000;
+				angle |= WALL_FLAG_SWAP;
 
 			if(i == sec->line_count-1)
-				wall->solid.angle |= MARK_LAST;
+				angle |= WALL_FLAG_LAST;
 
 			wall->solid.special = 0;
 
@@ -741,17 +688,10 @@ void x16_export_map()
 			wall->solid.dist.x = dx;
 			wall->solid.dist.y = dy;
 
-			wall->solid.angle |= line->stuff.x16angle;
+			angle |= line->stuff.x16angle;
+			wall->solid.angle = (angle << 8) | (angle >> 8);
 
-			wall_ptr += wall_size_tab[(wall->solid.angle & MARK_TYPE_BITS) >> 12];
-		}
-
-		// wall terminator (first vertex)
-		{
-			wall_portal_t *wall = (wall_portal_t*)wall_data;
-			wall_end_t *wend = wall_ptr;
-			wend->vtx = wall->vtx;
-			wall_ptr += sizeof(wall_end_t);
+			wall_ptr += wall_size_tab[(angle & WALL_TYPE_MASK) >> 12];
 		}
 
 		// get wall space

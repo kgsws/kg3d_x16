@@ -13,7 +13,6 @@
 .export render_init
 .export render_view
 .export render_wspr_draw
-.export wall_sizes
 
 ;;;
 ; NOTES
@@ -636,6 +635,7 @@ render_sector:
 	; the loop
 	lda	#$A0
 	sta	SPR_PTR_H
+	stz	SPR_PTR_L
 @loop_spr_prep:
 	; get thing at this slot
 	lda	(SPR_PTR_L),y
@@ -913,15 +913,16 @@ render_sector:
 render_walls:
 	ldy	SECTOR_PTR_I
 	lda	SECTOR_STRUCT_WALLS_L,y
-	sta	WALN_PTR_L
+	sta	WALL_PTR_L
+	sta	WALF_PTR_L
 	lda	SECTOR_STRUCT_WALLS_H,y
-	sta	WALN_PTR_H
 	tax
 
 	; wall pointer
 	and	#$1F
 	ora	#$A0
-	sta	WALN_PTR_H
+	sta	WALL_PTR_H
+	sta	WALF_PTR_H
 	lda	TAB_BANK,x
 	ora	#BANK_MAPDATA
 	sta	WALL_PTR_B
@@ -931,12 +932,6 @@ render_walls:
 	sta	WALL_LAST_ANGLE_H
 
 @loop:
-	; wall pointer
-	lda	WALN_PTR_L
-	sta	WALL_PTR_L
-	lda	WALN_PTR_H
-	sta	WALL_PTR_H
-
 	; dcsel = 2, addrsel = 0
 	lda	#$04
 	sta	VERA_CTRL
@@ -964,23 +959,33 @@ render_walls:
 	lda	WALL_PTR_B
 	sta	REG_RAM_BANK
 
+	; check for last
+	lda	(WALL_PTR_L)
+	bpl	:+
+
+	; next wall (=first)
+	lda	WALF_PTR_L
+	sta	WALN_PTR_L
+	lda	WALF_PTR_H
+	sta	WALN_PTR_H
+
+	bra	:++
+:
 	; next wall pointer
-	ldy	#WALL_STRUCT_ANGLE+1
-	lda	(WALL_PTR_L),y
+	lda	(WALL_PTR_L)
+	and	#WALL_TYPE_MASK
 	tax
-	lda	TAB_SWAP,x
-	and	#7
-	tax
+	ldy	TAB_SWAP,x
 	clc
 	lda	WALL_PTR_L
-	adc	wall_sizes,x
+	adc	wall_sizes,y
 	sta	WALN_PTR_L
 	lda	WALL_PTR_H
 	adc	#0
 	sta	WALN_PTR_H
-
-	; wall->angle & MARK_XPEG
-	ldy	#WALL_STRUCT_TEX_FLAGS
+:
+	; X peg
+	ldy	#WALL_STRUCT_TOP_FLG
 	lda	(WALL_PTR_L),y
 	sta	WALL_XPEG
 
@@ -992,11 +997,15 @@ render_walls:
 	sta	REG_RAM_BANK
 
 	; check for STOP
-	ldy	#WALL_STRUCT_ANGLE+1
-	lda	(WALL_PTR_L),y
-	bpl	@loop
-
+	lda	(WALL_PTR_L)
+	bpl	:+
 	rts
+:
+	lda	WALN_PTR_L
+	sta	WALL_PTR_L
+	lda	WALN_PTR_H
+	sta	WALL_PTR_H
+	bra	@loop
 
 ;;;
 ; render plane
@@ -1501,9 +1510,8 @@ render_wall:
 	sta	WALL_D1_Y_H
 
 	;; flip check
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	and	#$08
+	lda	(WALL_PTR_L)
+	and	#WALL_FLAG_SWAP
 	beq	:+
 
 	;; V1 diff
@@ -2302,12 +2310,11 @@ v1diff_opcode:
 
 	; lca = wall->angle - projection.a
 	sec
-	ldy	#WALL_STRUCT_ANGLE
+	ldy	#WALL_STRUCT_ANGLE+1
 	lda	(WALL_PTR_L),y
 	sbc	PROJECTION_A_L
 	sta	WALL_LCA_L
-	iny
-	lda	(WALL_PTR_L),y
+	lda	(WALL_PTR_L)
 	sbc	PROJECTION_A_H
 	sta	WALL_LCA_H
 
@@ -2530,21 +2537,20 @@ v1diff_opcode:
 	cmp	#16
 	bcs	@skip_masked
 
-	; if((wall->solid.angle & MARK_TYPE_BITS) == MARK_MASKED)
-	ldy	#WALL_STRUCT_ANGLE+1
-	lda	(WALL_PTR_L),y
-	and	#WALL__MARK_MID_BITS
-	cmp	#WALL__MARK_MASKED
+	; if((wall->solid.angle & WALL_TYPE_MASK) == WALL_TYPE_MASKED)
+	lda	(WALL_PTR_L)
+	and	#WALL_TYPE_MASK
+	cmp	#WALL_TYPE_MASKED
 	bne	@skip_masked
 
-	; if(wall->masked.texture_mid)
-	; if(!(wall->masked.texture_mid & 0x80))
-	ldy	#WALL_STRUCT_TEX_MID
+	; if(wall->masked.mid.texture)
+	; if(!(wall->masked.mid.texture & 0x80))
+	ldy	#WALL_STRUCT_MID_TEX
 	lda	(WALL_PTR_L),y
 	beq	@skip_masked
 	bmi	@skip_masked
 
-	; if(!(texture_remap[wall->masked.texture_mid] & 0x80))
+	; if(!(texture_remap[wall->masked.mid.texture] & 0x80))
 	sta	WALL_MT_TEXTURE
 	tax
 	lda	TAB_TEXTURE_REMAP,x
@@ -2555,10 +2561,9 @@ v1diff_opcode:
 
 @skip_masked:
 
-	; if(!(wall->angle & MARK_PORTAL))
-	ldy	#WALL_STRUCT_ANGLE+1
-	lda	(WALL_PTR_L),y
-	and	#WALL__MARK_PORTAL
+	; if(!(wall->solid.angle & WALL_TYPE_PORTAL))
+	lda	(WALL_PTR_L)
+	and	#WALL_TYPE_PORTAL
 	beq	:+
 
 	; if(!wall->backsector)
@@ -2567,14 +2572,14 @@ v1diff_opcode:
 	beq	:+
 	jmp	@two_sided
 :
-	; if((wall->solid.angle & MARK_TYPE_BITS) != MARK_SPLIT)
-	lda	(WALL_PTR_L),y
-	and	#WALL__MARK_MID_BITS
-	cmp	#WALL__MARK_SPLIT
+	; if((wall->solid.angle & WALL_TYPE_MASK) != WALL_TYPE_SPLIT)
+	lda	(WALL_PTR_L)
+	and	#WALL_TYPE_MASK
+	cmp	#WALL_TYPE_SPLIT
 	bne	:+
 
 	; get split height
-	ldy	#WALL_STRUCT_HEIGHT_SPLIT
+	ldy	#WALL_STRUCT_HEIGHT
 	lda	(WALL_PTR_L),y
 	sta	WALL_TMP_CALC_L
 	iny
@@ -2602,10 +2607,10 @@ v1diff_opcode:
 	;;; solid wall
 :
 	; texture Y peg
-	ldy	#WALL_STRUCT_TEX_FLAGS
+	ldy	#WALL_STRUCT_TOP_FLG
 	lda	(WALL_PTR_L),y
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ror
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2634,7 +2639,7 @@ v1diff_opcode:
 	sta	REG_RAM_BANK
 
 	; texture offsets
-	ldy	#WALL_STRUCT_TEX_TOP_X
+	ldy	#WALL_STRUCT_TOP_OX
 	lda	(WALL_PTR_L),y
 	sta	RENDER_TEXTURE_OX
 	iny
@@ -2644,12 +2649,12 @@ v1diff_opcode:
 	sta	RENDER_TEXTURE_OY
 
 	; texture flags
-	ldy	#WALL_STRUCT_TEX_FLAGS
+	ldy	#WALL_STRUCT_TOP_FLG
 	lda	(WALL_PTR_L),y
 	sta	WALL_TEXTURE_FLAGS
 
 	; texture
-	ldy	#WALL_STRUCT_TEX_TOP
+	ldy	#WALL_STRUCT_TOP_TEX
 	lda	(WALL_PTR_L),y
 	jsr	texture_set
 
@@ -2755,21 +2760,19 @@ v1diff_opcode:
 	sta	REG_RAM_BANK
 
 	; texture flags
-	ldy	#WALL_STRUCT_TEX_FLAGS
+	ldy	#WALL_STRUCT_BOT_FLG
 	lda	(WALL_PTR_L),y
-	tax
-	lda	TAB_SWAP,x
 	sta	WALL_TEXTURE_FLAGS
 
 	; texture
-	ldy	#WALL_STRUCT_TEX_BOT
+	ldy	#WALL_STRUCT_BOT_TEX
 	lda	(WALL_PTR_L),y
 	jsr	texture_set
 
 	; texture Y peg
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ror
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2794,7 +2797,7 @@ v1diff_opcode:
 	sta	REG_RAM_BANK
 :
 	; texture offsets
-	ldy	#WALL_STRUCT_TEX_BOT_X
+	ldy	#WALL_STRUCT_BOT_OX
 	lda	(WALL_PTR_L),y
 	sta	RENDER_TEXTURE_OX
 	iny
@@ -2830,10 +2833,10 @@ v1diff_opcode:
 	sta	REG_RAM_BANK
 
 	; texture Y peg
-	ldy	#WALL_STRUCT_TEX_FLAGS
+	ldy	#WALL_STRUCT_TOP_FLG
 	lda	(WALL_PTR_L),y
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ror
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2921,13 +2924,13 @@ v1diff_opcode:
 	sta	REG_RAM_BANK
 
 	; texture flags
-	ldy	#WALL_STRUCT_TEX_FLAGS
+	ldy	#WALL_STRUCT_TOP_FLG
 	lda	(WALL_PTR_L),y
 	sta	WALL_TEXTURE_FLAGS
 
 	; texture Y peg
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ror
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2952,7 +2955,7 @@ v1diff_opcode:
 	sta	REG_RAM_BANK
 :
 	; texture offsets
-	ldy	#WALL_STRUCT_TEX_TOP_X
+	ldy	#WALL_STRUCT_TOP_OX
 	lda	(WALL_PTR_L),y
 	sta	RENDER_TEXTURE_OX
 	iny
@@ -2962,7 +2965,7 @@ v1diff_opcode:
 	sta	RENDER_TEXTURE_OY
 
 	; texture
-	ldy	#WALL_STRUCT_TEX_TOP
+	ldy	#WALL_STRUCT_TOP_TEX
 	lda	(WALL_PTR_L),y
 	jsr	texture_set
 
@@ -3091,15 +3094,13 @@ v1diff_opcode:
 	sta	REG_RAM_BANK
 
 	; texture flags
-	ldy	#WALL_STRUCT_TEX_FLAGS
+	ldy	#WALL_STRUCT_BOT_FLG
 	lda	(WALL_PTR_L),y
-	tax
-	lda	TAB_SWAP,x
 	sta	WALL_TEXTURE_FLAGS
 
 	; texture peg
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ror
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -3124,7 +3125,7 @@ v1diff_opcode:
 	sta	REG_RAM_BANK
 :
 	; texture offsets
-	ldy	#WALL_STRUCT_TEX_BOT_X
+	ldy	#WALL_STRUCT_BOT_OX
 	lda	(WALL_PTR_L),y
 	sta	RENDER_TEXTURE_OX
 	iny
@@ -3134,7 +3135,7 @@ v1diff_opcode:
 	sta	RENDER_TEXTURE_OY
 
 	; texture
-	ldy	#WALL_STRUCT_TEX_BOT
+	ldy	#WALL_STRUCT_BOT_TEX
 	lda	(WALL_PTR_L),y
 	jsr	texture_set
 
@@ -5463,7 +5464,7 @@ sprite_skip_col:
 
 prepare_masked:
 	; mt_ox = wall->masked.tex_mid_ox
-	iny
+	ldy	#WALL_STRUCT_MID_OX
 	lda	(WALL_PTR_L),y
 	sta	WALL_MT_OX
 
@@ -5476,24 +5477,22 @@ prepare_masked:
 	rol
 	sta	WALL_MT_BZ_H
 
-	; TODO
-	; mt_xor = wall->masked.tflags & 0b00001000 ? 0x00 : 0xFF
-	lda	#$FF
-	sta	WALL_MT_XOR
-;	stz	WALL_MT_XOR
-;	ldy	#WALL_STRUCT_TEX_FLAGS
-;	lda	(WALL_PTR_L),y
-;	and	#%00001000
-;	bne	:+
-;	dec	WALL_MT_XOR
-;:
+	; mt_xor = wall->masked.mid.flags & TEXFLAG_MIRROR_X ? 0x00 : 0xFF
+	stz	WALL_MT_XOR
+	ldy	#WALL_STRUCT_MID_FLG
+	lda	(WALL_PTR_L),y
+	and	#WALL_TEXFLAG_MIRROR_X
+	bne	:+
+	dec	WALL_MT_XOR
+:
 	lda	SECTOR_PTR_I
 	sta	MATH_VAR_L
 
-	; if(wall->masked.blockmid & 0b10000000)
-	ldy	#WALL_STRUCT_TEX_MID_B
+	; if(wall->masked.mid.flags & TEXFLAG_PEG_MID_BACK)
+	ldy	#WALL_STRUCT_MID_FLG
 	lda	(WALL_PTR_L),y
-	bpl	:+
+	ror
+	bcc	:+
 
 	; if(wall->portal.backsector)
 	ldy	#WALL_STRUCT_BACKSECTOR
@@ -7224,7 +7223,7 @@ texture_set:
 
 	; check for XY swap
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_MIRROR_Y_SWAP_XY
+	and	#WALL_TEXFLAG_MIRROR_Y_SWAP_XY
 	beq	:+
 
 	; set to 'swapped plane' type
@@ -7254,7 +7253,7 @@ texture_set:
 
 	; mirror flag
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_MIRROR_X
+	and	#WALL_TEXFLAG_MIRROR_X
 	beq	:+
 	stz	WALL_TEXTURE_XOR
 :
@@ -7272,7 +7271,7 @@ texture_set:
 
 	; check for Y mirror
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_MIRROR_Y_SWAP_XY
+	and	#WALL_TEXFLAG_MIRROR_Y_SWAP_XY
 	beq	:+
 	inc	WALL_TEXTURE_WX
 :
@@ -7318,20 +7317,3 @@ texture_set:
 	sta	wall_affine_opcode_B+2
 
 	bra	@flags
-
-;;;
-; wall size by type
-;;;
-
-wall_sizes:
-	; without scrolling
-	.byte	WALL__STRUCT_SIZE_SOLID
-	.byte	WALL__STRUCT_SIZE_SPLIT
-	.byte	WALL__STRUCT_SIZE_PORTAL
-	.byte	WALL__STRUCT_SIZE_MASKED
-	; with scrolling
-	.byte	WALL__STRUCT_SIZE_SOLID + WALL__STRUCT_SIZE_SCROLL * 1
-	.byte	WALL__STRUCT_SIZE_SPLIT + WALL__STRUCT_SIZE_SCROLL * 2
-	.byte	WALL__STRUCT_SIZE_PORTAL + WALL__STRUCT_SIZE_SCROLL * 2
-	.byte	WALL__STRUCT_SIZE_MASKED + WALL__STRUCT_SIZE_SCROLL * 3
-

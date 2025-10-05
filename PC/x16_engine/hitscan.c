@@ -218,10 +218,10 @@ hit_plane:
 	}
 
 	// default texture
-	texture = wall->portal.texture_top;
+	texture = wall->portal.top.texture;
 
 	// check wall type
-	if(wall->solid.angle & MARK_PORTAL)
+	if(wall->solid.angle & WALL_TYPE_PORTAL)
 	{
 		// check backsector
 		if(wall->portal.backsector)
@@ -231,7 +231,7 @@ hit_plane:
 			// bottom
 			if(zz < bs->floor.height)
 			{
-				texture = wall->portal.texture_bot;
+				texture = wall->portal.bot.texture;
 				goto do_wall;
 			}
 
@@ -246,10 +246,10 @@ hit_plane:
 			texture = 0x80;
 		}
 	} else
-	if((wall->solid.angle & MARK_MID_BITS) == MARK_SPLIT)
+	if((wall->solid.angle & WALL_TYPE_MASK) == WALL_TYPE_SPLIT)
 	{
-		if(zz <= wall->split.height_split)
-			texture = wall->split.texture_bot;
+		if(zz <= wall->split.height)
+			texture = wall->split.bot.texture;
 	}
 #if 0
 	// ceiling check
@@ -330,6 +330,7 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 	{
 		sector_t *sec = map_sectors + sdx;
 		void *wall_ptr = (void*)map_data + sec->walls;
+		void *walf = wall_ptr;
 		uint8_t last_angle;
 
 		{
@@ -348,13 +349,16 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 		while(1)
 		{
 			wall_combo_t *wall = wall_ptr;
-			wall_end_t *waln;
+			wall_solid_t *waln;
 			vertex_t *vtx;
 			uint8_t angle, hit;
 
 			// wall ptr
-			wall_ptr += wall_size_tab[(wall->solid.angle & MARK_MID_BITS) >> 12];
-			waln = wall_ptr;
+			wall_ptr += wall_size_tab[(wall->solid.angle & WALL_TYPE_MASK) >> 12];
+			if(wall->solid.angle & WALL_FLAG_LAST)
+				waln = walf;
+			else
+				waln = wall_ptr;
 
 			// V0 diff
 			vtx = &waln->vtx;
@@ -380,9 +384,6 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 					break;
 				}
 
-				if(!(wall->solid.angle & MARK_PORTAL))
-					return;
-
 				if(!wall->portal.backsector)
 					return;
 
@@ -393,9 +394,10 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 				break;
 			}
 
-			if(wall->solid.angle & MARK_LAST)
+			if(wall->solid.angle & WALL_FLAG_LAST)
 			{
 				// this should never happen
+				// THIS CHECK IS NOT PRESENT IN 6502 CODE
 				printf("NO HITSCAN WALL!\n");
 				return;
 			}

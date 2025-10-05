@@ -1,18 +1,19 @@
 
-#define MAP_VERSION	18
+#define MAP_VERSION	19
 #define MAP_MAGIC	0x36315870614D676B
 #define MAX_LIGHTS	8
 #define MAX_X16_VARIANTS	16
 #define MAX_TEXTURES	128
 #define MAX_PLAYER_STARTS	32
 
-#define MARK_SPLIT	0x1000
-#define MARK_PORTAL	0x2000
-#define MARK_SCROLL	0x4000
-#define MARK_LAST	0x8000
-#define MARK_TYPE_BITS	(MARK_SCROLL | MARK_PORTAL | MARK_SPLIT)
-#define MARK_MID_BITS	(MARK_PORTAL | MARK_SPLIT)
-#define MARK_MASKED	MARK_MID_BITS
+#define WALL_FLAG_LAST	0x8000	// forced by code
+#define WALL_FLAG_SWAP	0x4000
+#define WALL_TYPE_MASK	0x3000
+
+#define WALL_TYPE_SOLID	0x0000
+#define WALL_TYPE_PORTAL	0x1000
+#define WALL_TYPE_SPLIT	0x2000
+#define WALL_TYPE_MASKED	0x3000
 
 #define SECTOR_FLAG_WATER	0x80
 
@@ -38,101 +39,67 @@ typedef struct
 
 typedef struct
 {
-	int8_t x, y;
-} wall_scroll_t;
-
-typedef struct
-{
 	int16_t x, y;
-} vertex_t;
+} __attribute__((packed)) vertex_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-} wall_end_t;
+	uint8_t texture;
+	uint8_t flags;
+	uint8_t ox;
+	uint8_t oy;
+} __attribute__((packed)) tex_info_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture; // F
-	uint8_t tex_ox; // G
-	uint8_t tex_oy; // H
-	// MARK_SCROLL
-	wall_scroll_t scroll;
+	uint16_t angle;
+	uint8_t backsector;
+	uint8_t special;
+	vertex_t vtx;
+	vertex_t dist;
+	tex_info_t top;
 } __attribute__((packed)) wall_solid_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	// this order is forced by 6502 ASM
-	uint8_t backsector; // L
-	uint8_t blocking; // M
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
+	uint16_t angle;
+	uint8_t backsector;
+	uint8_t special;
+	vertex_t vtx;
+	vertex_t dist;
+	tex_info_t top;
+	tex_info_t bot;
+	uint8_t blocking;
 } __attribute__((packed)) wall_portal_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	int16_t height_split; // L M
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
+	uint16_t angle;
+	uint8_t backsector;
+	uint8_t special;
+	vertex_t vtx;
+	vertex_t dist;
+	tex_info_t top;
+	tex_info_t bot;
+	uint16_t height;
 } __attribute__((packed)) wall_split_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	uint8_t backsector; // L
-	uint8_t blocking; // M
-	uint8_t texture_mid;
-	uint8_t tex_mid_ox;
-	uint8_t tex_mid_oy;
+	uint16_t angle;
+	uint8_t backsector;
+	uint8_t special;
+	vertex_t vtx;
+	vertex_t dist;
+	tex_info_t top;
+	tex_info_t bot;
+	uint8_t blocking;
 	uint8_t blockmid;
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
-	wall_scroll_t scroll_mid;
+	tex_info_t mid;
 } __attribute__((packed)) wall_masked_t;
 
 typedef union
 {
-	wall_end_t end;
 	wall_solid_t solid;
 	wall_portal_t portal;
 	wall_split_t split;

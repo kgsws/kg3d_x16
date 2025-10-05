@@ -16,6 +16,8 @@
 .export thing_clear
 .export thing_launch_ang
 .export thing_launch
+.export thing_check_pos
+.export thing_apply_pos
 
 .export thing_tick
 .export thing_plyr
@@ -32,7 +34,7 @@
 ; requires all ARG_THING_* arguments
 ; X is originator for '_org' variant
 ; zero flag set = fail
-; returns thing in X
+; returns thing in X and ARG_THING_IDX
 
 thing_spawn:
 	ldx	#0
@@ -248,10 +250,30 @@ thing_spawn_org:
 	pla
 	sta	THING_STRUCT_TH_ORIGIN,x
 
+	; check position
+	stx	ARG_THING_IDX
+	jsr	thing_check_spawn
+	beq	@pos_fail
+
+	; place to sectors
+	ldy	ARG_THING_IDX
+	jsr	thing_apply_spawn
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; DONE
+	ldx	ARG_THING_IDX
+	rts
+
+@pos_fail:
 	;; position check FAILED
 	; place only to spawn sector
 	; this ignores linked sectors
 	; this ignores floor dist
+
+	ldx	ARG_THING_IDX
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -263,7 +285,6 @@ thing_spawn_org:
 	sta	SECTOR_STRUCT_MASKBLOCK,y
 
 	; place to sector
-	stx	ARG_THING_IDX
 	lda	#$A0
 	sta	THMOVE_PTR_H
 	lda	ARG_THING_SECTOR
@@ -630,6 +651,631 @@ skip_pitch:
 	rts
 
 ;;;
+; thing position check
+;;;
+; ARG_THING_X_*, ARG_THING_Y_*, ARG_THING_Z_* (only L and H) - desired position
+; ARG_THING_SECTOR - target sector (zero = from thing)
+; ARG_THING_IDX - thing index
+; zero flag set = fail
+; A = new thing sector
+; THMOVE_SECTOR = new thing sector
+
+thing_check_pos:
+	ldx	ARG_THING_IDX
+
+	; target sector
+	lda	ARG_THING_SECTOR
+	bne	:+
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing sector pointer
+	lda	$A000,x
+	sta	ARG_THING_SECTOR
+:
+thing_check_spawn:
+	; prepare
+	jsr	prepare_pos_check
+
+	; TODO
+	lda	#$80
+	trb	THMOVE_STEP_HEIGHT
+
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; portals[0].sector = sdx
+	ldx	ARG_THING_SECTOR
+	stx	MEM_PORTALS_SECTOR
+
+	; portals[0].islink = 0
+	stz	MEM_PORTALS_ISLINK
+
+	; portals[0].touch = 0
+	stz	MEM_PORTALS_TOUCH
+
+	; portal_rd = 0
+	stz	THMOVE_PORTAL_RD
+
+	; portal_wr = 1
+	lda	#1
+	sta	THMOVE_PORTAL_WR
+
+	; poscheck.sector = 0
+	stz	THMOVE_SECTOR
+
+	; poscheck.maskblock = 0
+	stz	THMOVE_MASKBLOCK
+
+	; while(poscheck.portal_rd < poscheck.portal_wr)
+@loop_sec:
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; inside = any non-zero number
+	sta	THMOVE_INSIDE
+
+	; touch = any non-zero number
+	sta	THMOVE_TOUCH
+
+	; check floorz
+	jsr	get_sector_floorz
+	sec
+	lda	THMOVE_FLOORZ_L
+	sbc	THMOVE_TFZ_L
+	lda	THMOVE_FLOORZ_H
+	sbc	THMOVE_TFZ_H
+	bpl	:+
+
+	; poscheck.floorz = poscheck.tfz
+	lda	THMOVE_TFZ_L
+	sta	THMOVE_FLOORZ_L
+	lda	THMOVE_TFZ_H
+	sta	THMOVE_FLOORZ_H
+
+	; poscheck.floors
+	stx	THMOVE_FLOORS
+:
+	; check ceilingz
+	jsr	get_sector_ceilingz
+	sec
+	sbc	THMOVE_TCZ_L
+	lda	THMOVE_CEILINGZ_L
+	sbc	THMOVE_TCZ_H
+	lda	THMOVE_CEILINGZ_H
+	bpl	:+
+
+	; poscheck.ceilingz = poscheck.tcz
+	lda	THMOVE_TCZ_L
+	sta	THMOVE_CEILINGZ_L
+	lda	THMOVE_TCZ_H
+	sta	THMOVE_CEILINGZ_H
+
+	; poscheck.ceilings = sdx
+	stx	THMOVE_CEILINGS
+:
+	; walls
+	lda	SECTOR_STRUCT_WALLS_L,x
+	sta	WALL_PTR_L
+	sta	WALF_PTR_L
+	lda	SECTOR_STRUCT_WALLS_H,x
+	tay
+
+	; wall pointer
+	and	#$1F
+	ora	#$A0
+	sta	WALL_PTR_H
+	sta	WALF_PTR_H
+	lda	TAB_BANK,y
+	ora	#BANK_MAPDATA
+	sta	WALL_PTR_B
+
+	; wall loop
+@loop_wal:
+	; wall bank
+	lda	WALL_PTR_B
+	sta	REG_RAM_BANK
+
+	; check for last
+	lda	(WALL_PTR_L)
+	bpl	:+
+
+	; next wall (=first)
+	lda	WALF_PTR_L
+	sta	WALN_PTR_L
+	lda	WALF_PTR_H
+	sta	WALN_PTR_H
+
+	bra	:++
+:
+	; next wall pointer
+	lda	(WALL_PTR_L)
+	and	#WALL_TYPE_MASK
+	tax
+	ldy	TAB_SWAP,x
+	clc
+	lda	WALL_PTR_L
+	adc	wall_sizes,y
+	sta	WALN_PTR_L
+	lda	WALL_PTR_H
+	adc	#0
+	sta	WALN_PTR_H
+:
+	; flip check
+	ldy	#WALL_STRUCT_VTX_X
+	lda	(WALL_PTR_L)
+	and	#WALL_FLAG_SWAP
+	beq	:+
+
+	; V1 diff (X)
+	jsr	v1_diff_x
+	; V1 diff (-Y)
+	iny
+	sec
+	lda	ARG_THING_Y_L
+	sbc	(WALN_PTR_L),y
+	sta	MATH_VAR_L
+	iny
+	lda	ARG_THING_Y_H
+	sbc	(WALN_PTR_L),y
+	sta	MATH_VAR_H
+
+	bra	:++
+:
+	; V0 diff (X)
+	jsr	v0_diff_x
+	; V0 diff (-Y)
+	iny
+	sec
+	lda	ARG_THING_Y_L
+	sbc	(WALL_PTR_L),y
+	sta	MATH_VAR_L
+	iny
+	lda	ARG_THING_Y_H
+	sbc	(WALL_PTR_L),y
+	sta	MATH_VAR_H
+:
+	;; get distance
+	; dist = (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dd.x is already set
+
+	; wall->dist.y
+	ldy	#WALL_STRUCT_DIST_Y
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_H
+	iny
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; -dd.y
+	lda	MATH_VAR_L
+	sta	VERA_FX_CACHE_L
+	lda	MATH_VAR_H
+	sta	VERA_FX_CACHE_M
+
+	; wall->dist.x
+	ldy	#WALL_STRUCT_DIST_X
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_H
+	iny
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	MATH_VAR_L
+	lda	VERA_DATA0
+	sta	MATH_VAR_H
+
+	; if(dist < 0)
+	bpl	:+
+
+	; inside = 0
+	stz	THMOVE_INSIDE
+:
+	; if(dist >= poscheck.radius)
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_RADIUS
+	lda	MATH_VAR_H
+	sbc	#0
+	bmi	:+
+	jmp	@next_wal
+:
+	; if(dist + poscheck.radius < 0)
+	clc
+	lda	MATH_VAR_L
+	adc	THMOVE_RADIUS
+	lda	MATH_VAR_H
+	adc	#0
+	bpl	:+
+
+	; touch = 0
+	stz	THMOVE_TOUCH
+:
+	;; left side
+	; dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dd.x
+	; V0 diff (X)
+	ldy	#WALL_STRUCT_VTX_X
+	jsr	v0_diff_x
+
+	; wall->dist.x
+	ldy	#WALL_STRUCT_DIST_X
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_H
+	pha	; <dist.x LO>
+	iny
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_U
+	pha	; <dist.x HI>
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; dd.y
+	; V0 diff (Y)
+	ldy	#WALL_STRUCT_VTX_Y
+	sec
+	lda	(WALL_PTR_L),y
+	sbc	ARG_THING_Y_L
+	sta	VERA_FX_CACHE_L
+	iny
+	lda	(WALL_PTR_L),y
+	sbc	ARG_THING_Y_H
+	sta	VERA_FX_CACHE_M
+
+	; wall->dist.y
+	ldy	#WALL_STRUCT_DIST_Y
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_H
+	iny
+	lda	(WALL_PTR_L),y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	lda	VERA_DATA0
+
+	; if(dist < 0)
+	bpl	:+
+
+	; <dist.x>
+	pla
+	pla
+
+	; TODO: point check
+	bra	@next_wal
+:
+	;; right side
+	; dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dd.y
+	; V1 diff (Y)
+	ldy	#WALL_STRUCT_VTX_Y
+	sec
+	lda	(WALN_PTR_L),y
+	sbc	ARG_THING_Y_L
+	sta	VERA_FX_CACHE_L
+	iny
+	lda	(WALN_PTR_L),y
+	sbc	ARG_THING_Y_H
+	sta	VERA_FX_CACHE_M
+
+	; wall->dist.y is already set
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; dd.x
+	; V1 diff (X)
+	ldy	#WALL_STRUCT_VTX_X
+	jsr	v1_diff_x
+
+	; wall->dist.x
+	pla	; <dist.x HI>
+	sta	VERA_FX_CACHE_U
+	pla	; <dist.x LO>
+	sta	VERA_FX_CACHE_H
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	lda	VERA_DATA0
+
+	; if(dist < 0)
+	bmi	:+
+
+	; TODO: point check
+	bra	@next_wal
+:
+	;; check backsector
+
+	; wall->backsector
+	ldy	#WALL_STRUCT_BACKSECTOR
+	lda	(WALL_PTR_L),y
+	tax
+	beq	:+
+
+	; !(wall->blocking & poscheck.blockedby & 0x7F)
+	ldy	#WALL_STRUCT_BLOCKING
+	lda	(WALL_PTR_L),y
+	and	THMOVE_BLOCKEDBY
+	and	#$7F
+	bne	:+
+
+	; !check_backsector(wall->backsector, zz)
+	jsr	check_backsector
+	bmi	:+
+
+	; add sector
+	jsr	add_sector
+
+	; wall bank
+	lda	WALL_PTR_B
+	sta	REG_RAM_BANK
+
+	bra	@next_wal
+:
+	; wall bank
+	lda	WALL_PTR_B
+	sta	REG_RAM_BANK
+
+	; TODO: store vector
+
+
+	;; STOP - FAILED
+	; set zero flag
+	lda	#0
+	sta	THMOVE_SECTOR
+	rts
+
+@next_wal:
+	; next wall
+	lda	(WALL_PTR_L)
+	bmi	:+
+	lda	WALN_PTR_L
+	sta	WALL_PTR_L
+	lda	WALN_PTR_H
+	sta	WALL_PTR_H
+	jmp	@loop_wal
+:
+	; if(inside && !poscheck.sector)
+	lda	THMOVE_INSIDE
+	beq	:+
+	lda	THMOVE_SECTOR
+	bne	:+
+
+	; poscheck.sector = sdx
+	lda	ARG_THING_SECTOR
+	sta	THMOVE_SECTOR
+:
+	; next sector
+	inc	THMOVE_PORTAL_RD
+	ldy	THMOVE_PORTAL_RD
+	cpy	THMOVE_PORTAL_WR
+	bcs	@done
+
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; get sector
+	ldx	MEM_PORTALS_SECTOR,y
+	stx	ARG_THING_SECTOR
+	jmp	@loop_sec
+
+@done:
+	;; STOP
+	; unset zero flag
+	lda	THMOVE_SECTOR
+	rts
+
+;;;
+; thing position apply
+;;;
+; run after successful 'thing_check_pos'
+
+;;;
+; apply thing position
+;;;
+; ARG_THING_IDX - the thing
+; run only after 'thing_check_position' or to remove from all sectors
+; if THMOVE_SECTOR is zero, thing is only removed from all sectors
+
+thing_apply_pos:
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; remove from all sectors
+	stz	TMP_PTR_L
+	lda	#$A0
+	sta	HI_PTR_H	; thingsec
+	sta	THCES_PTR_H	; thingces
+	lda	#$80
+	sta	THCES_PTR_L
+	ldx	#16
+@loop_del:
+	; thing index
+	ldy	ARG_THING_IDX
+
+	; get sector at this slot
+	lda	(HI_PTR_L),y
+
+	; check for NONE
+	beq	@end
+
+	; save sector at this slot
+	sta	TMP_PTR_I
+
+	; remove sector from thing
+	lda	#0
+	sta	(HI_PTR_L),y
+
+	; get slot in sector
+	lda	(THCES_PTR_L),y
+	and	#$1F
+	ora	#$A0
+	sta	TMP_PTR_H
+
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+	; clear thing in this sector slot
+	lda	#0
+	ldy	TMP_PTR_I
+	sta	(TMP_PTR_L),y
+
+	; decrement thing coutner for this sector
+	lda	$BF00,y
+	dea
+	sta	$BF00,y
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; next
+	inc	HI_PTR_H
+	inc	THCES_PTR_H
+	dex
+	bne	@loop_del
+
+@end:
+	; check for removal-only
+	lda	THMOVE_SECTOR
+	bne	:+
+
+	; stop
+	rts
+:
+
+;;;
+; apply spawned thing position
+;;;
+; falltrough from 'thing_apply_pos'
+
+thing_apply_spawn:
+	; place to first sector
+	sta	ARG_THING_SECTOR
+	lda	#$A0
+	sta	THMOVE_PTR_H
+	jsr	place_to_sector
+
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; place to detected sectors
+	ldx	#0
+@loop_place:
+	; check touching flag
+	lda	MEM_PORTALS_TOUCH,x
+	beq	:+
+
+	; get sector from portal
+	lda	MEM_PORTALS_SECTOR,x
+
+	; skip main sector
+	cmp	THMOVE_SECTOR
+	beq	:+
+
+	; backup
+	phx
+
+	; place to this sector
+	sta	ARG_THING_SECTOR
+	jsr	place_to_sector
+
+	; restore
+	plx
+
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+:
+	; next
+	inx
+	cpx	THMOVE_PORTAL_WR
+	bne	@loop_place
+
+	; restore
+	ldy	ARG_THING_IDX
+
+;;;
+; apply thing position
+;;;
+; Y - the thing
+; call after 'thing_check_heights'
+; falltrough from 'thing_apply_pos'
+
+thing_apply_heights:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; th->floorz = poscheck.floorz
+	lda	THMOVE_FLOORZ_L
+	sta	THING_STRUCT_FLOORZ_L,y
+	lda	THMOVE_FLOORZ_H
+	sta	THING_STRUCT_FLOORZ_H,y
+
+	; th->ceilingz = poscheck.ceilingz - poscheck.height
+	sec
+	lda	THMOVE_CEILINGZ_L
+	sbc	THMOVE_HEIGHT
+	sta	THING_STRUCT_CEILZ_L,y
+	lda	THMOVE_CEILINGZ_H
+	sbc	#0
+	sta	THING_STRUCT_CEILZ_H,y
+
+	; sectors
+	lda	THMOVE_FLOORS
+	sta	THING_STRUCT_FLOORS,y
+	lda	THMOVE_CEILINGS
+	sta	THING_STRUCT_CEILS,y
+
+	; iflags
+	lda	THING_STRUCT_IFLAGS,y
+	and	#<~(THING_IFLAG_HEIGHTCHECK|THING_IFLAG_NOJUMP)
+	ora	THMOVE_IFLAGS
+	sta	THING_STRUCT_IFLAGS,y
+
+	; done
+	rts
+
+;;;
 ; thing ticker
 ;;;
 
@@ -672,7 +1318,28 @@ thing_tick:
 	adc	MATH_TEMP_A
 	sta	ARG_THING_Y_H
 
-	; TEST
+	; original Z
+	lda	THING_STRUCT_Z_L,y
+	sta	ARG_THING_Z_L
+	lda	THING_STRUCT_Z_H,y
+	sta	ARG_THING_Z_H
+
+	; check new position
+	stz	ARG_THING_SECTOR
+	sty	ARG_THING_IDX
+	jsr	thing_check_pos
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; check result
+	lda	THMOVE_SECTOR
+	beq	@xy_fail
+
+	; apply
+	ldy	ARG_THING_IDX
+	jsr	thing_apply_pos
 	lda	ARG_THING_X_S
 	sta	THING_STRUCT_X_S,y
 	lda	ARG_THING_X_L
@@ -685,6 +1352,8 @@ thing_tick:
 	sta	THING_STRUCT_Y_L,y
 	lda	ARG_THING_Y_H
 	sta	THING_STRUCT_Y_H,y
+
+@xy_fail:
 
 	;; XY friction
 
@@ -882,6 +1551,263 @@ thing_plyr:
 	jmp	thing_tick
 
 ;;;
+; position check intro
+;;;
+; X - thing index
+
+prepare_pos_check:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; thing type
+	ldy	TICKER_STRUCT_TYPE,x
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; <water_height>
+	lda	THTYPE_STRUCT_WATER_HEIGHT,y
+	pha
+
+	; <step_height>
+	lda	THTYPE_STRUCT_STEP_HEIGHT,y
+	pha
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; poscheck.radius = th->radius
+	lda	THING_STRUCT_RADIUS,x
+	sta	THMOVE_RADIUS
+
+	; poscheck.height = th->height
+	lda	THING_STRUCT_HEIGHT,x
+	sta	THMOVE_HEIGHT
+
+	; poscheck.blockedby = th->blockedby
+	lda	THING_STRUCT_BLOCKEDBY,x
+	sta	THMOVE_BLOCKEDBY
+
+	; poscheck.step_height = thing_type[th->ticker.type].step_height
+	pla	; <step_height>
+	sta	THMOVE_STEP_HEIGHT
+
+	; poscheck.water_height = thing_type[th->ticker.type].water_height
+	pla	; <water_height>
+	sta	THMOVE_WATER_HEIGHT
+
+	; poscheck.th_zh = z + poscheck.height
+	clc
+	lda	ARG_THING_Z_L
+	adc	THMOVE_HEIGHT
+	sta	THMOVE_TH_ZH_L
+	lda	ARG_THING_Z_H
+	adc	#0
+	sta	THMOVE_TH_ZH_H
+
+	; poscheck.floorz = -16384
+	; poscheck.waterz = -16384
+	stz	THMOVE_FLOORZ_L
+	stz	THMOVE_WATERZ_L
+	lda	#$C0
+	sta	THMOVE_FLOORZ_H
+	sta	THMOVE_WATERZ_H
+
+	; poscheck.ceilingz = 16384
+	stz	THMOVE_CEILINGZ_L
+	lda	#$40
+	sta	THMOVE_CEILINGZ_H
+
+	; poscheck.floors = 0
+	stz	THMOVE_FLOORS
+
+	; poscheck.ceilings = 0
+	stz	THMOVE_CEILINGS
+
+	; poscheck.iflags = 0
+	stz	THMOVE_IFLAGS
+
+	rts
+
+;;;
+; V0 X diff
+;;;
+
+v0_diff_x:
+	sec
+	lda	(WALL_PTR_L),y
+	sbc	ARG_THING_X_L
+	sta	VERA_FX_CACHE_L
+	iny
+	lda	(WALL_PTR_L),y
+	sbc	ARG_THING_X_H
+	sta	VERA_FX_CACHE_M
+	rts
+
+;;;
+; V1 X diff
+;;;
+
+v1_diff_x:
+	sec
+	lda	(WALN_PTR_L),y
+	sbc	ARG_THING_X_L
+	sta	VERA_FX_CACHE_L
+	iny
+	lda	(WALN_PTR_L),y
+	sbc	ARG_THING_X_H
+	sta	VERA_FX_CACHE_M
+	rts
+
+;;;
+; get sector floor
+;;;
+; X - the sector
+
+get_sector_floorz:
+	; poscheck.tfz = sec->floor.height
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
+	sta	THMOVE_TFZ_L
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	sta	THMOVE_TFZ_H
+	rts
+
+;;;
+; get sector ceiling
+;;;
+; X - the sector
+
+get_sector_ceilingz:
+	; poscheck.tcz = sec->ceiling.height
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	sta	THMOVE_TCZ_L
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
+	sta	THMOVE_TCZ_H
+	rts
+
+;;;
+; check back sector
+;;;
+; X - the sector
+
+check_backsector:
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+	; check thing count in this sector
+	lda	$BF00,x
+	cmp	#31
+	bcc	:+
+
+	; set negative flag
+	lda	#$FF
+	rts
+:
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; bs->maskblock = poscheck.maskblock
+	lda	THMOVE_MASKBLOCK
+	sta	SECTOR_STRUCT_MASKBLOCK,x
+
+	; get heights
+	jsr	get_sector_floorz
+	jsr	get_sector_ceilingz
+
+	; dist = poscheck.tcz - poscheck.tfz
+	sec
+	lda	THMOVE_TCZ_L
+	sbc	THMOVE_TFZ_L
+	sta	MATH_VAR_L
+	lda	THMOVE_TCZ_H
+	sbc	THMOVE_TFZ_H
+	sta	MATH_VAR_H
+
+	; dist -= poscheck.height
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_HEIGHT
+	lda	MATH_VAR_H
+	sbc	#0
+	bmi	@done
+
+	; dist = th_z - poscheck.tfz
+	sec
+	lda	ARG_THING_Z_L
+	sbc	THMOVE_TFZ_L
+	sta	MATH_VAR_L
+	lda	ARG_THING_Z_H
+	sbc	THMOVE_TFZ_H
+	sta	MATH_VAR_H
+
+	; dist += poscheck.step_height
+	clc
+	lda	MATH_VAR_L
+	adc	THMOVE_STEP_HEIGHT
+	lda	MATH_VAR_H
+	adc	#0
+	bmi	@done
+
+	; dist = poscheck.tcz - poscheck.th_zh
+	sec
+	lda	THMOVE_TCZ_L
+	sbc	THMOVE_TH_ZH_L
+	lda	THMOVE_TCZ_H
+	sbc	THMOVE_TH_ZH_H
+
+@done:
+	rts
+
+;;;
+; add sector to portals
+;;;
+; X - the sector
+
+add_sector:
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; check existing portals for duplicates
+	ldy	THMOVE_PORTAL_WR
+@loop:
+	dey
+	bmi	@do_save
+
+	; if(portals[i].sector == sdx)
+	txa
+	cmp	MEM_PORTALS_SECTOR,y
+	bne	@loop
+
+	; portals[i].touch |= touch
+	lda	MEM_PORTALS_TOUCH,y
+	ora	THMOVE_TOUCH
+	sta	MEM_PORTALS_TOUCH,y
+
+	; done
+	rts
+
+@do_save:
+	; portals[portal_wr].sector = sdx
+	ldy	THMOVE_PORTAL_WR
+	txa
+	sta	MEM_PORTALS_SECTOR,y
+;	lda	THMOVE_ISLINK_SAVE
+;	sta	MEM_PORTALS_ISLINK,y
+	lda	THMOVE_TOUCH
+	sta	MEM_PORTALS_TOUCH,y
+
+	; portal_wr++
+	inc	THMOVE_PORTAL_WR
+
+	rts
+
+;;;
 ; place to sector
 ;;;
 ; ARG_THING_SECTOR - desired sector
@@ -897,6 +1823,8 @@ place_to_sector:
 	; all thing slots are full
 	rts
 :
+	stz	THMOVE_PTR_L
+
 	; sector things bank
 	lda	#BANK_SECTOR_THINGS
 	sta	REG_RAM_BANK
