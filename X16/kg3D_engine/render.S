@@ -1568,7 +1568,7 @@ render_wall:
 	lda	VERA_DATA0
 	sta	WALL_LD_Y_H
 
-	; if(ld.y <= 0)
+	; if(ld.y < 0)
 	bpl	:+
 
 @invalidate:
@@ -1579,12 +1579,12 @@ render_wall:
 	; inside the wall, stop
 	rts
 :
-	; if(ld.y <= 0)
+	; if(!ld.y)
 	bne	:+
 	lda	WALL_LD_Y_L
 	bne	:+
 
-	; check projection sector
+	; if(idx != projection.sector)
 	lda	PROJECTION_SECTOR
 	cmp	SECTOR_PTR_I
 
@@ -1659,6 +1659,12 @@ v1diff_opcode:
 	sbc	WALL_A0_H
 	and	#$08
 	beq	:+
+
+	; if(!((a0 ^ a1) & 2048))
+	lda	WALL_A0_H
+	eor	WALL_A1_H
+	and	#$08
+	bne	:+
 
 	; behind the wall, stop
 	rts

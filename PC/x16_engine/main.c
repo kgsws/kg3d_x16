@@ -1957,13 +1957,11 @@ static void do_walls(uint8_t idx)
 
 		// side check
 		ad = a1 - a0;
-		if(ad & 2048)
-		{
-			if(!((a0 ^ a1) & 0x800))
-			{
-//				printf("behind 0x%04X 0x%04X\n", a0, a1);
-				goto do_next;
-			}
+		if(	ad & 2048 &&
+			!((a0 ^ a1) & 2048)
+		){
+//			printf("behind 0x%04X 0x%04X\n", a0, a1);
+			goto do_next;
 		}
 
 		// V0 rejection and clipping checks
