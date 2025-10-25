@@ -236,15 +236,13 @@ typedef struct
 	uint8_t count_ptex;
 	uint8_t count_wtex;
 	uint8_t count_textures;
-	uint8_t count_sectors;
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
 	uint8_t count_things;
 	//
-	uint8_t unused[7];
+	uint8_t unused[10];
 	//
-	uint16_t size_data;
 	uint32_t hash_sky;
 } map_head_t;
 
@@ -376,7 +374,7 @@ static uint32_t proj_msk_idx;
 
 uint8_t sectorth[256][32];
 
-player_start_t player_starts[MAX_PLAYER_STARTS * 3];
+player_start_t player_starts[MAX_PLAYER_STARTS];
 
 //// tables
 
@@ -401,14 +399,6 @@ static const uint8_t move_angle[16] =
 	0x80, // MKEY_STRAFE_RIGHT | MKEY_STRAFE_LEFT | MKEY_FORWARD
 	0xC0, // MKEY_STRAFE_RIGHT | MKEY_STRAFE_LEFT | MKEY_BACKWARD
 	0x00, // MKEY_STRAFE_RIGHT | MKEY_STRAFE_LEFT | MKEY_BACKWARD | MKEY_FORWARD
-};
-
-const uint32_t wall_size_tab[] =
-{
-	sizeof(wall_solid_t),
-	sizeof(wall_portal_t),
-	sizeof(wall_split_t),
-	sizeof(wall_masked_t),
 };
 
 // random
@@ -454,10 +444,11 @@ static portal_t *portal_last;
 static uint8_t portal_top, portal_bot;
 
 // map buffer
+static uint8_t map_block_data[8192];
 map_head_t map_head;
 sector_t map_sectors[256];
 sector_extra_t map_secext[256];
-uint8_t map_data[32 * 1024];
+wall_t map_walls[WALL_BANK_COUNT][256];
 
 // font stuff
 static uint8_t font_info[512];
@@ -1421,7 +1412,7 @@ go_next:
 	}
 }
 
-static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0, uint32_t x1, int16_t s0, int16_t s1)
+static void dr_wall(sector_t *sec, wall_t *wall, vertex_t *ld, uint32_t x0, uint32_t x1, int16_t s0, int16_t s1)
 {
 	int32_t scale_now, top_now, bot_now;
 	int32_t scale_step, top_step, bot_step;
@@ -1431,7 +1422,7 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 	uint8_t xx = x0;
 	uint8_t masked_idx = 0xFF;
 
-	lca = wall->solid.angle - projection.a;
+	lca = wall->angle - projection.a;
 
 	xdiff = x1 - x0;
 	ydiff = s1 - s0;
@@ -1478,29 +1469,28 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 	projection.fix = 0;
 
 	if(	proj_msk_idx < MAX_DRAW_MASKED &&
-		(wall->solid.angle & WALL_TYPE_MASK) == WALL_TYPE_MASKED &&
-		wall->masked.mid.texture &&
-		!(wall->masked.mid.texture & 0x80) &&
-		!(texture_remap[wall->masked.mid.texture] & 0x80)
+		wall->angle & WALL_MARK_EXTENDED &&
+		!(wall->mid.texture & 0x80) &&
+		!(texture_remap[wall->mid.texture] & 0x80)
 	){
 		proj_msk_t *mt = proj_msk + proj_msk_idx;
 		sector_t *ss = sec;
 
-		mt->bz = wall->masked.mid.oy * 2;
+		mt->bz = wall->mid.oy * 2;
 
-		if(	wall->masked.backsector &&
-			wall->masked.mid.flags & TEXFLAG_PEG_Y
+		if(	wall->backsector &&
+			wall->tflags & 0b10000000
 		)
-			ss = map_sectors + wall->portal.backsector;
+			ss = map_sectors + wall->backsector;
 
 		mt->scale_now = scale_now;
 		mt->scale_step = scale_step;
 		mt->x0 = xx;
 		mt->x1 = x1;
-		mt->texture = wall->masked.mid.texture;
+		mt->texture = wall->mid.texture;
 		mt->bz += ss->floor.height;
-		mt->xor = wall->masked.mid.flags & TEXFLAG_MIRROR_X ? 0x00 : 0xFF;
-		mt->ox = wall->masked.mid.ox;
+		mt->xor = wall->tflags & 0b00001000 ? 0x00 : 0xFF;
+		mt->ox = wall->mid.ox;
 		mt->sflags = sec->flags;
 
 		memcpy(mt->tmap_scale, tmap_scale, sizeof(tmap_scale));
@@ -1511,29 +1501,33 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		proj_msk_idx++;
 	}
 
-	if(	(wall->solid.angle & WALL_TYPE_PORTAL && wall->portal.backsector) ||
-		(wall->solid.angle & WALL_TYPE_MASK) == WALL_TYPE_SPLIT
+	if(	wall->backsector ||
+		(
+			wall->angle & WALL_MARK_EXTENDED &&
+			wall->split != -32768
+		)
 	){
 		sector_t *bs;
 		int16_t diff;
 
-		if((wall->solid.angle & WALL_TYPE_MASK) == WALL_TYPE_SPLIT)
+		if(!wall->backsector)
 		{
 			static sector_t fake_bs;
 
-			fake_bs.floor.height = wall->split.height;
-			fake_bs.ceiling.height = wall->split.height;
+			fake_bs.floor.height = wall->split;
+			fake_bs.ceiling.height = wall->split;
 
 			bs = &fake_bs;
 		} else
-			bs = map_sectors + wall->portal.backsector;
+			bs = map_sectors + wall->backsector;
 
 		diff = bs->floor.height - sec->ceiling.height;
 		if(diff >= 0)
 		{
-			if(wall->portal.bot.flags & TEXFLAG_PEG_Y)
+			uint32_t tflags = wall->tflags >> 4;
+			if(tflags & TEXFLAG_PEG_Y)
 				projection.fix = (int16_t)(sec->floor.height - bs->floor.height) >> 1;
-			tex_set(wall->portal.bot.texture, wall->portal.bot.ox, wall->portal.bot.oy, SECTOR_LIGHT(sec), wall->portal.bot.flags);
+			tex_set(wall->bot.texture, wall->bot.ox, wall->bot.oy, SECTOR_LIGHT(sec), tflags);
 			goto do_solid_bot;
 		}
 
@@ -1541,7 +1535,7 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		if(diff >= 0)
 		{
 			projection.fix = diff >> 1;
-			if(wall->portal.top.flags & TEXFLAG_PEG_Y)
+			if(wall->tflags & TEXFLAG_PEG_Y)
 				projection.fix += (int16_t)(bs->ceiling.height - sec->ceiling.height) >> 1;
 			goto do_solid_top;
 		}
@@ -1571,11 +1565,11 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 			sim24bit(&bot_now);
 			sim24bit(&bot_step);
 
-			if(wall->portal.top.flags & TEXFLAG_PEG_Y)
+			if(wall->tflags & TEXFLAG_PEG_Y)
 				projection.fix = (int16_t)(bs->ceiling.height - sec->ceiling.height) >> 1;
 
 			// draw
-			tex_set(wall->portal.top.texture, wall->portal.top.ox, wall->portal.top.oy, SECTOR_LIGHT(sec), wall->portal.top.flags);
+			tex_set(wall->top.texture, wall->top.ox, wall->top.oy, SECTOR_LIGHT(sec), wall->tflags);
 			dr_textured_strip(xx, x1, top_now, top_step, bot_now, bot_step, 1);
 		} else
 		{
@@ -1596,6 +1590,8 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 
 		if(bs->floor.height > sec->floor.height)
 		{
+			uint32_t tflags = wall->tflags >> 4;
+
 			// masked clip
 			if(!(masked_idx & 0x80))
 				memcpy(proj_msk[masked_idx].clip_bot, clip_bot, sizeof(clip_bot));
@@ -1608,13 +1604,13 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 			sim24bit(&top_now);
 			sim24bit(&top_step);
 
-			if(wall->portal.bot.flags & TEXFLAG_PEG_Y)
+			if(tflags & TEXFLAG_PEG_Y)
 				projection.fix = (int16_t)(sec->floor.height - bs->floor.height) >> 1;
 			else
 				projection.fix = 0;
 
 			// draw
-			tex_set(wall->portal.bot.texture, wall->portal.bot.ox, wall->portal.bot.oy, SECTOR_LIGHT(sec), wall->portal.bot.flags);
+			tex_set(wall->bot.texture, wall->bot.ox, wall->bot.oy, SECTOR_LIGHT(sec), tflags);
 			dr_textured_strip(xx, x1, top_now, top_step, bot_now, bot_step, 2);
 		} else
 		{
@@ -1629,11 +1625,11 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		if(	!portal_top && !portal_bot &&
 			bs->ceiling.height > bs->floor.height
 		){
-			if(portal_last->sector != wall->portal.backsector)
+			if(portal_last->sector != wall->backsector)
 			{
 				if(portal_wr - portals < MAX_DRAW_PORTALS)
 				{
-					portal_wr->sector = wall->portal.backsector;
+					portal_wr->sector = wall->backsector;
 					portal_wr->x0 = xx;
 					portal_wr->x1 = x1;
 					portal_wr->masked = masked_idx;
@@ -1665,10 +1661,10 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		}
 	} else
 	{
-		if(wall->solid.top.flags & TEXFLAG_PEG_Y)
+		if(wall->tflags & TEXFLAG_PEG_Y)
 			projection.fix = (int16_t)(sec->floor.height - sec->ceiling.height) >> 1;
 do_solid_top:
-		tex_set(wall->solid.top.texture, wall->solid.top.ox, wall->solid.top.oy, SECTOR_LIGHT(sec), wall->solid.top.flags);
+		tex_set(wall->top.texture, wall->top.ox, wall->top.oy, SECTOR_LIGHT(sec), wall->tflags);
 do_solid_bot:
 		// masked clip
 		if(!(masked_idx & 0x80))
@@ -1878,16 +1874,15 @@ next:
 static void do_walls(uint8_t idx)
 {
 	sector_t *sec = map_sectors + idx;
-	void *wall_ptr = (void*)map_data + sec->walls;
+	wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
+	wall_t *walf = wall;
 	uint16_t last_angle = 0x8000;
-	wall_combo_t *walf = wall_ptr;
 
 	portal_last = portal_rd;
 
-	while(1)
+	do
 	{
-		wall_combo_t *wall = wall_ptr;
-		wall_combo_t *waln;
+		wall_t *waln = map_walls[sec->wall.bank] + wall->next;
 		uint16_t a0, a1, ad;
 		vertex_t *v0, *v1;
 		vertex_t d0, d1, dc;
@@ -1899,17 +1894,11 @@ static void do_walls(uint8_t idx)
 		uint8_t do_right_clip = 0;
 		uint8_t inside = 0;
 
-		wall_ptr += wall_size_tab[(wall->solid.angle & WALL_TYPE_MASK) >> 12];
-		if(wall->solid.angle & WALL_FLAG_LAST)
-			waln = walf;
-		else
-			waln = wall_ptr;
-
-		v0 = &wall->solid.vtx;
-		v1 = &waln->solid.vtx;
+		v0 = &wall->vtx;
+		v1 = &waln->vtx;
 
 		// flip check
-		if(wall->solid.angle & WALL_FLAG_SWAP)
+		if(wall->angle & WALL_MARK_SWAP)
 		{
 			// V1 diff
 			d0.x = v1->x - (projection.x >> 8);
@@ -1922,7 +1911,7 @@ static void do_walls(uint8_t idx)
 		}
 
 		// get distance Y
-		ld.y = (d0.x * wall->solid.dist.y - d0.y * wall->solid.dist.x) >> 8;
+		ld.y = (d0.x * wall->dist.y - d0.y * wall->dist.x) >> 8;
 		if(	ld.y < 0 ||
 			(!ld.y && idx != projection.sector)
 		){
@@ -2082,10 +2071,10 @@ static void do_walls(uint8_t idx)
 		s1 = tab_depth[p1.y];
 
 		// get distance X
-		if(wall->solid.top.flags & 0b10000000) // HAX
-			ld.x = (d1.x * wall->solid.dist.x + d1.y * wall->solid.dist.y) >> 1;
+		if(wall->angle & WALL_MARK_XORIGIN)
+			ld.x = (d1.x * wall->dist.x + d1.y * wall->dist.y) >> 1;
 		else
-			ld.x = (d0.x * wall->solid.dist.x + d0.y * wall->solid.dist.y) >> 1;
+			ld.x = (d0.x * wall->dist.x + d0.y * wall->dist.y) >> 1;
 /*
 printf("A0 0x%03X A1 0x%03X\n", a0, a1);
 printf("x0 %d x1 %d\n", x0, x1);
@@ -2096,10 +2085,10 @@ printf("s1 %d y1 %d\n", s1, p1.y);
 		// draw
 		dr_wall(sec, wall, &ld, x0, x1, s0, s1);
 
+		// next
 do_next:
-		if(wall->solid.angle & WALL_FLAG_LAST)
-			break;
-	}
+		wall = waln;
+	} while(wall != walf);
 }
 
 static void prepare_sprite(uint8_t tdx, sector_t *sec)
@@ -3687,6 +3676,36 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 	return 0;
 }
 
+static void expand_array(void *dest, uint32_t rs, uint32_t ss)
+{
+	uint8_t *dst = dest;
+	uint8_t *src = map_block_data;
+
+	if(!ss)
+		ss = rs;
+
+	for(uint32_t j = 0; j < rs; j++)
+	{
+		for(uint32_t i = 0; i < 256; i++)
+			dst[j + i * ss] = *src++;
+	}
+}
+
+static void expand_walls(uint32_t idx)
+{
+	uint8_t *dst = (uint8_t*)&map_walls[idx][0];
+	uint8_t *src = (uint8_t*)&map_walls[idx][1];
+
+	dst += 16;
+
+	for(uint32_t i = 0; i < 255; i++)
+	{
+		memcpy(dst, src, 16);
+		src += 32;
+		dst += 32;
+	}
+}
+
 static uint32_t load_map()
 {
 	int32_t fd;
@@ -3731,16 +3750,11 @@ static uint32_t load_map()
 	if(map_head.count_lights >= MAX_LIGHTS)
 		goto error;
 
-	if(!map_head.count_sectors)
-		goto error;
+	temp = map_head.count_starts_normal;
+	temp += map_head.count_starts_coop;
+	temp += map_head.count_starts_dm;
 
-	if(map_head.count_starts_normal >= MAX_PLAYER_STARTS)
-		goto error;
-
-	if(map_head.count_starts_coop >= MAX_PLAYER_STARTS)
-		goto error;
-
-	if(map_head.count_starts_dm >= MAX_PLAYER_STARTS)
+	if(temp >= MAX_PLAYER_STARTS)
 		goto error;
 
 	if(!map_head.count_things)
@@ -3807,40 +3821,40 @@ static uint32_t load_map()
 	}
 
 	// map sectors
-	temp = map_head.count_sectors * sizeof(sector_t);
-	if(read(fd, map_sectors + 1, temp) != temp)
+	if(read(fd, map_block_data, 256 * 32) != 256 * 32)
 		goto error;
+	expand_array(map_sectors, sizeof(sector_t), 0);
 
-	// map data
-	if(read(fd, map_data, map_head.size_data) != map_head.size_data)
+	// interleaved data; WALL 0
+	if(read(fd, map_block_data, WALL_BANK_SIZE) != WALL_BANK_SIZE)
 		goto error;
+	expand_array(map_walls[0], 16, sizeof(wall_t));
 
 	// player starts
-	temp = map_head.count_starts_normal;
-	temp += map_head.count_starts_coop;
-	temp += map_head.count_starts_dm;
-	temp++;
-	temp *= sizeof(player_start_t);
-	if(read(fd, player_starts, temp) != temp)
+	if(read(fd, map_block_data, 4096) != 4096)
+		goto error;
+	expand_array(player_starts, sizeof(player_start_t), 0);
+
+	// interleaved data; WALL 1
+	if(read(fd, map_block_data, WALL_BANK_SIZE) != WALL_BANK_SIZE)
+		goto error;
+	expand_array(map_walls[1], 16, sizeof(wall_t));
+
+	// specials
+	if(read(fd, map_block_data, 4096) != 4096)
 		goto error;
 
-	// convert angles to little endian
-	for(uint32_t i = 0; i < map_head.count_sectors; i++)
+	// interleaved data; WALLs
+	for(uint32_t i = 2; i < WALL_BANK_COUNT; i++)
 	{
-		void *wall_ptr = (void*)map_data + map_sectors[i+1].walls;
-
-		while(1)
-		{
-			wall_solid_t *wall = wall_ptr;
-			uint16_t angle = wall->angle;
-
-			wall->angle = (angle << 8) | (angle >> 8);
-
-			wall_ptr += wall_size_tab[(wall->angle & WALL_TYPE_MASK) >> 12];
-			if(wall->angle & WALL_FLAG_LAST)
-				break;
-		}
+		if(read(fd, map_block_data, WALL_BANK_SIZE) != WALL_BANK_SIZE)
+			goto error;
+		expand_array(map_walls[i], 16, sizeof(wall_t));
 	}
+
+	// expand walls
+	for(uint32_t i = 0; i < WALL_BANK_COUNT; i++)
+		expand_walls(i);
 
 	// things
 	for(uint32_t i = 0; i < map_head.count_things; i++)
@@ -3963,8 +3977,6 @@ int main(int argc, void **argv)
 
 	glGenTextures(2, texture);
 	glBindTexture(GL_TEXTURE_2D, texture[0]);
-
-	printf("seccnt %u datasize %u\n", map_head.count_sectors, map_head.size_data);
 
 	thing_spawn_player();
 

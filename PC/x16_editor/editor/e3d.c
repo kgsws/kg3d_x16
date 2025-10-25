@@ -856,19 +856,13 @@ static int32_t in3d_wall_split()
 
 		if(edit_hit.line->texture_split == INFINITY)
 		{
-			if(!edit_hit.line->texture[2].idx)
-			{
-				int32_t split;
+			int32_t split;
 
-				split = (edit_hit.extra_sector->plane[PLANE_TOP].height - edit_hit.extra_sector->plane[PLANE_BOT].height) * 0.5f;
-				split += edit_hit.extra_sector->plane[PLANE_BOT].height;
-				edit_hit.line->texture_split = split;
+			split = (edit_hit.extra_sector->plane[PLANE_TOP].height - edit_hit.extra_sector->plane[PLANE_BOT].height) * 0.5f;
+			split += edit_hit.extra_sector->plane[PLANE_BOT].height;
+			edit_hit.line->texture_split = split;
 
-				edit_status_printf("Wall texture split created.");
-				return 1;
-			}
-
-			edit_status_printf("Masked walls can't have a split!");
+			edit_status_printf("Wall texture split created.");
 			return 1;
 		}
 

@@ -337,29 +337,21 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 
 		//if(!poscheck.islink)
 		{
-			void *wall_ptr = map_data + sec->walls;
+			wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
+			wall_t *walf = wall;
 			uint8_t inside = 1;
-			void *walf = wall_ptr;
 
-			while(1)
+			do
 			{
-				wall_masked_t *wall = wall_ptr;
+				wall_t *waln = map_walls[sec->wall.bank] + wall->next;
 				uint8_t touch = 0xFF;
-				wall_solid_t *waln;
 				vertex_t *vtx;
 				uint8_t cross;
 				int32_t dist;
 				vertex_t dd;
 
-				// wall ptr
-				wall_ptr += wall_size_tab[(wall->angle & WALL_TYPE_MASK) >> 12];
-				if(wall->angle & WALL_FLAG_LAST)
-					waln = walf;
-				else
-					waln = wall_ptr;
-
 				// flip check
-				if(wall->angle & WALL_FLAG_SWAP)
+				if(wall->angle & WALL_MARK_SWAP)
 				{
 					// V1 diff
 					vtx = &waln->vtx;
@@ -423,9 +415,8 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				return 0;
 
 do_next:
-				if(wall->angle & WALL_FLAG_LAST)
-					break;
-			}
+				wall = waln;
+			} while(wall != walf);
 
 			if(inside && !poscheck.sector)
 				poscheck.sector = sdx;

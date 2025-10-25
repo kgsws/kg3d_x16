@@ -2105,16 +2105,7 @@ static int32_t in2d_blocking()
 static int32_t in2d_masked_line()
 {
 	if(edit_hit.line)
-	{
-		if(edit_hit.line->texture_split != INFINITY)
-		{
-			edit_status_printf("Split walls can't be masked!");
-			return 1;
-		}
-
 		edit_ui_texture_select("Select masked texture.", edit_hit.line->texture + 2, 2);
-	}
-
 	return 1;
 }
 

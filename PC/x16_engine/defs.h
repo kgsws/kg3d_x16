@@ -1,19 +1,17 @@
 
-#define MAP_VERSION	19
+#define MAP_VERSION	21
 #define MAP_MAGIC	0x36315870614D676B
 #define MAX_LIGHTS	8
 #define MAX_X16_VARIANTS	16
 #define MAX_TEXTURES	128
-#define MAX_PLAYER_STARTS	32
+#define MAX_PLAYER_STARTS	256
 
-#define WALL_FLAG_LAST	0x8000	// forced by code
-#define WALL_FLAG_SWAP	0x4000
-#define WALL_TYPE_MASK	0x3000
+#define WALL_BANK_COUNT	8
+#define WALL_BANK_SIZE	4096
 
-#define WALL_TYPE_SOLID	0x0000
-#define WALL_TYPE_PORTAL	0x1000
-#define WALL_TYPE_SPLIT	0x2000
-#define WALL_TYPE_MASKED	0x3000
+#define WALL_MARK_XORIGIN	0x8000
+#define WALL_MARK_EXTENDED	0x4000
+#define WALL_MARK_SWAP	0x1000
 
 #define SECTOR_FLAG_WATER	0x80
 
@@ -45,66 +43,27 @@ typedef struct
 typedef struct
 {
 	uint8_t texture;
-	uint8_t flags;
 	uint8_t ox;
 	uint8_t oy;
 } __attribute__((packed)) tex_info_t;
 
 typedef struct
 {
-	uint16_t angle;
-	uint8_t backsector;
-	uint8_t special;
-	vertex_t vtx;
-	vertex_t dist;
-	tex_info_t top;
-} __attribute__((packed)) wall_solid_t;
-
-typedef struct
-{
-	uint16_t angle;
-	uint8_t backsector;
-	uint8_t special;
-	vertex_t vtx;
-	vertex_t dist;
-	tex_info_t top;
-	tex_info_t bot;
-	uint8_t blocking;
-} __attribute__((packed)) wall_portal_t;
-
-typedef struct
-{
-	uint16_t angle;
-	uint8_t backsector;
-	uint8_t special;
-	vertex_t vtx;
-	vertex_t dist;
-	tex_info_t top;
-	tex_info_t bot;
-	uint16_t height;
-} __attribute__((packed)) wall_split_t;
-
-typedef struct
-{
-	uint16_t angle;
-	uint8_t backsector;
-	uint8_t special;
-	vertex_t vtx;
-	vertex_t dist;
-	tex_info_t top;
-	tex_info_t bot;
-	uint8_t blocking;
-	uint8_t blockmid;
-	tex_info_t mid;
-} __attribute__((packed)) wall_masked_t;
-
-typedef union
-{
-	wall_solid_t solid;
-	wall_portal_t portal;
-	wall_split_t split;
-	wall_masked_t masked;
-} __attribute__((packed)) wall_combo_t;
+	vertex_t vtx; // $00
+	vertex_t dist; // $04
+	uint16_t angle; // $08
+	uint8_t next; // $0A
+	uint8_t backsector; // $0B
+	uint8_t tflags; // $0C
+	tex_info_t top; // $0D
+	tex_info_t bot; // $10
+	tex_info_t mid; // $13
+	uint8_t blocking; // $16
+	uint8_t blockmid; // $17
+	int16_t split; // $18
+	uint8_t special; // $1A
+	uint8_t padding[5]; // $1B
+} __attribute__((packed)) wall_t;
 
 typedef struct
 {
@@ -118,10 +77,16 @@ typedef struct
 
 typedef struct
 {
+	// limit is 31 bytes
 	sector_plane_t floor;
 	sector_plane_t ceiling;
-	uint16_t walls;
-	uint8_t flags;
+	struct
+	{
+		uint8_t bank;
+		uint8_t first;
+		uint8_t last;
+	} wall;
+	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
 	uint8_t floormasked;
 } __attribute__((packed)) sector_t;
@@ -142,7 +107,7 @@ typedef struct
 
 //
 
-extern player_start_t player_starts[MAX_PLAYER_STARTS * 3];
+extern player_start_t player_starts[MAX_PLAYER_STARTS];
 
 extern uint32_t frame_counter;
 
@@ -154,6 +119,7 @@ extern projection_t projection;
 
 extern sector_t map_sectors[256];
 extern sector_extra_t map_secext[256];
+extern wall_t map_walls[WALL_BANK_COUNT][256];
 
 extern uint8_t sectorth[256][32]; // list of things which are in specific sector, last slot is a counter
 
@@ -163,8 +129,6 @@ extern int16_t tab_cos[256];
 extern int16_t *const inv_div;
 
 extern int16_t tab_tan_hs[128];
-
-extern uint8_t map_data[32 * 1024];
 
 extern vertex_t display_point;
 extern vertex_t display_line[2];
