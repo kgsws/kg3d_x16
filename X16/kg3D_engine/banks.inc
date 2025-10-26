@@ -38,9 +38,6 @@ BANK_DRAW_SPRITES = 55
 ; masked walls
 BANK_DRAW_MASKED = 54
 
-; player starts
-BANK_PLAYER_START = BANK_THING_STATES
-
 ; things
 ; holds 128 slots, slot 0 is used for local player weapon
 BANK_TICKER_STRUCT = 53
@@ -58,12 +55,18 @@ BANK_SECTOR_THINGS = 52
 BANK_THING_SECTORS = 51
 
 ; loaded map stuff
-BANK_MAPDATA = 48	; [4 banks] must be divisible by 4
 BANK_TEXTURES = 39
 BANK_TSPR_INFO = 38
 BANK_WSPR_INFO = 37
 BANK_SPRITE_FRM = 36
-BANK_SECTORS = 35
+BANK_SECTORS = 7
+
+; map data
+BANK_MAPDATA = 8	; [8 banks] must be divisible by 8
+
+; player starts
+BANK_PLAYER_START = BANK_MAPDATA + 0
+BANK_MAP_SPECIAL = BANK_MAPDATA + 1
 
 ; map loading
-BANK_MAP_TEMP = 16	; [16 banks] must be divisible by 16
+BANK_MAP_TEMP = 8	; [16 banks]

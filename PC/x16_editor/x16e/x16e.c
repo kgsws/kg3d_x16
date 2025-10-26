@@ -22,9 +22,9 @@
 #define MAX_THINGS	200	// engine limit is 255; but there should be some space for players, projectiles and so on
 #define MAX_PLAYER_STARTS	256
 
-#define WALL_MARK_XORIGIN	0x8000
+#define WALL_MARK_SWAP	0x8000
 #define WALL_MARK_EXTENDED	0x4000
-#define WALL_MARK_SWAP	0x1000
+#define WALL_MARK_XORIGIN	0x2000
 
 #define ERROR_TEXT_TITLE	"Map export failed!"
 #define ERROR_COMMON_TEXT	"Your map can not be exported!\nThe reason for failed export is:\n\n%s"

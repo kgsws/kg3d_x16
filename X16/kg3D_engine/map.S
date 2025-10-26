@@ -115,7 +115,7 @@ MAP_TEMP_PLANE8_EFFECT = $B000
 ;;;
 
 MAP_HEAD__SIZE = $20
-MAP_HEAD__VERSION = 19
+MAP_HEAD__VERSION = 21
 MAP_CMAP__SIZE = 4
 MAP_PLANE__SIZE = 5
 MAP_WALL__SIZE = 5
@@ -397,21 +397,12 @@ ex_map_load:
 	dex
 	bne	@loop_magic
 
-	; check size (lazy)
-	lda	MAP_HEAD_SIZE_DATA_H
-	cmp	#$81
-	bcs	@verify_error
-
 	; check light count
 	lda	MAP_HEAD_COUNT_LIGHTS
 	cmp	#8
 	bcs	@verify_error
 	ina
 	sta	MAP_TEMP_COUNT_LIGHTS
-
-	; check sector count
-	lda	MAP_HEAD_COUNT_SECTORS
-	beq	@verify_error
 
 	; check starts count
 	sec	; +1
@@ -800,45 +791,9 @@ ex_map_load:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	; load sectors
-	stz	MAP_LOAD_IDX
-@loop_sector:
-	; read single sector
-	lda	#SECTOR__STRUCT_SIZE
-	ldx	#<MAP_TEMP_DATA_STRUCT
-	ldy	#>MAP_TEMP_DATA_STRUCT
-	jsr	file_read_8_wram
-	bcc	:+
-
-	; error
-	lda	#8
-	jmp	load_error
-:
-	; expand structure
-	lda	#SECTOR__STRUCT_SIZE
-	sta	REG_0_L
-	inc	MAP_LOAD_IDX
-	ldy	MAP_LOAD_IDX
-	lda	#$A0
-	sta	HI_PTR_H
-	jsr	expand_struct
-
-	; next
-	lda	MAP_LOAD_IDX
-	cmp	MAP_HEAD_COUNT_SECTORS
-	bne	@loop_sector
-
-	;;;;
-	; map data
-
-	; map bank
-	lda	#BANK_MAPDATA
-	sta	REG_RAM_BANK
-
-	; load raw map data
-	lda	MAP_HEAD_SIZE_DATA_L
-	sta	TAB_FILE_BUF_SIZE+0
-	lda	MAP_HEAD_SIZE_DATA_H
+	; load raw sector data
+	stz	TAB_FILE_BUF_SIZE+0
+	lda	#$20
 	sta	TAB_FILE_BUF_SIZE+1
 	stz	TAB_FILE_DEST+0
 	lda	#$A0
@@ -851,47 +806,46 @@ ex_map_load:
 	jmp	load_error
 :
 	;;;;
-	; player starts
+	; interleaved data
 
-	; player start bank
-	lda	#BANK_PLAYER_START
+	; map bank
+	lda	#BANK_MAPDATA
 	sta	REG_RAM_BANK
 
-	; load player starts
-	stz	MAP_LOAD_IDX
-@loop_plrst:
-	; load info
-	lda	#MAP_PLAYER_START__SIZE
-	ldx	#<MAP_TEMP_DATA_STRUCT
-	ldy	#>MAP_TEMP_DATA_STRUCT
-	jsr	file_read_8_wram
+	; WALL0; STARTS; WALL1; SPECIALS
+	stz	TAB_FILE_BUF_SIZE+0
+	lda	#$40
+	sta	TAB_FILE_BUF_SIZE+1
+	stz	TAB_FILE_DEST+0
+	lda	#$A0
+	sta	TAB_FILE_DEST+1
+	jsr	file_read_16_wram
 	bcc	:+
 
 	; error
+@wall_err:
 	lda	#10
 	jmp	load_error
 :
-	ldy	MAP_LOAD_IDX
-
-	; expand structure (A)
-	lda	#6
-	sta	REG_0_L
-	lda	#>PLRSTART_STRUCT_X_L
-	sta	HI_PTR_H
-	jsr	expand_struct
-
-	; expand structure (B)
-	lda	#MAP_PLAYER_START__SIZE
-	sta	REG_0_L
-	lda	#>PLRSTART_STRUCT_SECTOR
-	sta	HI_PTR_H
-	jsr	expand_struct_ext
+	; other walls
+	lda	#BANK_MAPDATA+2
+	sta	REG_RAM_BANK
+@loop_wdat:
+	; load
+	stz	TAB_FILE_BUF_SIZE+0
+	lda	#$10
+	sta	TAB_FILE_BUF_SIZE+1
+	stz	TAB_FILE_DEST+0
+	lda	#$A0
+	sta	TAB_FILE_DEST+1
+	jsr	file_read_16_wram
+	bcs	@wall_err
 
 	; next
-	iny
-	sty	MAP_LOAD_IDX
-	cpy	MAP_TEMP_START_COUNT
-	bne	@loop_plrst
+	inc	REG_RAM_BANK
+	lda	#BANK_MAPDATA+8
+	cmp	REG_RAM_BANK
+	bne	@loop_wdat
 
 	;;;;
 	; things
@@ -2373,7 +2327,7 @@ convert_pixels:
 	clc
 	lda	MAP_LOAD_XDI
 	adc	#>TAB_LIGHTMAPS
-	sta	WALL_PTR_H
+	sta	PCONV_PTR_H
 
 	; get source pointer
 	lda	#BANK_MAP_TEMP
@@ -2406,7 +2360,7 @@ convert_pixels:
 
 	; load pixel color
 	lda	(TMP_PTR_L)
-	sta	WALL_PTR_L
+	sta	PCONV_PTR_L
 
 	; load pixel brightness
 	inc	TMP_PTR_L
@@ -2414,8 +2368,8 @@ convert_pixels:
 	bne	@skip_remap
 
 	; get light remap
-	lda	(WALL_PTR_L)
-	sta	WALL_PTR_L
+	lda	(PCONV_PTR_L)
+	sta	PCONV_PTR_L
 
 @skip_remap:
 	; destination bank
@@ -2423,7 +2377,7 @@ convert_pixels:
 	sta	REG_RAM_BANK
 
 	; store pixel
-	lda	WALL_PTR_L
+	lda	PCONV_PTR_L
 	sta	(COLORMAP_L),y
 
 	; increment source
@@ -2584,26 +2538,6 @@ load_thing_sprites_r:
 	bne	@loop_spawn
 
 @skip_recursion:
-	rts
-
-;;;
-; structure expansion
-;;;
-; expands linear structure array at MAP_TEMP_DATA_STRUCT to 6502 structure array at HI_PTR_*
-; REG_0_L is structure size
-; Y is structure index
-
-expand_struct:
-	ldx	#$00
-expand_struct_ext:
-@loop_expand:
-	lda	MAP_TEMP_DATA_STRUCT,x
-	sta	(HI_PTR_L),y
-	inc	HI_PTR_H
-	inx
-	cpx	REG_0_L
-	bne	@loop_expand
-
 	rts
 
 ;;;

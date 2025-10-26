@@ -21,7 +21,6 @@
 .export load_render
 .export rng_get
 .export get_hex
-.export wall_sizes
 
 .segment "CODE"
 
@@ -266,13 +265,3 @@ rng_get:
 	sta	REG_RAM_BANK
 	rts
 
-;;;
-; wall size by type
-;;;
-
-wall_sizes:
-	; without scrolling
-	.byte	WALL_STRUCT_SIZE_SOLID
-	.byte	WALL_STRUCT_SIZE_PORTAL
-	.byte	WALL_STRUCT_SIZE_SPLIT
-	.byte	WALL_STRUCT_SIZE_MASKED

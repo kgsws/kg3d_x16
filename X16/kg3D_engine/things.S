@@ -759,84 +759,53 @@ thing_check_spawn:
 	stx	THMOVE_CEILINGS
 :
 	; walls
-	lda	SECTOR_STRUCT_WALLS_L,x
-	sta	WALL_PTR_L
-	sta	WALF_PTR_L
-	lda	SECTOR_STRUCT_WALLS_H,x
-	tay
-
-	; wall pointer
-	and	#$1F
-	ora	#$A0
-	sta	WALL_PTR_H
-	sta	WALF_PTR_H
-	lda	TAB_BANK,y
+	lda	SECTOR_STRUCT_WALL_BANK,x
 	ora	#BANK_MAPDATA
-	sta	WALL_PTR_B
+	sta	WALL_BANK
+	lda	SECTOR_STRUCT_WALL_FIRST,x
+	sta	WALL_FIRST
 
 	; wall loop
-@loop_wal:
+@loop_wall:
+	sta	WALL_NOW
+	tay
+
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
-	; check for last
-	lda	(WALL_PTR_L)
+	; swap check
+	lda	WALL_STRUCT_ANGLE_H,y
 	bpl	:+
 
-	; next wall (=first)
-	lda	WALF_PTR_L
-	sta	WALN_PTR_L
-	lda	WALF_PTR_H
-	sta	WALN_PTR_H
-
-	bra	:++
-:
-	; next wall pointer
-	lda	(WALL_PTR_L)
-	and	#WALL_TYPE_MASK
-	tax
-	ldy	TAB_SWAP,x
-	clc
-	lda	WALL_PTR_L
-	adc	wall_sizes,y
-	sta	WALN_PTR_L
-	lda	WALL_PTR_H
-	adc	#0
-	sta	WALN_PTR_H
-:
-	; flip check
-	ldy	#WALL_STRUCT_VTX_X
-	lda	(WALL_PTR_L)
-	and	#WALL_FLAG_SWAP
-	beq	:+
-
 	; V1 diff (X)
+	ldx	WALL_STRUCT_NEXT,y
 	jsr	v1_diff_x
+
 	; V1 diff (-Y)
-	iny
 	sec
 	lda	ARG_THING_Y_L
-	sbc	(WALN_PTR_L),y
+	sbc	WALL_STRUCT_VTX_Y_L,x
 	sta	MATH_VAR_L
-	iny
 	lda	ARG_THING_Y_H
-	sbc	(WALN_PTR_L),y
+	sbc	WALL_STRUCT_VTX_Y_H,x
 	sta	MATH_VAR_H
+
+	; restore
+	ldx	ARG_THING_SECTOR
 
 	bra	:++
 :
 	; V0 diff (X)
 	jsr	v0_diff_x
+
 	; V0 diff (-Y)
-	iny
 	sec
 	lda	ARG_THING_Y_L
-	sbc	(WALL_PTR_L),y
+	sbc	WALL_STRUCT_VTX_Y_L,y
 	sta	MATH_VAR_L
-	iny
 	lda	ARG_THING_Y_H
-	sbc	(WALL_PTR_L),y
+	sbc	WALL_STRUCT_VTX_Y_H,y
 	sta	MATH_VAR_H
 :
 	;; get distance
@@ -848,11 +817,9 @@ thing_check_spawn:
 	; dd.x is already set
 
 	; wall->dist.y
-	ldy	#WALL_STRUCT_DIST_Y
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_Y_L,y
 	sta	VERA_FX_CACHE_H
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_Y_H,y
 	sta	VERA_FX_CACHE_U
 
 	; accumulate
@@ -865,11 +832,9 @@ thing_check_spawn:
 	sta	VERA_FX_CACHE_M
 
 	; wall->dist.x
-	ldy	#WALL_STRUCT_DIST_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_X_L,y
 	sta	VERA_FX_CACHE_H
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_X_H,y
 	sta	VERA_FX_CACHE_U
 
 	; save result
@@ -895,7 +860,7 @@ thing_check_spawn:
 	lda	MATH_VAR_H
 	sbc	#0
 	bmi	:+
-	jmp	@next_wal
+	jmp	@next_wall
 :
 	; if(dist + poscheck.radius < 0)
 	clc
@@ -916,40 +881,31 @@ thing_check_spawn:
 
 	; dd.x
 	; V0 diff (X)
-	ldy	#WALL_STRUCT_VTX_X
 	jsr	v0_diff_x
 
 	; wall->dist.x
-	ldy	#WALL_STRUCT_DIST_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_X_L,y
 	sta	VERA_FX_CACHE_H
-	pha	; <dist.x LO>
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_X_H,y
 	sta	VERA_FX_CACHE_U
-	pha	; <dist.x HI>
 
 	; accumulate
 	lda	VERA_FX_ACCUM
 
 	; dd.y
 	; V0 diff (Y)
-	ldy	#WALL_STRUCT_VTX_Y
 	sec
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_VTX_Y_L,y
 	sbc	ARG_THING_Y_L
 	sta	VERA_FX_CACHE_L
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_VTX_Y_H,y
 	sbc	ARG_THING_Y_H
 	sta	VERA_FX_CACHE_M
 
 	; wall->dist.y
-	ldy	#WALL_STRUCT_DIST_Y
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_Y_L,y
 	sta	VERA_FX_CACHE_H
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_Y_H,y
 	sta	VERA_FX_CACHE_U
 
 	; save result
@@ -963,12 +919,8 @@ thing_check_spawn:
 	; if(dist < 0)
 	bpl	:+
 
-	; <dist.x>
-	pla
-	pla
-
 	; TODO: point check
-	bra	@next_wal
+	bra	@next_wall
 :
 	;; right side
 	; dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8
@@ -978,13 +930,12 @@ thing_check_spawn:
 
 	; dd.y
 	; V1 diff (Y)
-	ldy	#WALL_STRUCT_VTX_Y
+	ldx	WALL_STRUCT_NEXT,y
 	sec
-	lda	(WALN_PTR_L),y
+	lda	WALL_STRUCT_VTX_Y_L,x
 	sbc	ARG_THING_Y_L
 	sta	VERA_FX_CACHE_L
-	iny
-	lda	(WALN_PTR_L),y
+	lda	WALL_STRUCT_VTX_Y_H,x
 	sbc	ARG_THING_Y_H
 	sta	VERA_FX_CACHE_M
 
@@ -995,14 +946,16 @@ thing_check_spawn:
 
 	; dd.x
 	; V1 diff (X)
-	ldy	#WALL_STRUCT_VTX_X
 	jsr	v1_diff_x
 
+	; restore
+	ldx	ARG_THING_SECTOR
+
 	; wall->dist.x
-	pla	; <dist.x HI>
-	sta	VERA_FX_CACHE_U
-	pla	; <dist.x LO>
+	lda	WALL_STRUCT_DIST_X_L,y
 	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_X_H,y
+	sta	VERA_FX_CACHE_U
 
 	; save result
 	stz	VERA_ADDRx_L
@@ -1016,58 +969,53 @@ thing_check_spawn:
 	bmi	:+
 
 	; TODO: point check
-	bra	@next_wal
+	bra	@next_wall
 :
 	;; check backsector
 
 	; wall->backsector
-	ldy	#WALL_STRUCT_BACKSECTOR
-	lda	(WALL_PTR_L),y
-	tax
-	beq	:+
-
-	; !(wall->blocking & poscheck.blockedby & 0x7F)
-	ldy	#WALL_STRUCT_BLOCKING
-	lda	(WALL_PTR_L),y
-	and	THMOVE_BLOCKEDBY
-	and	#$7F
+	ldx	WALL_STRUCT_BACKSECTOR,y
 	bne	:+
 
-	; !check_backsector(wall->backsector, zz)
-	jsr	check_backsector
-	bmi	:+
-
-	; add sector
-	jsr	add_sector
-
+@do_block:
 	; wall bank
-	lda	WALL_PTR_B
-	sta	REG_RAM_BANK
-
-	bra	@next_wal
-:
-	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; TODO: store vector
-
 
 	;; STOP - FAILED
 	; set zero flag
 	lda	#0
 	sta	THMOVE_SECTOR
 	rts
+:
+	; !(wall->blocking & poscheck.blockedby & 0x7F)
+	lda	WALL_STRUCT_BLOCKING,y
+	and	THMOVE_BLOCKEDBY
+	and	#$7F
+	bne	@do_block
 
-@next_wal:
+	; !check_backsector(wall->backsector, zz)
+	jsr	check_backsector
+	bmi	@do_block
+
+	; add sector
+	jsr	add_sector
+
+	; restore
+	ldy	WALL_NOW
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+@next_wall:
 	; next wall
-	lda	(WALL_PTR_L)
-	bmi	:+
-	lda	WALN_PTR_L
-	sta	WALL_PTR_L
-	lda	WALN_PTR_H
-	sta	WALL_PTR_H
-	jmp	@loop_wal
+	lda	WALL_STRUCT_NEXT,y
+	cmp	WALL_FIRST
+	beq	:+
+	jmp	@loop_wall
 :
 	; if(inside && !poscheck.sector)
 	lda	THMOVE_INSIDE
@@ -1329,6 +1277,9 @@ thing_tick:
 	sty	ARG_THING_IDX
 	jsr	thing_check_pos
 
+	; restore
+	ldy	ARG_THING_IDX
+
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
@@ -1338,7 +1289,6 @@ thing_tick:
 	beq	@xy_fail
 
 	; apply
-	ldy	ARG_THING_IDX
 	jsr	thing_apply_pos
 	lda	ARG_THING_X_S
 	sta	THING_STRUCT_X_S,y
@@ -1638,11 +1588,10 @@ prepare_pos_check:
 
 v0_diff_x:
 	sec
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_VTX_X_L,y
 	sbc	ARG_THING_X_L
 	sta	VERA_FX_CACHE_L
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_VTX_X_H,y
 	sbc	ARG_THING_X_H
 	sta	VERA_FX_CACHE_M
 	rts
@@ -1653,11 +1602,10 @@ v0_diff_x:
 
 v1_diff_x:
 	sec
-	lda	(WALN_PTR_L),y
+	lda	WALL_STRUCT_VTX_X_L,x
 	sbc	ARG_THING_X_L
 	sta	VERA_FX_CACHE_L
-	iny
-	lda	(WALN_PTR_L),y
+	lda	WALL_STRUCT_VTX_X_H,x
 	sbc	ARG_THING_X_H
 	sta	VERA_FX_CACHE_M
 	rts
@@ -1789,7 +1737,6 @@ add_sector:
 	ora	THMOVE_TOUCH
 	sta	MEM_PORTALS_TOUCH,y
 
-	; done
 	rts
 
 @do_save:

@@ -7,8 +7,6 @@
 .import rng_get
 .import get_hex
 
-.import wall_sizes
-
 FILE_LOAD_HANDLE = 1
 FILE_BLOCK_READ = 240
 FILE_DEVICE_ID = 8
