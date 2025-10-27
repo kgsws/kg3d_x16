@@ -10,10 +10,10 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	21
+#define MAP_VERSION	22
 #define MAP_MAGIC	0x36315870614D676B
 
-#define WALL_BANK_COUNT	8
+#define WALL_BANK_COUNT	16
 #define WALL_BANK_SIZE	4096
 #define WALL_BANK_WCNT	(WALL_BANK_SIZE / 16)
 
@@ -120,9 +120,10 @@ typedef struct
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
+	uint8_t count_wbanks;
 	uint8_t count_things;
 	//
-	uint8_t unused[10];
+	uint8_t unused[9];
 	//
 	uint32_t hash_sky;
 } map_head_t;
@@ -402,6 +403,7 @@ void x16_export_map()
 	int32_t fd;
 	uint32_t count_walls = 0;
 	uint32_t count_things = 0;
+	uint32_t count_wbanks = 0;
 	uint32_t masked_height;
 	wall_t wall_tmp[EDIT_MAX_SECTOR_LINES];
 	uint8_t widx[EDIT_MAX_SECTOR_LINES];
@@ -426,6 +428,8 @@ void x16_export_map()
 
 	memset(wall_block, 0, sizeof(wall_block));
 	memset(map_sectors, 0, sizeof(map_sectors));
+
+	memset(map_block_data, 0, sizeof(map_block_data));
 
 	// count things, add player starts
 	ent = tick_list_normal.top;
@@ -606,7 +610,7 @@ void x16_export_map()
 					wall->bot.ox = line->texture[1].ox;
 					wall->bot.oy = line->texture[1].oy;
 
-					wall->tflags |= line->texture[1].flags;
+					wall->tflags |= line->texture[1].flags << 4;
 				}
 
 				if(line->texture[2].idx)
@@ -716,6 +720,9 @@ void x16_export_map()
 			if(total > WALL_BANK_WCNT)
 				continue;
 
+			if(count_wbanks < i)
+				count_wbanks = i;
+
 			// fix base and expand
 			wall_bank = i;
 			idx = wb->used;
@@ -790,6 +797,8 @@ void x16_export_map()
 		ent = ent->next;
 	}
 
+	count_wbanks++;
+
 	// count lights and make remap table
 	map_head.count_lights = 0;
 	for(uint32_t i = 1; i < x16_num_lights; i++)
@@ -832,6 +841,7 @@ void x16_export_map()
 	map_head.count_starts_normal = count_starts[0];
 	map_head.count_starts_coop = count_starts[1];
 	map_head.count_starts_dm = count_starts[2];
+	map_head.count_wbanks = count_wbanks;
 	map_head.count_things = count_things;
 	map_head.hash_sky = edit_sky_num < 0 ? 0 : editor_sky[edit_sky_num].hash;
 	map_head.flags = 0;
@@ -890,21 +900,11 @@ void x16_export_map()
 		place_struct(map_block_data, i, map_sectors + i - 1, 32);
 	write(fd, map_block_data, 256 * 32);
 
-	// interleaved data; WALL 0
-	write(fd, wall_block[0].data, WALL_BANK_SIZE);
-
 	// player starts
 	write_player_starts(fd);
 
-	// interleaved data; WALL 1
-	write(fd, wall_block[1].data, WALL_BANK_SIZE);
-
-	// specials
-	memset(map_block_data, 0xFF, 4096);
-	write(fd, map_block_data, 4096);
-
-	// interleaved data; WALLs
-	for(uint32_t i = 2; i < WALL_BANK_COUNT; i++)
+	// wall banks
+	for(uint32_t i = 0; i < count_wbanks; i++)
 		write(fd, wall_block[i].data, WALL_BANK_SIZE);
 
 	// things
@@ -942,7 +942,7 @@ void x16_export_map()
 	close(fd);
 
 	// export OK
-printf("EXPORTED OK\n");
+printf("EXPORTED OK; sec %u ln %u th %u wb %u\n", edit_list_sector.count, count_walls, count_things, count_wbanks);
 /*
 	sprintf(edit_info_box_text,	"Sector count: %u\n"
 					"Wall count: %u\n"

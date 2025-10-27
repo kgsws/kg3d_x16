@@ -115,7 +115,7 @@ MAP_TEMP_PLANE8_EFFECT = $B000
 ;;;
 
 MAP_HEAD__SIZE = $20
-MAP_HEAD__VERSION = 21
+MAP_HEAD__VERSION = 22
 MAP_CMAP__SIZE = 4
 MAP_PLANE__SIZE = 5
 MAP_WALL__SIZE = 5
@@ -202,7 +202,7 @@ ex_precache:
 	sta	TAB_MENU_LOGO
 
 	; reset memory
-	lda	#$08
+	lda	#$05
 	sta	MAP_LOAD_WRAM_H
 	stz	MAP_LOAD_WRAM_L
 	stz	MAP_TEMP_SPR_IDX
@@ -413,6 +413,12 @@ ex_map_load:
 	bcs	@verify_error
 	beq	@verify_error
 	sta	MAP_TEMP_START_COUNT
+
+	; check wall bank count
+	lda	MAP_HEAD_COUNT_WBANKS
+	beq	@verify_error
+	cmp	#17
+	bcs	@verify_error
 
 	; check thing count
 	lda	MAP_HEAD_COUNT_THINGS
@@ -806,29 +812,31 @@ ex_map_load:
 	jmp	load_error
 :
 	;;;;
-	; interleaved data
+	; player starts
 
-	; map bank
-	lda	#BANK_MAPDATA
+	; player start bank
+	lda	#BANK_PLAYER_START
 	sta	REG_RAM_BANK
 
-	; WALL0; STARTS; WALL1; SPECIALS
+	; load
 	stz	TAB_FILE_BUF_SIZE+0
-	lda	#$40
+	lda	#$10
 	sta	TAB_FILE_BUF_SIZE+1
 	stz	TAB_FILE_DEST+0
-	lda	#$A0
+	lda	#$B0
 	sta	TAB_FILE_DEST+1
 	jsr	file_read_16_wram
 	bcc	:+
 
 	; error
-@wall_err:
 	lda	#10
 	jmp	load_error
 :
+	;;;;
+	; wall banks
+
 	; other walls
-	lda	#BANK_MAPDATA+2
+	lda	#BANK_MAPDATA
 	sta	REG_RAM_BANK
 @loop_wdat:
 	; load
@@ -839,12 +847,15 @@ ex_map_load:
 	lda	#$A0
 	sta	TAB_FILE_DEST+1
 	jsr	file_read_16_wram
-	bcs	@wall_err
+	bcc	:+
 
+	; error
+	lda	#11
+	jmp	load_error
+:
 	; next
 	inc	REG_RAM_BANK
-	lda	#BANK_MAPDATA+8
-	cmp	REG_RAM_BANK
+	dec	MAP_HEAD_COUNT_WBANKS
 	bne	@loop_wdat
 
 	;;;;
@@ -873,7 +884,7 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#11
+	lda	#12
 	jmp	load_error
 :
 	; thing bank
@@ -903,7 +914,7 @@ ex_map_load:
 	bpl	@loop_thing_type
 
 	; error
-	lda	#12
+	lda	#13
 	jmp	load_error
 
 @do_thing_spawn:

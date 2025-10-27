@@ -285,7 +285,7 @@ thing_spawn_org:
 	sta	SECTOR_STRUCT_MASKBLOCK,y
 
 	; place to sector
-	lda	#$A0
+	lda	#$B0
 	sta	THMOVE_PTR_H
 	lda	ARG_THING_SECTOR
 	jsr	place_to_sector
@@ -352,7 +352,7 @@ thing_clear:
 	sta	REG_RAM_BANK
 
 	; clear links
-	jsr	clear_bank
+	jsr	clear_bank_bot
 
 	;; PLAYER WEAPON
 	; thing 0 is always weapon of local player
@@ -672,7 +672,7 @@ thing_check_pos:
 	sta	REG_RAM_BANK
 
 	; thing sector pointer
-	lda	$A000,x
+	lda	$B000,x
 	sta	ARG_THING_SECTOR
 :
 thing_check_spawn:
@@ -1067,8 +1067,8 @@ thing_apply_pos:
 
 	; remove from all sectors
 	stz	TMP_PTR_L
-	lda	#$A0
-	sta	HI_PTR_H	; thingsec
+	lda	#$B0
+	sta	THSEC_PTR_H	; thingsec
 	sta	THCES_PTR_H	; thingces
 	lda	#$80
 	sta	THCES_PTR_L
@@ -1078,7 +1078,7 @@ thing_apply_pos:
 	ldy	ARG_THING_IDX
 
 	; get sector at this slot
-	lda	(HI_PTR_L),y
+	lda	(THSEC_PTR_L),y
 
 	; check for NONE
 	beq	@end
@@ -1088,7 +1088,7 @@ thing_apply_pos:
 
 	; remove sector from thing
 	lda	#0
-	sta	(HI_PTR_L),y
+	sta	(THSEC_PTR_L),y
 
 	; get slot in sector
 	lda	(THCES_PTR_L),y
@@ -1105,7 +1105,7 @@ thing_apply_pos:
 	ldy	TMP_PTR_I
 	sta	(TMP_PTR_L),y
 
-	; decrement thing coutner for this sector
+	; decrement thing count for this sector
 	lda	$BF00,y
 	dea
 	sta	$BF00,y
@@ -1115,7 +1115,7 @@ thing_apply_pos:
 	sta	REG_RAM_BANK
 
 	; next
-	inc	HI_PTR_H
+	inc	THSEC_PTR_H
 	inc	THCES_PTR_H
 	dex
 	bne	@loop_del
@@ -1137,7 +1137,7 @@ thing_apply_pos:
 thing_apply_spawn:
 	; place to first sector
 	sta	ARG_THING_SECTOR
-	lda	#$A0
+	lda	#$B0
 	sta	THMOVE_PTR_H
 	jsr	place_to_sector
 
@@ -1764,7 +1764,7 @@ add_sector:
 place_to_sector:
 	; check pointer slot
 	lda	THMOVE_PTR_H
-	cmp	#$B0
+	cmp	#$C0
 	bcc	:+
 
 	; all thing slots are full
@@ -1819,7 +1819,7 @@ place_to_sector:
 	and	#$1F
 	ora	THMOVE_MASKBLOCK
 @opcode:
-	sta	$A080,y	; modified address
+	sta	$B080,y	; modified address
 
 	; increment thing slot index
 	inc	THMOVE_PTR_H

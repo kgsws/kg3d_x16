@@ -141,7 +141,7 @@ render_view:
 	sta	REG_RAM_BANK
 
 	; thing sector pointer
-	lda	$A000,y
+	lda	$B000,y
 	sta	PROJECTION_SECTOR
 	tax
 
@@ -2182,7 +2182,7 @@ v1diff_opcode:
 	; check X peg
 	lda	WALL_STRUCT_ANGLE_H,x
 	and	#WALL_MARK_XORIGIN
-	bne	:+
+	beq	:+
 
 	; d1.x
 	lda	WALL_D1_X_L
@@ -2209,7 +2209,7 @@ v1diff_opcode:
 	; check X peg
 	lda	WALL_STRUCT_ANGLE_H,x
 	and	#WALL_MARK_XORIGIN
-	bne	:+
+	beq	:+
 
 	; d1.y
 	lda	WALL_D1_Y_L
@@ -2683,10 +2683,8 @@ v1diff_opcode:
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
-	; restore
-	ldx	WALL_NOW
-
 	; texture flags
+	ldx	WALL_NOW
 	ldy	WALL_STRUCT_TFLAGS,x
 	lda	TAB_SWAP,y
 	sta	WALL_TEXTURE_FLAGS
@@ -2721,10 +2719,10 @@ v1diff_opcode:
 	; wall bank
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
-
+:
 	; restore
 	ldx	WALL_NOW
-:
+
 	; texture offsets
 	lda	WALL_STRUCT_BOT_OX,x
 	sta	RENDER_TEXTURE_OX

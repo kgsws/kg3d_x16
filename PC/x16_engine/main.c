@@ -239,9 +239,10 @@ typedef struct
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
+	uint8_t count_wbanks;
 	uint8_t count_things;
 	//
-	uint8_t unused[10];
+	uint8_t unused[9];
 	//
 	uint32_t hash_sky;
 } map_head_t;
@@ -3757,6 +3758,11 @@ static uint32_t load_map()
 	if(temp >= MAX_PLAYER_STARTS)
 		goto error;
 
+	if(	!map_head.count_wbanks ||
+		map_head.count_wbanks > WALL_BANK_COUNT
+	)
+		goto error;
+
 	if(!map_head.count_things)
 		goto error;
 
@@ -3825,27 +3831,13 @@ static uint32_t load_map()
 		goto error;
 	expand_array(map_sectors, sizeof(sector_t), 0);
 
-	// interleaved data; WALL 0
-	if(read(fd, map_block_data, WALL_BANK_SIZE) != WALL_BANK_SIZE)
-		goto error;
-	expand_array(map_walls[0], 16, sizeof(wall_t));
-
 	// player starts
 	if(read(fd, map_block_data, 4096) != 4096)
 		goto error;
 	expand_array(player_starts, sizeof(player_start_t), 0);
 
-	// interleaved data; WALL 1
-	if(read(fd, map_block_data, WALL_BANK_SIZE) != WALL_BANK_SIZE)
-		goto error;
-	expand_array(map_walls[1], 16, sizeof(wall_t));
-
-	// specials
-	if(read(fd, map_block_data, 4096) != 4096)
-		goto error;
-
-	// interleaved data; WALLs
-	for(uint32_t i = 2; i < WALL_BANK_COUNT; i++)
+	// wall banks
+	for(uint32_t i = 0; i < map_head.count_wbanks; i++)
 	{
 		if(read(fd, map_block_data, WALL_BANK_SIZE) != WALL_BANK_SIZE)
 			goto error;
@@ -3853,7 +3845,7 @@ static uint32_t load_map()
 	}
 
 	// expand walls
-	for(uint32_t i = 0; i < WALL_BANK_COUNT; i++)
+	for(uint32_t i = 0; i < map_head.count_wbanks; i++)
 		expand_walls(i);
 
 	// things

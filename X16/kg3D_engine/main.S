@@ -15,6 +15,7 @@
 .include "sound.inc"
 
 .export clear_bank
+.export clear_bank_bot
 .export time_update
 .export func_jsr
 .export load_mapfs
@@ -117,11 +118,16 @@ start:
 ;;;
 
 clear_bank:
+	ldx	#32
 	lda	#$A0
+	bra	clear_bank_ex
+clear_bank_bot:
+	ldx	#16
+	lda	#$B0
+clear_bank_ex:
 	sta	@loop+2
 	lda	#0
-	ldy	#0
-	ldx	#32
+	tay
 @loop:
 	sta	$A000,y	; modified address
 	dey

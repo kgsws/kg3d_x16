@@ -1,5 +1,6 @@
 
 .import clear_bank
+.import clear_bank_bot
 .import time_update
 .import func_jsr
 .import load_mapfs
