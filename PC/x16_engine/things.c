@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "defs.h"
 #include "tick.h"
 #include "things.h"
@@ -32,13 +34,13 @@ typedef struct
 
 //
 
-static uint8_t thing_data[8192 * 2];
+static uint8_t thing_data[8192];
 thing_type_t thing_type[MAX_X16_THING_TYPES];
 thing_anim_t thing_anim[MAX_X16_THING_TYPES][NUM_THING_ANIMS];
 uint32_t thing_hash[MAX_X16_THING_TYPES];
 uint32_t sprite_hash[128];
 uint8_t sprite_remap[128];
-thing_state_t *const thing_state = (thing_state_t*)(thing_data + 8192);
+thing_state_t thing_state[MAX_X16_STATES];
 
 uint32_t num_sprlnk_thg;
 uint32_t logo_spr_idx;
@@ -65,19 +67,6 @@ pos_check_t poscheck;
 
 //
 //
-
-uint32_t decode_state(uint16_t ss)
-{
-	uint8_t s0 = ss;
-	uint8_t s1 = ss >> 8;
-	uint32_t state;
-
-	// these bit shifts are useful for 6502 code, trust me
-	state = ((s0 >> 3) | (s0 << 5)) & 0xFF;
-	state |= (s1 & 0x60) << 3;
-
-	return state;
-}
 
 static void place_to_sector(uint8_t tdx, uint8_t sdx)
 {
@@ -450,7 +439,7 @@ void thing_clear()
 
 	state = thing_anim[th->ticker.type][ANIM_RAISE].state;
 
-	st = thing_state + decode_state(state);
+	st = thing_state + (state & (MAX_X16_STATES-1));
 
 	th->next_state = state;
 	th->ticks = 1;
@@ -515,7 +504,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 
 	state = thing_anim[type][ANIM_SPAWN].state;
 
-	st = thing_state + decode_state(state);
+	st = thing_state + (state & (MAX_X16_STATES-1));
 
 	th->next_state = state;
 	th->ticks = 1;
@@ -660,12 +649,26 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 
 uint32_t thing_init(const char *file)
 {
-	if(load_file(file, thing_data, sizeof(thing_data)) != sizeof(thing_data))
+	int32_t fd;
+	uint8_t state_data[MAX_X16_STATES * sizeof(thing_state_t)];
+
+	fd = open(file, O_RDONLY);
+	if(fd < 0)
 		return 1;
 
-	// extra info
-	num_sprlnk_thg = thing_state->arg[0];
-	logo_spr_idx = thing_state->arg[1];
+	if(read(fd, thing_data, sizeof(thing_data)) != sizeof(thing_data))
+	{
+		close(fd);
+		return 1;
+	}
+
+	if(read(fd, state_data, sizeof(state_data)) != sizeof(state_data))
+	{
+		close(fd);
+		return 2;
+	}
+
+	close(fd);
 
 	// load thing types
 	for(uint32_t i = 0; i < 128; i++)
@@ -700,6 +703,16 @@ uint32_t thing_init(const char *file)
 			tanm++;
 		}
 	}
+
+	// expand states
+	for(uint32_t i = 0; i < MAX_X16_STATES / 256; i++)
+		for(uint32_t x = 0; x < sizeof(thing_state_t); x++)
+			for(uint32_t y = 0; y < 256; y++)
+				thing_state[i * 256 + y].raw[x] = state_data[y + x * 256 + i * 2048];
+
+	// extra info
+	num_sprlnk_thg = thing_state->arg[0];
+	logo_spr_idx = thing_state->arg[1];
 
 	return 0;
 }

@@ -578,15 +578,46 @@ load_tables:
 
 	inc	fn_tablesX_end-5
 
+	; open
+	lda	#(fn_tablesX_end-fn_tablesX)
+	ldx	#<fn_tablesX
+	ldy	#>fn_tablesX
+	jsr	file_open_rd
+
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; load from file
-	jsr	file_load_tab
-	.word	$A000
-	.byte	FILE_DEST_WRAM
+	; load thing info
+	stz	VAR_FILE_DEST+0
+	lda	#$A0
+	sta	VAR_FILE_DEST+1
+	stz	VAR_FILE_BUF_SIZE+0
+	lda	#$20
+	sta	VAR_FILE_BUF_SIZE+1
+	jsr	file_read_16_wram
 	bcs	error_tab
+
+	; load thing states
+	lda	#BANK_THING_STATES
+	sta	REG_RAM_BANK
+@loop_sta:
+	stz	VAR_FILE_DEST+0
+	lda	#$B8
+	sta	VAR_FILE_DEST+1
+	stz	VAR_FILE_BUF_SIZE+0
+	lda	#$08
+	sta	VAR_FILE_BUF_SIZE+1
+	jsr	file_read_16_wram
+	bcs	error_tab
+
+	inc	REG_RAM_BANK
+	lda	REG_RAM_BANK
+	cmp	#BANK_THING_STATES+8
+	bne	@loop_sta
+
+	; close
+	jsr	file_close
 
 	rts
 

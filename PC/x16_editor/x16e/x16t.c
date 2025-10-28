@@ -106,14 +106,18 @@ typedef struct
 	void *func;
 } arg_parse_t;
 
-typedef struct
+typedef union
 {
-	uint8_t action;
-	uint8_t next;
-	uint8_t frm_nxt;
-	uint8_t sprite;
-	uint8_t ticks;
-	uint8_t arg[3];
+	uint8_t raw[8];
+	struct
+	{
+		uint8_t action;
+		uint8_t next;
+		uint8_t frm_nxt;
+		uint8_t sprite;
+		uint8_t ticks;
+		uint8_t arg[3];
+	};
 } export_state_t;
 
 typedef struct
@@ -167,8 +171,8 @@ static glui_text_t *text_flag;
 static glui_text_t *text_animation;
 static glui_text_t *text_states;
 
-static uint8_t thing_data[8192 * 2];
-static export_state_t *const state_data = (export_state_t*)(thing_data + 8192);
+static uint8_t thing_data[8192 + MAX_X16_STATES * sizeof(export_state_t)];
+static export_state_t state_data[MAX_X16_STATES];
 static uint32_t state_idx;
 
 static int32_t cbor_main_index;
@@ -3004,7 +3008,7 @@ void x16t_export()
 				st = ta->state + k;
 				dst = state_data + state_idx;
 
-				frame = st->frame;
+				frame = st->frame & 0x1F;
 
 				sprite = x16g_spritelink_by_hash(st->sprite);
 				if(sprite < 0)
@@ -3022,13 +3026,13 @@ void x16t_export()
 					else
 						next = 0;
 
-					dst->next = (next << 3) | ((next >> 5) & 0x07);
-					dst->frm_nxt = ((next >> 3) & 0x60) | frame;
+					dst->next = next;
+					dst->frm_nxt = ((next << 5) & 0xE0) | frame;
 				}
 
 				dst->sprite = sprite;
 				dst->ticks = st->ticks;
-				dst->action = st->action;
+				dst->action = st->action | (st->frame >> 7);
 				dst->arg[0] = st->arg[0];
 				dst->arg[1] = st->arg[1];
 				dst->arg[2] = st->arg[2];
@@ -3039,8 +3043,8 @@ void x16t_export()
 			}
 
 			ta->index = base_state;
-			tan0[j * 256] = (base_state << 3) | ((base_state >> 5) & 0x07);
-			tan1[j * 256] = ((base_state >> 3) & 0x60) | base_bright;
+			tan0[j * 256] = base_state;
+			tan1[j * 256] = (base_state >> 8) | base_bright;
 			tan2[j * 256] = ta->count;
 		}
 
@@ -3078,8 +3082,8 @@ void x16t_export()
 			ta = thing_info[dst->next].anim + in;
 			next = ta->index;
 
-			dst->next = (next << 3) | ((next >> 5) & 0x07);
-			dst->frm_nxt |= ((next >> 3) & 0x60);
+			dst->next = next;
+			dst->frm_nxt |= ((next << 5) & 0xE0);
 		}
 	}
 
@@ -3104,14 +3108,20 @@ void x16t_export()
 			state = ta->index;
 			bright = ta->state[0].frame & 0x80;
 
-			tan0[j * 256] = (state << 3) | ((state >> 5) & 0x07);
-			tan1[j * 256] = ((state >> 3) & 0x60) | bright;
+			tan0[j * 256] = state;
+			tan1[j * 256] = (state >> 8) | bright;
 			tan2[j * 256] = ta->count;
 		}
 	}
 
 	// store extra info into dummy state zero
 	state_data->arg[0] = x16_num_sprlnk_thg;
+
+	// convert states
+	for(uint32_t i = 0; i < MAX_X16_STATES / 256; i++)
+		for(uint32_t x = 0; x < sizeof(export_state_t); x++)
+			for(uint32_t y = 0; y < 256; y++)
+				thing_data[8192 + y + x * 256 + i * 2048] = state_data[i * 256 + y].raw[x];
 
 	// save
 	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES4.BIN", thing_data, sizeof(thing_data));

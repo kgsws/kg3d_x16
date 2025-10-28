@@ -3,51 +3,68 @@
 BANK_EXTRA_CODE = 1
 BANK_SWAP_CODE = 2	; [2 banks]
 
+; thing info
+BANK_THING_INFO = 4
+
+; palette
+BANK_PALETTE = 5
+
+; graphics
+; these also contain one-time pre-loaded stuff
+BANK_TSPR_INFO = 6
+BANK_WSPR_INFO = 7
+
+; GRAPHICS overlap
+; map loading requires up to 16 banks of temp data
+; this is only needed before map layout is loaded
+; 8 banks overlap run-time game data
+; 8 banks overlap map layout data
+BANK_MAP_TEMP = 8	; [16 banks]
+
 ; things
 ; holds 128 slots, slot 0 is used for local player weapon
-BANK_TICKER_STRUCT = 4
+BANK_TICKER_STRUCT = 8
 
 ; things in sectors
 ; 256 sectors, each can hold 31 things
 ; last slot is reserved for thing count
-BANK_SECTOR_THINGS = 5
+BANK_SECTOR_THINGS = 9
 
-; thing info and states
-; these are loaded from a single file
-BANK_THING_INFO = 6
-BANK_THING_STATES = 7
+; render sprites
+BANK_DRAW_SPRITES = 10
 
-; palette
-BANK_PALETTE = 8
+; render masked walls
+BANK_DRAW_MASKED = 11
 
-; sprites
-BANK_DRAW_SPRITES = 9
+; map sectors
+BANK_SECTORS = 12
 
-; masked walls
-BANK_DRAW_MASKED = 10
+; textures
+BANK_TEXTURES = 13
 
-; graphics
-BANK_TEXTURES = 11
-BANK_TSPR_INFO = 12
-BANK_WSPR_INFO = 13
-BANK_SPRITE_FRM = 14
+;; 2 game banks available here
 
-; sectors
-BANK_SECTORS = 15
+; MAP DATA overlap
+; walls are loaded in up to 16 banks
+; walls use only 4096 bytes per bank (first half)
+; second half of each bank is used for other stuff
 
-; map data (walls)
-BANK_MAPDATA = 16	; [16 banks] must be divisible by 16
+; map walls
+BANK_MAPWALLS = 16	; [16 banks] must be divisible by 16
 
-; map data (other)
-BANK_PLAYER_START = BANK_MAPDATA + 0
+; player starts
+BANK_PLAYER_START = BANK_MAPWALLS + 0	; loaded from map file
 
-; sectors in things (in map data)
+; sectors in things
 ; index 0 to 127 is used for 'thing id' [thingsec]
 ; index 128 to 255 is used for 'offset in table above' [thingces]
-BANK_THING_SECTORS = BANK_MAPDATA + 15
+BANK_THING_SECTORS = BANK_MAPWALLS + 7
 
-; graphics loading
-BANK_MAP_TEMP = BANK_MAPDATA	; [16 banks]
+; thing states
+BANK_THING_STATES = BANK_MAPWALLS + 8	; [8 banks] must be divisible by 8, overlaps with 'sprite images'
+
+; sprite images
+BANK_SPRITE_GFX = BANK_MAPWALLS + 12	; [4 banks] must be divisible by 4, overlaps with 'thing states'
 
 ; math
 BANK_TABLES = 32
@@ -70,5 +87,5 @@ BANK_PRINTINT = 36
 ; sector portals
 BANK_PORTALS = 36
 
-;;;; BANK 40+ contains texture data
+;;;; BANK 37+ contains game data
 

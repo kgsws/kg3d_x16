@@ -142,8 +142,8 @@ WSPR_VARIANT_SIZE = 5
 ; stuff
 ;;;
 
-MAP_TEMP_FRM_IDX_L = G_LEVEL_TICK_L
-MAP_TEMP_FRM_IDX_H = G_LEVEL_TICK_H
+MAP_TEMP_IMG_IDX_L = G_LEVEL_TICK_L
+MAP_TEMP_IMG_IDX_H = G_LEVEL_TICK_H
 MAP_TEMP_SPR_IDX = TICK_CMD_BITS_L
 MAP_TEMP_WPN_IDX = BACKSEC_PTR_I
 MAP_TEMP_TH_TYPE = TICK_CMD_BITS_H
@@ -194,21 +194,22 @@ ex_precache:
 	sta	REG_RAM_BANK
 
 	; get thing sprite count
-	lda	$A000 + THSTATE_STRUCT_ARG0
+	lda	THSTATE_STRUCT_ARG0
 	sta	TAB_THG_SPRLNK
 
 	; get logo sprite
-	lda	$A000 + THSTATE_STRUCT_ARG1
+	lda	THSTATE_STRUCT_ARG1
 	sta	TAB_MENU_LOGO
 
 	; reset memory
-	lda	#$05
+	lda	#$A0
+	sta	MAP_LOAD_WRAM_L
+	lda	#$04
 	sta	MAP_LOAD_WRAM_H
-	stz	MAP_LOAD_WRAM_L
 	stz	MAP_TEMP_SPR_IDX
 	stz	MAP_TEMP_WPN_IDX
-	stz	MAP_TEMP_FRM_IDX_L
-	stz	MAP_TEMP_FRM_IDX_H
+	stz	MAP_TEMP_IMG_IDX_L
+	stz	MAP_TEMP_IMG_IDX_H
 
 	; reset sprite remaps
 	lda	#$FF
@@ -238,7 +239,7 @@ ex_precache:
 	stx	MAP_TEMP_STACK
 
 	; check logo sprite
-	ldx	TAB_MENU_LOGO
+	ldy	TAB_MENU_LOGO
 	bmi	:+
 
 	; name is already set
@@ -275,10 +276,10 @@ ex_precache:
 	sta	TAB_PRELOAD_SPR_IDX
 	lda	MAP_TEMP_WPN_IDX
 	sta	TAB_PRELOAD_WPN_IDX
-	lda	MAP_TEMP_FRM_IDX_L
-	sta	TAB_PRELOAD_FRM_IDX+0
-	lda	MAP_TEMP_FRM_IDX_H
-	sta	TAB_PRELOAD_FRM_IDX+1
+	lda	MAP_TEMP_IMG_IDX_L
+	sta	TAB_PRELOAD_IMG_IDX+0
+	lda	MAP_TEMP_IMG_IDX_H
+	sta	TAB_PRELOAD_IMG_IDX+1
 	lda	MAP_LOAD_WRAM_L
 	sta	TAB_PRELOAD_WRAM+0
 	lda	MAP_LOAD_WRAM_H
@@ -314,10 +315,10 @@ ex_map_load:
 	sta	MAP_TEMP_SPR_IDX
 	lda	TAB_PRELOAD_WPN_IDX
 	sta	MAP_TEMP_WPN_IDX
-	lda	TAB_PRELOAD_FRM_IDX+0
-	sta	MAP_TEMP_FRM_IDX_L
-	lda	TAB_PRELOAD_FRM_IDX+1
-	sta	MAP_TEMP_FRM_IDX_H
+	lda	TAB_PRELOAD_IMG_IDX+0
+	sta	MAP_TEMP_IMG_IDX_L
+	lda	TAB_PRELOAD_IMG_IDX+1
+	sta	MAP_TEMP_IMG_IDX_H
 	lda	TAB_PRELOAD_WRAM+0
 	sta	MAP_LOAD_WRAM_L
 	lda	TAB_PRELOAD_WRAM+1
@@ -836,7 +837,7 @@ ex_map_load:
 	; wall banks
 
 	; other walls
-	lda	#BANK_MAPDATA
+	lda	#BANK_MAPWALLS
 	sta	REG_RAM_BANK
 @loop_wdat:
 	; load
@@ -972,10 +973,6 @@ ex_map_load:
 
 	;;;;
 	; finalize
-
-	; map bank
-	lda	#BANK_MAPDATA
-	sta	REG_RAM_BANK
 
 	;; spawn player
 
@@ -1669,9 +1666,8 @@ load_wall:
 	sta	MAP_LOAD_TEX_TMP
 
 	; go trough variants
-	lda	MAP_WALL_VCNT
-	and	#$7F
-	sta	MAP_WALL_VCNT
+	lda	#$80
+	trb	MAP_WALL_VCNT
 @loop_variant:
 	; check WRAM space
 	lda	MAP_LOAD_TMP_H
@@ -1858,26 +1854,26 @@ load_wall:
 ;;;
 
 load_sprite:
-	phx
+	phy
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
 	; generate sprite file name
-	lda	THTYPE_SHASH_0,x
+	lda	THTYPE_SHASH_0,y
 	sta	MAP_TEMP_NHASH_0
-	lda	THTYPE_SHASH_1,x
+	lda	THTYPE_SHASH_1,y
 	sta	MAP_TEMP_NHASH_1
-	lda	THTYPE_SHASH_2,x
+	lda	THTYPE_SHASH_2,y
 	sta	MAP_TEMP_NHASH_2
-	lda	THTYPE_SHASH_3,x
+	lda	THTYPE_SHASH_3,y
 	sta	MAP_TEMP_NHASH_3
 	jsr	make_hash
 
 	; check type
-	plx
-	cpx	TAB_THG_SPRLNK
+	ply
+	cpy	TAB_THG_SPRLNK
 	bcc	load_sprite_thg
 
 	;; WEAPON SPRITE
@@ -1885,7 +1881,7 @@ load_sprite_wpn:
 
 	; mark as loaded
 	lda	MAP_TEMP_WPN_IDX
-	sta	TAB_SPRITE_REMAP,x
+	sta	TAB_SPRITE_REMAP,y
 
 	; suffix
 	ldx	#(type_weapon-txt_types)
@@ -1909,7 +1905,7 @@ load_sprite_wpn:
 	; actually load the sprite
 	jsr	load_wspr
 :
-	; close wall file
+	; close file
 	jsr	file_close
 
 	; restore handle
@@ -1923,7 +1919,7 @@ load_sprite_thg:
 
 	; mark as loaded
 	lda	MAP_TEMP_SPR_IDX
-	sta	TAB_SPRITE_REMAP,x
+	sta	TAB_SPRITE_REMAP,y
 
 	; suffix
 	ldx	#(type_sprite-txt_types)
@@ -1947,7 +1943,7 @@ load_sprite_thg:
 	; actually load the sprite
 	jsr	load_tspr
 :
-	; close wall file
+	; close file
 	jsr	file_close
 
 	; restore handle
@@ -1970,8 +1966,8 @@ load_tspr:
 	rts
 :
 	; check image count
-	lda	MAP_TEMP_FRM_IDX_H
-	cmp	#2
+	lda	MAP_TEMP_IMG_IDX_H
+	cmp	#4
 	bcc	:+
 
 	; too many images
@@ -1988,7 +1984,6 @@ load_tspr:
 
 	; go trough variants
 	lda	MAP_WALL_VCNT
-	and	#$7F
 	sta	MAP_LOAD_VIDX
 @loop_variant:
 	; check WRAM space
@@ -2046,79 +2041,54 @@ load_tspr:
 	sta	HI_PTR_H
 
 	; save rotation frame
-	lda	MAP_TEMP_FRM_IDX_L
+	lda	MAP_TEMP_IMG_IDX_L
 	sta	(HI_PTR_L),y
+
+	; save rotation bank
 	lda	#$08
 	tsb	HI_PTR_H
-	lda	MAP_TEMP_FRM_IDX_H
+	lda	MAP_TEMP_IMG_IDX_H
+	ora	#BANK_SPRITE_GFX
 	sta	(HI_PTR_L),y
 
-	; data size (real)
-	stz	MATH_VAR_H
-	lda	MAP_WALL_DLEN
-	sta	MATH_VAR_L
-	bne	:+
-	inc	MATH_VAR_H
-:
-	; check fullbright flag
-	lda	MAP_WALL_VCNT
-	bpl	:+
-
-	; data size (no lights)
-	stz	MATH_VAR_L
-	stz	MATH_VAR_H
-:
-	; sprite frame bank
-	lda	#BANK_SPRITE_FRM
+	; sprite image bank
 	sta	REG_RAM_BANK
 
 	; get sprite frame
-	lda	MAP_TEMP_FRM_IDX_L
-	sta	THTEMP_PTR_L
-	ldx	MAP_TEMP_FRM_IDX_H
-	lda	TAB_SWAP,x
-	ora	#$A0
-	sta	THTEMP_PTR_H
+	ldx	MAP_TEMP_IMG_IDX_L
 
 	; frm->width = info->width
 	lda	MAP_TEMP_SPRITE_WIDTH
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_WIDTH,x
 
 	; frm->height = info->height
-	inc	THTEMP_PTR_H
 	lda	MAP_TEMP_SPRITE_HEIGHT
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_HEIGHT,x
 
 	; frm->ox = info->ox
-	inc	THTEMP_PTR_H
 	lda	MAP_TEMP_SPRITE_OX
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_OX,x
 
 	; frm->oy = info->oy
-	inc	THTEMP_PTR_H
 	lda	MAP_TEMP_SPRITE_OY
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_OY,x
 
 	; frm->offs_cols = offs_cols
-	inc	THTEMP_PTR_H
 	lda	MAP_LOAD_TMP_L
-	sta	(THTEMP_PTR_L)
-	inc	THTEMP_PTR_H
+	sta	SPRFRM_STRUCT_OFFS_COLS_L,x
 	lda	MAP_LOAD_TMP_H
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_OFFS_COLS_H,x
 
 	; frm->offs_data = offset
-	inc	THTEMP_PTR_H
 	lda	MAP_LOAD_WRAM_L
-	sta	(THTEMP_PTR_L)
-	inc	THTEMP_PTR_H
+	sta	SPRFRM_STRUCT_OFFS_DATA_L,x
 	lda	MAP_LOAD_WRAM_H
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_OFFS_DATA_H,x
 
 	; num_sframes++
-	inc	MAP_TEMP_FRM_IDX_L
+	inc	MAP_TEMP_IMG_IDX_L
 	bne	:+
-	inc	MAP_TEMP_FRM_IDX_H
+	inc	MAP_TEMP_IMG_IDX_H
 :
 	;; load columns
 
@@ -2456,60 +2426,52 @@ load_thing_sprites_r:
 	sta	THTEMP_PTR_H
 	lda	(THTEMP_PTR_L),y
 	tax
-	and	#$F8
-	sta	MAP_TMP_PTR_L
-
 	lda	MAP_LOAD_AIDX
 	ora	#>THTYPE_ANIM_H
 	sta	THTEMP_PTR_H
 	lda	(THTEMP_PTR_L),y
-;	and	#$60
-	lsr
-	lsr
-	sta	MAP_TMP_PTR_H
-	txa
-	and	#$07
-	ora	#$A0
-	ora	MAP_TMP_PTR_H
-	sta	MAP_TMP_PTR_H
 
 	; thing states bank
-	lda	#BANK_THING_STATES
+	and	#$07
+	ora	#BANK_THING_STATES
 	sta	REG_RAM_BANK
 
 	; go trough states
 @loop_state:
+	phx
 	phy
 
 	; get state sprite
-	ldy	#THSTATE_STRUCT_SPRITE
-	lda	(MAP_TMP_PTR_L),y
-	tax
+	ldy	THSTATE_STRUCT_SPRITE,x
 
 	; check for 'none'
 	bmi	@skip_load
 
 	; check if already loaded
-	lda	TAB_SPRITE_REMAP,x
+	lda	TAB_SPRITE_REMAP,y
 	bpl	@skip_load
+
+	; backup bank
+	lda	REG_RAM_BANK
+	pha
 
 	; load sprite(s)
 	jsr	load_sprite
 
 	; thing states bank
-	lda	#BANK_THING_STATES
+	pla
 	sta	REG_RAM_BANK
 
 @skip_load:
 	ply
+	plx
 
 	; increment state pointer
-	clc
-	lda	MAP_TMP_PTR_L
-	adc	#THSTATE__STRUCT_SIZE
-	sta	MAP_TMP_PTR_L
-	bcc	:+
-	inc	MAP_TMP_PTR_H
+	inx
+	bne	:+
+
+	; increment state bank
+	inc	REG_RAM_BANK
 :
 	; next state
 	dec	MAP_LOAD_SIDX

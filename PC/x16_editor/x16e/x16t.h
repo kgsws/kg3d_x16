@@ -1,6 +1,6 @@
 
-#define MAX_X16_STATES	1024	// limited by design
-#define MAX_X16_THING_TYPES	128	// limited by design; > 127 means "special or no thing"
+#define MAX_X16_STATES	2048	// limited by design
+#define MAX_X16_THING_TYPES	128	// limited by design
 
 #define THING_TYPE_PLAYER_N	127	// normal
 #define THING_TYPE_PLAYER_C	126	// crouching

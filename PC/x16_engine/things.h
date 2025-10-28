@@ -1,4 +1,5 @@
 
+#define MAX_X16_STATES	2048
 #define MAX_X16_THING_TYPES	128
 #define THING_MAX_SPAWN_TYPES	4
 
@@ -115,14 +116,18 @@ typedef struct
 	uint16_t next_state;
 } thing_t;
 
-typedef struct
+typedef union
 {
-	uint8_t action;
-	uint8_t next;
-	uint8_t frm_nxt;
-	uint8_t sprite;
-	uint8_t ticks;
-	uint8_t arg[3];
+	uint8_t raw[8];
+	struct
+	{
+		uint8_t action;
+		uint8_t next;
+		uint8_t frm_nxt;
+		uint8_t sprite;
+		uint8_t ticks;
+		uint8_t arg[3];
+	};
 } thing_state_t;
 
 typedef struct
@@ -146,7 +151,7 @@ extern thing_anim_t thing_anim[MAX_X16_THING_TYPES][NUM_THING_ANIMS];
 extern uint32_t thing_hash[MAX_X16_THING_TYPES];
 extern uint32_t sprite_hash[128];
 extern uint8_t sprite_remap[128];
-extern thing_state_t *const thing_state;
+extern thing_state_t thing_state[MAX_X16_STATES];
 extern uint32_t num_sprlnk_thg;
 extern uint32_t logo_spr_idx;
 
@@ -183,8 +188,6 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage);
 
 uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx);
 void thing_apply_pos();
-
-uint32_t decode_state(uint16_t ss);
 
 //
 

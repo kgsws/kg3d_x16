@@ -675,7 +675,7 @@ render_sector:
 	; wall info
 	ldy	SECTOR_PTR_I
 	lda	SECTOR_STRUCT_WALL_BANK,y
-	ora	#BANK_MAPDATA
+	ora	#BANK_MAPWALLS
 	sta	WALL_BANK
 	lda	SECTOR_STRUCT_WALL_FIRST,y
 	sta	WALL_FIRST
@@ -3943,7 +3943,7 @@ prepare_sprite:
 	sta	REG_RAM_BANK
 
 	; default to no rotation
-	lda	#$A8
+	lda	#$A0
 	sta	THTEMP_PTR_H
 
 	; if(si->rotate)
@@ -3975,59 +3975,45 @@ prepare_sprite:
 	tax
 	lda	TAB_BANK,x
 
-	ora	#$A8
+	ora	#$A0
 	sta	THTEMP_PTR_H
 :
 	; frame index
 	lda	(THTEMP_PTR_L)
 	tax
 	lda	#$08
-	trb	THTEMP_PTR_H
+	tsb	THTEMP_PTR_H
 	lda	(THTEMP_PTR_L)
-	sta	THTEMP_PTR_L
 
-	; sprite frame bank
-	lda	#BANK_SPRITE_FRM
+	; sprite image bank
 	sta	REG_RAM_BANK
 
-	; get sprite frame
-	lda	TAB_SWAP,x
-	ora	#$A0
-	sta	THTEMP_PTR_H
-
 	; frm->width
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_WIDTH,x
 	sta	SPRITE_WIDTH
 
 	; frm->height
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_HEIGHT,x
 	sta	SPRITE_HEIGHT
 
 	; frm->ox
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OX,x
 	sta	SPRITE_OFFS_X
 
 	; frm->oy
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OY,x
 	sta	SPRITE_OFFS_Y_L
 
 	; frm->offs_cols
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OFFS_COLS_L,x
 	sta	SPRITE_COLS_L
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OFFS_COLS_H,x
 	sta	SPRITE_COLS_H
 
 	; frm->offs_data
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OFFS_DATA_L,x
 	sta	SPRITE_DATA_L
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OFFS_DATA_H,x
 	sta	SPRITE_DATA_H
 
 	; ticker structure bank

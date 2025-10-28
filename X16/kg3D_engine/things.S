@@ -61,6 +61,9 @@ thing_spawn_org:
 	jsr	tick_add
 	beq	@stop
 
+	; the thing
+	stx	ARG_THING_IDX
+
 	; thing type
 	ldy	ARG_THING_TYPE
 
@@ -103,39 +106,22 @@ thing_spawn_org:
 	pha
 
 	; get spawn animation
-	lda	THTYPE_ANIM_SPAWN_L,y
-	pha	; <next frame LO>
-	sta	THTEMP_PTR_H
-	and	#$F8
-	ora	#THSTATE_STRUCT_SPRITE
-	sta	THTEMP_PTR_L
-	lda	THTEMP_PTR_H
-	and	#$07
-	ora	#$A0
-	sta	THTEMP_PTR_H
+	ldx	THTYPE_ANIM_SPAWN_L,y
+	phx	; <next frame LO>
 	lda	THTYPE_ANIM_SPAWN_H,y
 	pha	; <next frame HI>
-	lsr
-	lsr
-	ora	THTEMP_PTR_H
-	sta	THTEMP_PTR_H
 
 	; thing states bank
-	lda	#BANK_THING_STATES
+	and	#$07
+	ora	#BANK_THING_STATES
 	sta	REG_RAM_BANK
 
 	; spawn sprite
-	lda	(THTEMP_PTR_L)
-	bpl	:+
+	ldy	THSTATE_STRUCT_SPRITE,x
+	bmi	:+
 
-	; no sprite
-	lda	#$FF
-	bra	:++
-:
 	; sprite and frame
-	tay
-	dec	THTEMP_PTR_L
-	lda	(THTEMP_PTR_L)
+	lda	THSTATE_STRUCT_FRM_NXT,x
 	and	#$1F
 	clc
 	adc	TAB_SPRITE_REMAP,y
@@ -147,6 +133,7 @@ thing_spawn_org:
 	sta	REG_RAM_BANK
 
 	; ticker
+	ldx	ARG_THING_IDX
 	lda	#TICKER_FUNC_THING
 	sta	TICKER_STRUCT_FUNC,x
 
@@ -251,7 +238,6 @@ thing_spawn_org:
 	sta	THING_STRUCT_TH_ORIGIN,x
 
 	; check position
-	stx	ARG_THING_IDX
 	jsr	thing_check_spawn
 	beq	@pos_fail
 
@@ -365,41 +351,22 @@ thing_clear:
 	ldx	#THING_WEAPON_FIRST
 
 	; animation
-	lda	THTYPE_ANIM_RAISE_L,x
-	pha	; <next frame LO>
-	sta	THTEMP_PTR_H
-	and	#$F8
-	ora	#THSTATE_STRUCT_SPRITE
-	sta	THTEMP_PTR_L
-
-	lda	THTEMP_PTR_H
-	and	#$07
-	ora	#$A0
-	sta	THTEMP_PTR_H
-
+	ldy	THTYPE_ANIM_RAISE_L,x
+	phy	; <next frame LO>
 	lda	THTYPE_ANIM_RAISE_H,x
 	pha	; <next frame HI>
-	lsr
-	lsr
-	ora	THTEMP_PTR_H
-	sta	THTEMP_PTR_H
 
 	; thing states bank
-	lda	#BANK_THING_STATES
+	and	#$07
+	ora	#BANK_THING_STATES
 	sta	REG_RAM_BANK
 
 	; the sprite
-	lda	(THTEMP_PTR_L)
-	bpl	:+
+	ldx	THSTATE_STRUCT_SPRITE,y
+	bmi	:+
 
-	; no sprite
-	ldx	#$FF
-	bra	:++
-:
 	; sprite and frame
-	tax
-	dec	THTEMP_PTR_L
-	lda	(THTEMP_PTR_L)
+	lda	THSTATE_STRUCT_FRM_NXT,y
 	and	#$1F
 	clc
 	adc	TAB_SPRITE_REMAP,x
@@ -419,8 +386,7 @@ thing_clear:
 	sta	THING_STRUCT_HEIGHT
 
 	; save sprite
-	txa
-	sta	THING_STRUCT_SPRITE
+	stx	THING_STRUCT_SPRITE
 
 	; state ticks
 	lda	#1
@@ -760,7 +726,7 @@ thing_check_spawn:
 :
 	; walls
 	lda	SECTOR_STRUCT_WALL_BANK,x
-	ora	#BANK_MAPDATA
+	ora	#BANK_MAPWALLS
 	sta	WALL_BANK
 	lda	SECTOR_STRUCT_WALL_FIRST,x
 	sta	WALL_FIRST

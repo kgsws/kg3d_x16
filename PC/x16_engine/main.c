@@ -3638,7 +3638,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 	for(int32_t j = NUM_THING_ANIMS-1; j >= 0; j--)
 	{
 		thing_anim_t *anim = thing_anim[type] + j;
-		thing_state_t *st = thing_state + decode_state(anim->state);
+		thing_state_t *st = thing_state + (anim->state & (MAX_X16_STATES-1));
 
 		for(uint32_t k = 0; k < anim->count; k++, st++)
 		{
