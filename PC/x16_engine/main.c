@@ -315,6 +315,7 @@ static uint32_t render_flags;
 static uint32_t input_action;
 
 uint32_t level_tick;
+static uint8_t anim_tick[10];
 
 vertex_t display_point;
 vertex_t display_line[2];
@@ -589,7 +590,7 @@ static texture_info_t *tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t ligh
 	// animation
 	if(mt->effect[0] & 4)
 	{
-		uint32_t etime = level_tick >> mt->effect[1];
+		uint32_t etime = etime = anim_tick[mt->effect[1]];
 		etime += mt->effect[3];
 		idx -= mt->effect[3];
 		idx += etime & mt->effect[2]; // TODO: overflow check
@@ -2342,7 +2343,7 @@ static int16_t fix_effect_value(uint8_t val, uint8_t flip)
 static uint8_t handle_plane_effect(texture_info_t *ti, uint8_t ang)
 {
 	uint8_t *effect;
-	uint16_t etime;
+	uint8_t etime;
 	int16_t temp;
 
 	if(!ti)
@@ -2353,32 +2354,28 @@ static uint8_t handle_plane_effect(texture_info_t *ti, uint8_t ang)
 	if(!effect[0])
 		return ang;
 
-	if(effect[1] & 0x80)
-		etime = level_tick << (effect[1] & 0x7F);
-	else
-		etime = level_tick >> effect[1];
+	etime = anim_tick[effect[1]];
 
 	switch(effect[0] & 3)
 	{
 		case 1: // random
-			etime &= 1023;
 			if(!(effect[2] & 0x80))
 				projection.ox += tab_rng[etime + 0];
 			if(!(effect[2] & 0x40))
-				projection.oy += tab_rng[etime + 4];
+				projection.oy += tab_rng[etime + 256];
 			if(!(effect[2] & 0x01))
-				ang += tab_rng[etime + 8];
+				ang += tab_rng[etime + 512];
 		break;
 		case 2: // circle
 		case 3: // eight
 			temp = fix_effect_value(effect[3], effect[0] << 1);
-			projection.oy += (tab_cos[etime & 0xFF] * temp) >> 8;
+			projection.oy += (tab_cos[etime] * temp) >> 8;
 
 			if((effect[0] & 3) == 3)
 				etime <<= 1;
 
 			temp = fix_effect_value(effect[2], effect[0]);
-			projection.ox += (tab_sin[etime & 0xFF] * temp) >> 8;
+			projection.ox += (tab_sin[etime] * temp) >> 8;
 
 		break;
 	}
@@ -2479,6 +2476,11 @@ static void do_3d()
 	show_wpn_t show_wpn;
 	sector_t *sec;
 	uint32_t pidx;
+
+	for(int32_t i = 0; i < 4; i++)
+		anim_tick[i] = level_tick << (4-i);
+	for(int32_t i = 0; i < 6; i++)
+		anim_tick[i+4] = level_tick >> i;
 
 	projection.x = th->x & ~0xFF;
 	projection.y = th->y & ~0xFF;

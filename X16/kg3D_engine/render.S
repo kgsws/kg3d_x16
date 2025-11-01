@@ -81,6 +81,32 @@ render_init:
 ;;;
 
 render_view:
+	; animation tick table
+	lda	G_LEVEL_TICK_L
+	sta	MATH_VAR_L
+	sta	TAB_ANIM_TICK+4
+	lda	G_LEVEL_TICK_M
+	sta	MATH_VAR_H
+	ldx	#5
+	ldy	#5
+@loop_tp:
+	lsr	MATH_VAR_H
+	ror	MATH_VAR_L
+	lda	MATH_VAR_L
+	sta	TAB_ANIM_TICK,y
+	iny
+	dex
+	bne	@loop_tp
+	lda	G_LEVEL_TICK_L
+	sta	MATH_VAR_L
+	ldx	#4
+@loop_tn:
+	asl	MATH_VAR_L
+	lda	MATH_VAR_L
+	sta	TAB_ANIM_TICK-1,x
+	dex
+	bne	@loop_tn
+
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
@@ -6087,81 +6113,59 @@ plane_apply_effect:
 	; check texture effect
 	lda	TEXINFO_STRUCT_EFFECT_0,y
 	and	#3
-	tax
 	bne	:+
 	rts
 :
+	pha	; <type>
+
 	; get ticks
-	lda	G_LEVEL_TICK_L
-	sta	RENDER_TEXTURE_ETIME_L
-	lda	G_LEVEL_TICK_H
-	sta	RENDER_TEXTURE_ETIME_H
+	ldx	TEXINFO_STRUCT_EFFECT_1,y
+	lda	TAB_ANIM_TICK,x
+	sta	MATH_VAR_L
 
-	; scale time
-	lda	TEXINFO_STRUCT_EFFECT_1,y
-	beq	@skip_ticks
-	bpl	:+
-
-	; up
-	and	#$7F
-	beq	@skip_ticks
-@loop_up:
-	asl	RENDER_TEXTURE_ETIME_L
-	dea
-	bne	@loop_up
-	bra	@skip_ticks
-:
-	; down
-@loop_dn:
-	lsr	RENDER_TEXTURE_ETIME_H
-	ror	RENDER_TEXTURE_ETIME_L
-	dea
-	bne	@loop_dn
-
-@skip_ticks:
 	; pick effect
-	cpx	#1
+	pla	; <type>
+	cmp	#1
 	bne	@sincos
 
 	;; random
 
-	lda	RENDER_TEXTURE_ETIME_H
-	and	#$03
-	ora	#>TAB_RANDOM
-	sta	RENDER_TEXTURE_ETIME_H
-
 	phy
 	lda	TEXINFO_STRUCT_EFFECT_2,y
-	sta	MATH_VAR_L
+	sta	MATH_VAR_U
 
 	; random bank
 	lda	#BANK_RANDOM
 	sta	REG_RAM_BANK
 
 	; X
-	bit	MATH_VAR_L
+	lda	#>TAB_RANDOM
+	sta	MATH_VAR_H
+	bit	MATH_VAR_U
 	bmi	:+
 	clc
-	lda	(RENDER_TEXTURE_ETIME_L)
+	lda	(MATH_VAR_L)
 	adc	RENDER_TEXTURE_OX
 	sta	RENDER_TEXTURE_OX
 :
 	; Y
-	bit	MATH_VAR_L
+	inc	MATH_VAR_H
+	bit	MATH_VAR_U
 	bvs	:+
 	clc
 	ldy	#4
-	lda	(RENDER_TEXTURE_ETIME_L),y
+	lda	(MATH_VAR_L),y
 	adc	RENDER_TEXTURE_OY
 	sta	RENDER_TEXTURE_OY
 :
 	; A
-	lda	MATH_VAR_L
+	inc	MATH_VAR_H
+	lda	MATH_VAR_U
 	lsr
 	bcs	:+
 	clc
 	ldy	#8
-	lda	(RENDER_TEXTURE_ETIME_L),y
+	lda	(MATH_VAR_L),y
 	adc	RENDER_TEXTURE_ANGLE
 	sta	RENDER_TEXTURE_ANGLE
 :
@@ -6181,6 +6185,7 @@ plane_apply_effect:
 	lda	TEXINFO_STRUCT_EFFECT_0,y
 	asl
 	bpl	:+
+
 	; negative
 	lda	TEXINFO_STRUCT_EFFECT_3,y
 	eor	#$FF
@@ -6190,7 +6195,7 @@ plane_apply_effect:
 	sta	VERA_FX_CACHE_M
 :
 	; load cos
-	ldx	RENDER_TEXTURE_ETIME_L
+	ldx	MATH_VAR_L
 	math_read_cos	VERA_FX_CACHE_H, VERA_FX_CACHE_U
 
 	; save result
@@ -6210,7 +6215,7 @@ plane_apply_effect:
 	bne	:+
 
 	; double ticks
-	asl	RENDER_TEXTURE_ETIME_L
+	asl	MATH_VAR_L
 :
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
@@ -6231,7 +6236,7 @@ plane_apply_effect:
 	sta	VERA_FX_CACHE_M
 :
 	; load sin
-	ldx	RENDER_TEXTURE_ETIME_L
+	ldx	MATH_VAR_L
 	math_read_sin	VERA_FX_CACHE_H, VERA_FX_CACHE_U
 
 	; save result
@@ -7057,30 +7062,21 @@ texture_set:
 	beq	:+
 
 	; get ticks
-	lda	G_LEVEL_TICK_L
-	sta	RENDER_TEXTURE_ETIME_L
-	lda	G_LEVEL_TICK_H
-	sta	RENDER_TEXTURE_ETIME_H
-
-	; scale ticks
-	lda	TEXINFO_STRUCT_EFFECT_1,y
-@loop_ts:
-	lsr	RENDER_TEXTURE_ETIME_H
-	ror	RENDER_TEXTURE_ETIME_L
-	dea
-	bne	@loop_ts
+	ldx	TEXINFO_STRUCT_EFFECT_1,y
+	lda	TAB_ANIM_TICK,x
+	sta	MATH_VAR_L
 
 	; calculate animation
 	clc
-	lda	RENDER_TEXTURE_ETIME_L
+	lda	MATH_VAR_L
 	adc	TEXINFO_STRUCT_EFFECT_3,y
 	and	TEXINFO_STRUCT_EFFECT_2,y
-	sta	RENDER_TEXTURE_ETIME_L
+	sta	MATH_VAR_L
 	sec
 	tya
 	sbc	TEXINFO_STRUCT_EFFECT_3,y
 	clc
-	adc	RENDER_TEXTURE_ETIME_L
+	adc	MATH_VAR_L
 	tay
 :
 	; type check

@@ -2476,11 +2476,12 @@ static void fix_action_args(export_state_t *st)
 {
 #if 0
 	const state_action_def_t *sd;
+	uint32_t act = st->action & 0x7F;
 
-	if(!st->action)
+	if(!act)
 		return;
 
-	sd = state_action_def + st->action;
+	sd = state_action_def + act;
 
 	for(uint32_t i = 0; i < 3; i++)
 	{
@@ -3032,7 +3033,7 @@ void x16t_export()
 
 				dst->sprite = sprite;
 				dst->ticks = st->ticks;
-				dst->action = st->action | (st->frame >> 7);
+				dst->action = st->action | (st->frame & 0x80);
 				dst->arg[0] = st->arg[0];
 				dst->arg[1] = st->arg[1];
 				dst->arg[2] = st->arg[2];

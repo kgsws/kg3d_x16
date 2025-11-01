@@ -1533,7 +1533,7 @@ static int16_t fix_effect_value(uint8_t val, uint8_t flip)
 static uint8_t apply_plane_effect(editor_texture_t *et, uint8_t ang)
 {
 	const uint8_t *effect;
-	uint16_t etime;
+	uint8_t etime;
 	int16_t temp;
 	uint32_t level_tick;
 
@@ -1550,31 +1550,30 @@ static uint8_t apply_plane_effect(editor_texture_t *et, uint8_t ang)
 	level_tick = gametick / 8;
 
 	if(effect[1] & 0x80)
-		etime = level_tick << (effect[1] & 0x7F);
+		etime = level_tick << (~effect[1] + 1);
 	else
 		etime = level_tick >> effect[1];
 
 	switch(effect[0] & 3)
 	{
 		case 1: // random
-			etime &= 1023;
 			if(!(effect[2] & 0x80))
 				tex_x_start += tables_A000.random[etime + 0];
 			if(!(effect[2] & 0x40))
-				tex_y_start += tables_A000.random[etime + 4];
+				tex_y_start += tables_A000.random[etime + 256];
 			if(!(effect[2] & 0x01))
-				ang += tables_A000.random[etime + 8];
+				ang += tables_A000.random[etime + 512];
 		break;
 		case 2: // circle
 		case 3: // eight
 			temp = fix_effect_value(effect[3], effect[0] << 1);
-			tex_y_start += (tab_cos[etime & 0xFF] * temp) >> 8;
+			tex_y_start += (tab_cos[etime] * temp) >> 8;
 
 			if((effect[0] & 3) == 3)
 				etime <<= 1;
 
 			temp = fix_effect_value(effect[2], effect[0]);
-			tex_x_start += (tab_sin[etime & 0xFF] * temp) >> 8;
+			tex_x_start += (tab_sin[etime] * temp) >> 8;
 
 		break;
 	}
