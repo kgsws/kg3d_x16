@@ -30,6 +30,7 @@ typedef struct
 	uint8_t step_height, water_height;
 	uint8_t sector, slot;
 	uint8_t maskblock;
+	uint8_t hitang;
 } pos_check_t;
 
 //
@@ -401,6 +402,9 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 					goto do_next;
 				}
 
+				// solid wall
+				poscheck.hitang = wall->angle >> 4;
+
 				return 0;
 
 do_next:
@@ -747,9 +751,56 @@ void thing_tick()
 
 		if(thing_check_pos(tick_idx, nx >> 8, ny >> 8, th->z >> 8, 0))
 		{
+apply_pos:
 			th->x = nx;
 			th->y = ny;
 			thing_apply_pos();
+		} else
+		{
+			if(th->eflags & THING_EFLAG_SLIDING)
+			{
+				vertex_t vect;
+				int32_t dist;
+				int8_t ang;
+
+				p2a_coord.x = th->mx;
+				p2a_coord.y = th->my;
+				dist = point_to_dist();
+
+				ang = 0x40 - (poscheck.hitang - p2a_coord.a);
+
+				dist *= ang * 4;
+				dist >>= 8;
+
+				vect.x = (tab_sin[poscheck.hitang] * dist) >> 8;
+				vect.y = (tab_cos[poscheck.hitang] * dist) >> 8;
+
+				nx = th->x + vect.x;
+				ny = th->y + vect.y;
+
+				if(thing_check_pos(tick_idx, nx >> 8, ny >> 8, th->z >> 8, 0))
+				{
+					th->mx = vect.x;
+					th->my = vect.y;
+					goto apply_pos;
+				} else
+					goto fail_pos;
+			} else
+			{
+fail_pos:
+				th->mx = 0;
+				th->my = 0;
+				if(th->eflags & THING_EFLAG_SLIDING)
+				{
+					uint8_t ang = level_tick << 5;
+
+					nx = th->x + tab_sin[ang];
+					ny = th->y + tab_cos[ang];
+
+					if(thing_check_pos(tick_idx, nx >> 8, ny >> 8, th->z >> 8, 0))
+						goto apply_pos;
+				}
+			}
 		}
 
 		// friction

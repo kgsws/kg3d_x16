@@ -21,6 +21,15 @@ INPUT_MOUSE_D = $05
 ; files
 FILE_LOAD_RDSIZE = $02
 
+; hitscan temp storage
+TMP_HITSCAN_ORIGIN = $21
+
+; render temp storage
+TMP_REND_WPN_OFFS_L = $1E
+TMP_REND_WPN_OFFS_H = $1F
+TMP_REND_WPN_LIGHT = $20
+TMP_REND_WPN_IDX = $21
+
 ; pointers
 COLORMAP_L = $22	; forced by tables, do not change address
 COLORMAP_H = $23	; forced by tables, do not change address
@@ -84,15 +93,6 @@ TMP_STACT_FRM_H = $1D
 TMP_STACT_ARG_0 = $1E
 TMP_STACT_ARG_1 = $1F
 TMP_STACT_ARG_2 = $20
-
-; special hitscan temp storage (shared with action)
-TMP_HITSCAN_ORIGIN = $21
-
-; special render temp storage
-TMP_REND_WPN_OFFS_L = $1E
-TMP_REND_WPN_OFFS_H = $1F
-TMP_REND_WPN_LIGHT = $20
-TMP_REND_WPN_IDX = $21
 
 ; math
 MATH_VAR_L = $40
@@ -281,6 +281,10 @@ THMOVE_SECTOR = $C6
 THMOVE_MASKBLOCK = $C7
 THMOVE_INSIDE = $C8
 THMOVE_TOUCH = $C9
+THMOVE_HITANG = $CA
+
+; thing ticker
+THTICK_RETRY = $CB
 
 ; hitscan
 HITSCAN_NEW_ANGLE = $B0

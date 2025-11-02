@@ -3985,8 +3985,7 @@ prepare_sprite:
 	ldx	MATH_VAR_H
 	lda	TAB_SWAP,x
 	and	#$F0
-	ora	SPRITE_ANG_H
-	sta	SPRITE_ANG_H
+	tsb	SPRITE_ANG_H
 
 	; ang = th->angle - (a0 >> 4)
 	sec

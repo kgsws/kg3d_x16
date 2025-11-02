@@ -242,7 +242,6 @@ thing_spawn_org:
 	beq	@pos_fail
 
 	; place to sectors
-	ldy	ARG_THING_IDX
 	jsr	thing_apply_spawn
 
 	; ticker structure bank
@@ -948,7 +947,15 @@ thing_check_spawn:
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
-	; TODO: store vector
+	; store angle
+	ldx	WALL_STRUCT_ANGLE_L,y
+	lda	TAB_SWAP,x
+	and	#$0F
+	sta	THMOVE_HITANG
+	ldx	WALL_STRUCT_ANGLE_H,y
+	lda	TAB_SWAP,x
+	and	#$F0
+	tsb	THMOVE_HITANG
 
 	;; STOP - FAILED
 	; set zero flag
@@ -1145,7 +1152,7 @@ thing_apply_spawn:
 	bne	@loop_place
 
 	; restore
-	ldy	ARG_THING_IDX
+	ldx	ARG_THING_IDX
 
 ;;;
 ; apply thing position
@@ -1161,30 +1168,30 @@ thing_apply_heights:
 
 	; th->floorz = poscheck.floorz
 	lda	THMOVE_FLOORZ_L
-	sta	THING_STRUCT_FLOORZ_L,y
+	sta	THING_STRUCT_FLOORZ_L,x
 	lda	THMOVE_FLOORZ_H
-	sta	THING_STRUCT_FLOORZ_H,y
+	sta	THING_STRUCT_FLOORZ_H,x
 
 	; th->ceilingz = poscheck.ceilingz - poscheck.height
 	sec
 	lda	THMOVE_CEILINGZ_L
 	sbc	THMOVE_HEIGHT
-	sta	THING_STRUCT_CEILZ_L,y
+	sta	THING_STRUCT_CEILZ_L,x
 	lda	THMOVE_CEILINGZ_H
 	sbc	#0
-	sta	THING_STRUCT_CEILZ_H,y
+	sta	THING_STRUCT_CEILZ_H,x
 
 	; sectors
 	lda	THMOVE_FLOORS
-	sta	THING_STRUCT_FLOORS,y
+	sta	THING_STRUCT_FLOORS,x
 	lda	THMOVE_CEILINGS
-	sta	THING_STRUCT_CEILS,y
+	sta	THING_STRUCT_CEILS,x
 
 	; iflags
-	lda	THING_STRUCT_IFLAGS,y
+	lda	THING_STRUCT_IFLAGS,x
 	and	#<~(THING_IFLAG_HEIGHTCHECK|THING_IFLAG_NOJUMP)
 	ora	THMOVE_IFLAGS
-	sta	THING_STRUCT_IFLAGS,y
+	sta	THING_STRUCT_IFLAGS,x
 
 	; done
 	rts
@@ -1202,6 +1209,8 @@ thing_tick:
 	bne	:+
 	jmp	@no_xy_move
 :
+	stz	THTICK_RETRY
+@xy_retry:
 	; new X
 	ldx	THING_STRUCT_MX_L,y
 	lda	TAB_SIGN_EXT,x
@@ -1243,8 +1252,201 @@ thing_tick:
 	sty	ARG_THING_IDX
 	jsr	thing_check_pos
 
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; check result
+	lda	THMOVE_SECTOR
+	beq	:+
+	jmp	@xy_pass
+:
 	; restore
+	ldx	ARG_THING_IDX
+
+	; check retry
+	lda	THTICK_RETRY
+	beq	:+
+	jmp	@xy_fail
+:
+	; check sliding flag
+	lda	THING_STRUCT_EFLAGS,x
+	bmi	:+
+	jmp	@xy_fail
+:
+	; get speed and angle
+	lda	THING_STRUCT_MX_S,x
+	sta	MATH_P2A_X_L
+	lda	THING_STRUCT_MX_L,x
+	sta	MATH_P2A_X_H
+	lda	THING_STRUCT_MY_S,x
+	sta	MATH_P2A_Y_L
+	lda	THING_STRUCT_MY_L,x
+	sta	MATH_P2A_Y_H
+	jsr	math_p2d
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; restore
+	ldx	ARG_THING_IDX
+
+	; ang = 0x40 - (poscheck.hitang - p2a_coord.a)
+	sec
+	lda	THMOVE_HITANG
+	sbc	MATH_VAR_U
+	sta	MATH_VAR_U
+	sec
+	lda	#$40
+	sbc	MATH_VAR_U
+	sta	MATH_VAR_U
+
+	;; dist *= ang * 4
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist
+	lda	MATH_VAR_L
+	sta	VERA_FX_CACHE_L
+	lda	MATH_VAR_H
+	sta	VERA_FX_CACHE_M
+
+	; ang
+	ldy	MATH_VAR_U
+	sty	VERA_FX_CACHE_H
+	lda	TAB_SIGN_EXT,y
+	sta	VERA_FX_CACHE_U
+
+	; accumulate 3x
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_M
+
+	;; vect.x = (tab_sin[poscheck.hitang] * dist) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; tab_sin
+	ldy	THMOVE_HITANG
+	lda	TAB_SIN_L,y
+	sta	VERA_FX_CACHE_H
+	lda	TAB_SIN_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	THING_STRUCT_MX_S,x
+	lda	VERA_DATA0
+	sta	THING_STRUCT_MX_L,x
+
+	;; vect.y = (tab_cos[poscheck.hitang] * dist) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; tab_cos
+	ldy	THMOVE_HITANG
+	lda	TAB_COS_L,y
+	sta	VERA_FX_CACHE_H
+	lda	TAB_COS_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	THING_STRUCT_MY_S,x
+	lda	VERA_DATA0
+	sta	THING_STRUCT_MY_L,x
+
+	; retry
+	inc	THTICK_RETRY
 	ldy	ARG_THING_IDX
+	jmp	@xy_retry
+
+@xy_fail:
+	; stop
+	stz	THING_STRUCT_MX_S,x
+	stz	THING_STRUCT_MX_L,x
+	stz	THING_STRUCT_MY_S,x
+	stz	THING_STRUCT_MY_L,x
+
+	; check retry
+	lda	THTICK_RETRY
+	bne	:+
+	jmp	@no_xy_friction
+:
+	; ang = level_tick << 5
+	lda	G_LEVEL_TICK_L
+	ror
+	ror
+	ror
+	ror
+	and	#$E0
+	tax
+	phx
+
+	; X
+	math_read_sin	MATH_VAR_L, MATH_VAR_H
+	tay
+	lda	TAB_SIGN_EXT,y
+	sta	MATH_VAR_U
+	ldx	ARG_THING_IDX
+	clc
+	lda	THING_STRUCT_X_S,x
+	adc	MATH_VAR_L
+	sta	ARG_THING_X_S
+	lda	THING_STRUCT_X_L,x
+	adc	MATH_VAR_H
+	sta	ARG_THING_X_L
+	lda	THING_STRUCT_X_H,x
+	adc	MATH_VAR_U
+	sta	ARG_THING_X_H
+
+	; Y
+	plx
+	math_read_cos	MATH_VAR_L, MATH_VAR_H
+	tay
+	lda	TAB_SIGN_EXT,y
+	sta	MATH_VAR_U
+	ldx	ARG_THING_IDX
+	clc
+	lda	THING_STRUCT_Y_S,x
+	adc	MATH_VAR_L
+	sta	ARG_THING_Y_S
+	lda	THING_STRUCT_Y_L,x
+	adc	MATH_VAR_H
+	sta	ARG_THING_Y_L
+	lda	THING_STRUCT_Y_H,x
+	adc	MATH_VAR_U
+	sta	ARG_THING_Y_H
+
+	; check new position
+	stz	ARG_THING_SECTOR
+	jsr	thing_check_pos
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
@@ -1252,34 +1454,30 @@ thing_tick:
 
 	; check result
 	lda	THMOVE_SECTOR
-	beq	@xy_fail
+	beq	@no_xy_friction
 
+@xy_pass:
 	; apply
 	jsr	thing_apply_pos
 	lda	ARG_THING_X_S
-	sta	THING_STRUCT_X_S,y
+	sta	THING_STRUCT_X_S,x
 	lda	ARG_THING_X_L
-	sta	THING_STRUCT_X_L,y
+	sta	THING_STRUCT_X_L,x
 	lda	ARG_THING_X_H
-	sta	THING_STRUCT_X_H,y
+	sta	THING_STRUCT_X_H,x
 	lda	ARG_THING_Y_S
-	sta	THING_STRUCT_Y_S,y
+	sta	THING_STRUCT_Y_S,x
 	lda	ARG_THING_Y_L
-	sta	THING_STRUCT_Y_L,y
+	sta	THING_STRUCT_Y_L,x
 	lda	ARG_THING_Y_H
-	sta	THING_STRUCT_Y_H,y
-
-@xy_fail:
+	sta	THING_STRUCT_Y_H,x
 
 	;; XY friction
 
 	; check flag
-	lda	THING_STRUCT_EFLAGS,y
+	lda	THING_STRUCT_EFLAGS,x
 	and	#THING_EFLAG_PROJECTILE
 	bne	@no_xy_friction
-
-	; thing
-	ldx	G_TICKER_IDX
 
 	; MX
 	lda	THING_STRUCT_MX_L,x
@@ -1310,6 +1508,9 @@ thing_tick:
 	stz	THING_STRUCT_MY_S,x
 :
 @no_xy_friction:
+	; restore
+	ldy	ARG_THING_IDX
+
 @no_xy_move:
 	;; Z movement
 

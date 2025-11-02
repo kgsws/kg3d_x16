@@ -14,6 +14,7 @@
 .export	math_idiv_ns
 .export	math_atan
 .export math_p2a
+.export math_p2d
 .export math_u16
 .export math_intclip
 .export math_txtint
@@ -207,6 +208,7 @@ math_atan:
 ; assuming cache write enabled
 ; assuming dcsel = 6, addrsel = 0
 ; assuming ADDR0 = 0x001F00, increment = 1
+; MATH_P2A_ might be modified
 ; result is in MATH_VAR_*
 
 math_p2a:
@@ -216,6 +218,7 @@ math_p2a:
 	; if(p2a_coord.x < 0)
 	lda	MATH_P2A_X_H
 	bpl	@skip_xneg
+
 	; p2a_coord.x = -p2a_coord.x
 	sec
 	lda	#0
@@ -224,6 +227,7 @@ math_p2a:
 	lda	#0
 	sbc	MATH_P2A_X_H
 	sta	MATH_P2A_X_H
+
 	; change quadrant
 	ldx	#%00000010
 
@@ -231,6 +235,7 @@ math_p2a:
 	; if(p2a_coord.y < 0)
 	lda	MATH_P2A_Y_H
 	bpl	@skip_yneg
+
 	; p2a_coord.y = -p2a_coord.y
 	sec
 	lda	#0
@@ -239,6 +244,7 @@ math_p2a:
 	lda	#0
 	sbc	MATH_P2A_Y_H
 	sta	MATH_P2A_Y_H
+
 	; change quadrant
 	txa
 	ora	#%00000100
@@ -431,6 +437,82 @@ math_p2a:
 	.word	@p2a_oct6
 	.word	@p2a_oct2
 	.word	@p2a_oct5
+
+;;;
+; point to angle
+;;;
+; same as 'point to angle' but with extra processing
+; returns 8bit angle in MATH_VAR_U
+; returns 16bit distance in MATH_VAR_*
+
+math_p2d:
+	; backup
+	lda	MATH_P2A_Y_H
+	pha
+	lda	MATH_P2A_Y_L
+	pha
+	lda	MATH_P2A_X_H
+	pha
+	lda	MATH_P2A_X_L
+	pha
+
+	; get angle
+	jsr	math_p2a
+
+	; ang >>= 4
+	ldx	MATH_VAR_L
+	lda	TAB_SWAP,x
+	and	#$0F
+	sta	MATH_VAR_U
+	ldx	MATH_VAR_H
+	lda	TAB_SWAP,x
+	and	#$F0
+	tsb	MATH_VAR_U
+	ldx	MATH_VAR_U
+
+	;; (vtx.x * tab_sin[ang] + vtx.y * tab_cos[ang]) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; vtx.x
+	pla
+	sta	VERA_FX_CACHE_L
+	pla
+	sta	VERA_FX_CACHE_M
+
+	; tab_sin[ang]
+	lda	TAB_SIN_L,x
+	sta	VERA_FX_CACHE_H
+	lda	TAB_SIN_H,x
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; vtx.y
+	pla
+	sta	VERA_FX_CACHE_L
+	pla
+	sta	VERA_FX_CACHE_M
+
+	; tab_cos[ang]
+	lda	TAB_COS_L,x
+	sta	VERA_FX_CACHE_H
+	lda	TAB_COS_H,x
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	MATH_VAR_L
+	lda	VERA_DATA0
+	sta	MATH_VAR_H
+
+	rts
 
 ;;;
 ; print integer as string

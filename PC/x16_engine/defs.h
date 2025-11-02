@@ -38,6 +38,12 @@ typedef struct
 typedef struct
 {
 	int16_t x, y;
+	uint8_t a;
+} p2a_t;
+
+typedef struct
+{
+	int16_t x, y;
 } __attribute__((packed)) vertex_t;
 
 typedef struct
@@ -113,7 +119,7 @@ extern uint32_t frame_counter;
 
 extern uint32_t level_tick;
 
-extern vertex_t p2a_coord;
+extern p2a_t p2a_coord;
 
 extern projection_t projection;
 
@@ -141,6 +147,7 @@ extern const uint32_t wall_size_tab[];
 int32_t load_file(const char *name, void *data, uint32_t size);
 
 uint16_t point_to_angle();
+uint16_t point_to_dist();
 
 uint8_t rng_get();
 

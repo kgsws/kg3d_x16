@@ -360,7 +360,7 @@ static float gl_fov_x, gl_fov_y;
 static show_wpn_t show_wpn_now;
 static uint8_t show_wpn_slot = 0x8E;
 
-vertex_t p2a_coord;
+p2a_t p2a_coord;
 
 projection_t projection;
 
@@ -795,6 +795,20 @@ printf("O: 0; 0x%03X\n", atan_tab[res]);
 	}
 
 	return ret & 4095;
+}
+
+uint16_t point_to_dist()
+{
+	vertex_t vtx;
+	uint8_t ang;
+
+	vtx.x = p2a_coord.x;
+	vtx.y = p2a_coord.y;
+
+	ang = point_to_angle() >> 4;
+	p2a_coord.a = ang;
+
+	return (vtx.x * tab_sin[ang] + vtx.y * tab_cos[ang]) >> 8;
 }
 
 int32_t spec_inv_div(int16_t n, int16_t d)
