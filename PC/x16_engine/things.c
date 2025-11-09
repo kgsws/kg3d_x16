@@ -30,6 +30,8 @@ typedef struct
 	uint8_t step_height, water_height;
 	uint8_t sector, slot;
 	uint8_t maskblock;
+	uint8_t pthit, ptwall;
+	uint8_t pbhit, pbwall;
 	uint8_t hitang;
 } pos_check_t;
 
@@ -207,7 +209,22 @@ static uint32_t check_backsector(uint8_t sec, int32_t th_z)
 	return 0;
 }
 
-static void add_sector(uint8_t sdx, uint8_t islink, uint8_t touch)
+static void check_point(vertex_t *dd, uint32_t wdx)
+{
+	int32_t dist;
+
+	p2a_coord.x = dd->x;
+	p2a_coord.y = dd->y;
+	dist = point_to_dist();
+
+	if(dist >= poscheck.radius)
+		return;
+
+	poscheck.pthit = 2;
+	poscheck.ptwall = wdx;
+}
+
+static void add_sector(uint8_t sdx, uint8_t touch, uint8_t islink)
 {
 	uint32_t i;
 
@@ -295,6 +312,8 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 		}
 	}
 
+	poscheck.pbhit = 0;
+
 	poscheck.sector = 0;
 	poscheck.maskblock = 0;
 
@@ -330,6 +349,8 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 			wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
 			wall_t *walf = wall;
 			uint8_t inside = 1;
+
+			poscheck.pthit = 0;
 
 			do
 			{
@@ -375,10 +396,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				// get left side
 				dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8;
 				if(dist < 0)
-				{
-					// TODO: point check
 					goto do_next;
-				}
 
 				// V1 diff
 				vtx = &waln->vtx;
@@ -389,16 +407,24 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8;
 				if(dist >= 0)
 				{
-					// TODO: point check
+					if(	!poscheck.pbhit &&
+						dist - poscheck.radius < 0
+					)
+						check_point(&dd, wall - map_walls[sec->wall.bank]);
 					goto do_next;
 				}
+
+				if(	!poscheck.pbhit &&
+					dist + poscheck.radius >= 0
+				)
+					check_point(&dd, wall - map_walls[sec->wall.bank]);
 
 				// check backsector
 				if(	wall->backsector &&
 					!(wall->blocking & poscheck.blockedby & 0x7F) &&
 					!check_backsector(wall->backsector, zz)
 				){
-					add_sector(wall->backsector, 0, touch);
+					add_sector(wall->backsector, touch, 0);
 					goto do_next;
 				}
 
@@ -411,10 +437,53 @@ do_next:
 				wall = waln;
 			} while(wall != walf);
 
+			// point check
+			if(poscheck.pthit)
+			{
+				wall_t *waln;
+
+				wall = map_walls[sec->wall.bank] + poscheck.ptwall;
+				waln = map_walls[sec->wall.bank] + wall->next;
+
+				p2a_coord.x = waln->vtx.x;
+				p2a_coord.y = waln->vtx.y;
+
+				while(poscheck.pthit)
+				{
+					// check blocking
+					if(	!wall->backsector ||
+						(wall->blocking & poscheck.blockedby & 0x7F)
+					){
+pt_block:
+						p2a_coord.x -= th->x >> 8;
+						p2a_coord.y -= th->y >> 8;
+						poscheck.hitang = point_to_angle() >> 4;
+						poscheck.hitang += 0x40;
+						poscheck.pthit = 0;
+						poscheck.pbhit = 1;
+						poscheck.pbwall = poscheck.ptwall;
+					} else
+					{
+						// check backsector
+						if(check_backsector(wall->backsector, zz))
+							goto pt_block;
+						else
+							add_sector(wall->backsector, 1, 0);
+
+						poscheck.pthit--;
+						poscheck.ptwall = wall->next;
+						wall = map_walls[sec->wall.bank] + poscheck.ptwall;
+					}
+				}
+			}
+
 			if(inside && !poscheck.sector)
 				poscheck.sector = sdx;
 		}
 	}
+
+	if(poscheck.pbhit)
+		return 0;
 
 	return poscheck.sector;
 }
@@ -757,7 +826,11 @@ apply_pos:
 			thing_apply_pos();
 		} else
 		{
-			if(th->eflags & THING_EFLAG_SLIDING)
+			if(th->eflags & THING_EFLAG_PROJECTILE)
+			{
+				th->mx = 0;
+				th->my = 0;
+			} else
 			{
 				vertex_t vect;
 				int32_t dist;
@@ -784,15 +857,11 @@ apply_pos:
 					th->my = vect.y;
 					goto apply_pos;
 				} else
-					goto fail_pos;
-			} else
-			{
-fail_pos:
-				th->mx = 0;
-				th->my = 0;
-				if(th->eflags & THING_EFLAG_SLIDING)
 				{
 					uint8_t ang = level_tick << 5;
+
+					th->mx = 0;
+					th->my = 0;
 
 					nx = th->x + tab_sin[ang];
 					ny = th->y + tab_cos[ang];

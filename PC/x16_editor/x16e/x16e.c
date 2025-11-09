@@ -10,7 +10,7 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	22
+#define MAP_VERSION	23
 #define MAP_MAGIC	0x36315870614D676B
 
 #define WALL_BANK_COUNT	16
@@ -80,7 +80,6 @@ typedef struct
 	{
 		uint8_t bank;
 		uint8_t first;
-		uint8_t last;
 	} wall;
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
@@ -506,7 +505,7 @@ void x16_export_map()
 	{
 		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
 		int32_t wall_bank = -1;
-		int32_t wall_first, wall_last;
+		int32_t wall_first;
 		int32_t wfrst = -1;
 		uint32_t wcnt;
 
@@ -734,7 +733,6 @@ void x16_export_map()
 
 				if(i == wfrst)
 					wall_first = idx;
-				wall_last = idx;
 
 				place_struct(wb->data, idx++, wall, 16);
 				if(wall->angle & WALL_MARK_EXTENDED)
@@ -785,7 +783,6 @@ void x16_export_map()
 
 		map_sector->wall.bank = wall_bank;
 		map_sector->wall.first = wall_first;
-		map_sector->wall.last = wall_last;
 
 		map_sector->floordist = sec->plane[PLANE_BOT].dist;
 		map_sector->floormasked = masked_height * 2;

@@ -1,5 +1,5 @@
 
-#define MAP_VERSION	22
+#define MAP_VERSION	23
 #define MAP_MAGIC	0x36315870614D676B
 #define MAX_LIGHTS	8
 #define MAX_X16_VARIANTS	16
@@ -90,7 +90,6 @@ typedef struct
 	{
 		uint8_t bank;
 		uint8_t first;
-		uint8_t last;
 	} wall;
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;

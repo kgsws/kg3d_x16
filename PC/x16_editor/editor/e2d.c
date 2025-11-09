@@ -1026,20 +1026,20 @@ static void draw_origin()
 	shader_changed = 1;
 	shader_update();
 
-	gl_vertex_buf[0].x = 16.0f / -edit_scale;
+	gl_vertex_buf[0].x = -16384.0f;
 	gl_vertex_buf[0].y = 0;
 	gl_vertex_buf[0].z = DEPTH_GRID;
 
-	gl_vertex_buf[1].x = 16.0f / edit_scale;
+	gl_vertex_buf[1].x = 16384.0f;
 	gl_vertex_buf[1].y = 0;
 	gl_vertex_buf[1].z = DEPTH_GRID;
 
 	gl_vertex_buf[2].x = 0;
-	gl_vertex_buf[2].y = 16.0f / -edit_scale;
+	gl_vertex_buf[2].y = -16384.0f;
 	gl_vertex_buf[2].z = DEPTH_GRID;
 
 	gl_vertex_buf[3].x = 0;
-	gl_vertex_buf[3].y = 16.0f / edit_scale;
+	gl_vertex_buf[3].y = 16384.0f;
 	gl_vertex_buf[3].z = DEPTH_GRID;
 
 	glDrawArrays(GL_LINES, 0, 4);

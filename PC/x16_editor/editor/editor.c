@@ -4085,7 +4085,7 @@ void edit_highlight_changed()
 			glui_set_text(&ui_edit_highlight_title, text, glui_font_small_kfn, GLUI_ALIGN_CENTER_TOP);
 
 			// text
-			sprintf(text, "\n\n\n\n\n\n\nZ: %.0f", th->pos.z);
+			sprintf(text, "\n\n\n\n\n\n\nX: %.0f Y: %.0f Z: %.0f", th->pos.x, th->pos.y, th->pos.z);
 			glui_set_text(&ui_edit_highlight_textA, text, glui_font_tiny_kfn, GLUI_ALIGN_CENTER_TOP);
 
 			// image

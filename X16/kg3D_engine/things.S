@@ -675,6 +675,9 @@ thing_check_spawn:
 	; poscheck.maskblock = 0
 	stz	THMOVE_MASKBLOCK
 
+	; poscheck.pbhit = 0
+	stz	THMOVE_PBHIT
+
 	; while(poscheck.portal_rd < poscheck.portal_wr)
 @loop_sec:
 	; sector bank
@@ -684,8 +687,8 @@ thing_check_spawn:
 	; inside = any non-zero number
 	sta	THMOVE_INSIDE
 
-	; touch = any non-zero number
-	sta	THMOVE_TOUCH
+	; poscheck.pthit = 0
+	stz	THMOVE_PTHIT
 
 	; check floorz
 	jsr	get_sector_floorz
@@ -739,13 +742,22 @@ thing_check_spawn:
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
+	; touch = any non-zero number
+	sta	THMOVE_TOUCH
+
 	; swap check
 	lda	WALL_STRUCT_ANGLE_H,y
 	bpl	:+
 
 	; V1 diff (X)
 	ldx	WALL_STRUCT_NEXT,y
-	jsr	v1_diff_x
+	sec
+	lda	WALL_STRUCT_VTX_X_L,x
+	sbc	ARG_THING_X_L
+	sta	VERA_FX_CACHE_L
+	lda	WALL_STRUCT_VTX_X_H,x
+	sbc	ARG_THING_X_H
+	sta	VERA_FX_CACHE_M
 
 	; V1 diff (-Y)
 	sec
@@ -755,9 +767,6 @@ thing_check_spawn:
 	lda	ARG_THING_Y_H
 	sbc	WALL_STRUCT_VTX_Y_H,x
 	sta	MATH_VAR_H
-
-	; restore
-	ldx	ARG_THING_SECTOR
 
 	bra	:++
 :
@@ -883,9 +892,7 @@ thing_check_spawn:
 
 	; if(dist < 0)
 	bpl	:+
-
-	; TODO: point check
-	bra	@next_wall
+	jmp	@next_wall
 :
 	;; right side
 	; dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8
@@ -899,9 +906,11 @@ thing_check_spawn:
 	sec
 	lda	WALL_STRUCT_VTX_Y_L,x
 	sbc	ARG_THING_Y_L
+	sta	MATH_P2A_Y_L
 	sta	VERA_FX_CACHE_L
 	lda	WALL_STRUCT_VTX_Y_H,x
 	sbc	ARG_THING_Y_H
+	sta	MATH_P2A_Y_H
 	sta	VERA_FX_CACHE_M
 
 	; wall->dist.y is already set
@@ -911,10 +920,15 @@ thing_check_spawn:
 
 	; dd.x
 	; V1 diff (X)
-	jsr	v1_diff_x
-
-	; restore
-	ldx	ARG_THING_SECTOR
+	sec
+	lda	WALL_STRUCT_VTX_X_L,x
+	sbc	ARG_THING_X_L
+	sta	MATH_P2A_X_L
+	sta	VERA_FX_CACHE_L
+	lda	WALL_STRUCT_VTX_X_H,x
+	sbc	ARG_THING_X_H
+	sta	MATH_P2A_X_H
+	sta	VERA_FX_CACHE_M
 
 	; wall->dist.x
 	lda	WALL_STRUCT_DIST_X_L,y
@@ -928,19 +942,50 @@ thing_check_spawn:
 
 	; get result (>> 8)
 	lda	VERA_DATA0
+	sta	MATH_VAR_L
 	lda	VERA_DATA0
+	sta	MATH_VAR_H
 
-	; if(dist < 0)
+	; if(dist >= 0)
 	bmi	:+
 
-	; TODO: point check
+	; !poscheck.pbhit
+	lda	THMOVE_PBHIT
+	bne	@next_wall
+
+	; dist - poscheck.radius < 0
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_RADIUS
+	lda	MATH_VAR_H
+	sbc	#0
+	bpl	@next_wall
+
+	; check this point
+	jsr	check_point
+
 	bra	@next_wall
+:
+	; !poscheck.pbhit
+	lda	THMOVE_PBHIT
+	bne	:+
+
+	; dist + poscheck.radius >= 0
+	clc
+	lda	MATH_VAR_L
+	adc	THMOVE_RADIUS
+	lda	MATH_VAR_H
+	adc	#0
+	bmi	:+
+
+	; check this point
+	jsr	check_point
 :
 	;; check backsector
 
 	; wall->backsector
 	ldx	WALL_STRUCT_BACKSECTOR,y
-	bne	:+
+	bne	@check_backsector
 
 @do_block:
 	; wall bank
@@ -962,7 +1007,8 @@ thing_check_spawn:
 	lda	#0
 	sta	THMOVE_SECTOR
 	rts
-:
+
+@check_backsector:
 	; !(wall->blocking & poscheck.blockedby & 0x7F)
 	lda	WALL_STRUCT_BLOCKING,y
 	and	THMOVE_BLOCKEDBY
@@ -990,6 +1036,103 @@ thing_check_spawn:
 	beq	:+
 	jmp	@loop_wall
 :
+	; check point
+	lda	THMOVE_PTHIT
+	beq	@skip_point
+
+	; wall
+	ldy	THMOVE_PTWALL
+
+	; waln
+	ldx	WALL_STRUCT_NEXT,y
+
+	; p2a_coord.x = waln->vtx.x
+	lda	WALL_STRUCT_VTX_X_L,x
+	sta	MATH_P2A_X_L
+	lda	WALL_STRUCT_VTX_X_H,x
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = waln->vtx.y
+	lda	WALL_STRUCT_VTX_Y_L,x
+	sta	MATH_P2A_Y_L
+	lda	WALL_STRUCT_VTX_Y_H,x
+	sta	MATH_P2A_Y_H
+
+@point_next:
+	; wall->backsector
+	ldx	WALL_STRUCT_BACKSECTOR,y
+	bne	@point_backsector
+
+@point_block:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; save
+	sta	THMOVE_PBHIT
+	sty	THMOVE_PBWALL
+
+	; thing
+	ldx	ARG_THING_IDX
+
+	; p2a_coord.x -= th->x >> 8
+	sec
+	lda	MATH_P2A_X_L
+	sbc	THING_STRUCT_X_L,x
+	sta	MATH_P2A_X_L
+	lda	MATH_P2A_X_H
+	sbc	THING_STRUCT_X_H,x
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y -= th->y >> 8
+	sec
+	lda	MATH_P2A_Y_L
+	sbc	THING_STRUCT_Y_L,x
+	sta	MATH_P2A_Y_L
+	lda	MATH_P2A_Y_H
+	sbc	THING_STRUCT_Y_H,x
+	sta	MATH_P2A_Y_H
+
+	; angle
+	jsr	math_p2a
+	jsr	math_ang8
+	clc
+	lda	MATH_VAR_U
+	adc	#$40
+	sta	THMOVE_HITANG
+
+	bra	@skip_point
+
+@point_backsector:
+	; (wall->blocking & poscheck.blockedby & 0x7F)
+	lda	WALL_STRUCT_BLOCKING,y
+	and	THMOVE_BLOCKEDBY
+	and	#$7F
+	bne	@point_block
+
+	; check_backsector(wall->backsector, zz)
+	jsr	check_backsector
+	bmi	@point_block
+
+	; add backsector
+	stx	THMOVE_TOUCH
+	jsr	add_sector
+
+	; handle next
+	lda	THMOVE_PTHIT
+	beq	@skip_point
+	stz	THMOVE_PTHIT
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; try next
+	ldx	THMOVE_PTWALL
+	ldy	WALL_STRUCT_NEXT,x
+	bra	@point_next
+
+@skip_point:
 	; if(inside && !poscheck.sector)
 	lda	THMOVE_INSIDE
 	beq	:+
@@ -1016,7 +1159,17 @@ thing_check_spawn:
 	jmp	@loop_sec
 
 @done:
-	;; STOP
+	; check point hit
+	lda	THMOVE_PBHIT
+	beq	:+
+
+	;; STOP - FAILED
+	; set zero flag
+	lda	#0
+	sta	THMOVE_SECTOR
+	rts
+:
+	;; STOP - PASSED
 	; unset zero flag
 	lda	THMOVE_SECTOR
 	rts
@@ -1266,13 +1419,86 @@ thing_tick:
 
 	; check retry
 	lda	THTICK_RETRY
+	beq	@skip_wiggle
+
+	; stop
+	stz	THING_STRUCT_MX_S,x
+	stz	THING_STRUCT_MX_L,x
+	stz	THING_STRUCT_MY_S,x
+	stz	THING_STRUCT_MY_L,x
+
+	; ang = level_tick << 5
+	lda	G_LEVEL_TICK_L
+	ror
+	ror
+	ror
+	ror
+	and	#$E0
+	tax
+	phx
+
+	; X
+	math_read_sin	MATH_VAR_L, MATH_VAR_H
+	tay
+	lda	TAB_SIGN_EXT,y
+	sta	MATH_VAR_U
+	ldx	ARG_THING_IDX
+	clc
+	lda	THING_STRUCT_X_S,x
+	adc	MATH_VAR_L
+	sta	ARG_THING_X_S
+	lda	THING_STRUCT_X_L,x
+	adc	MATH_VAR_H
+	sta	ARG_THING_X_L
+	lda	THING_STRUCT_X_H,x
+	adc	MATH_VAR_U
+	sta	ARG_THING_X_H
+
+	; Y
+	plx
+	math_read_cos	MATH_VAR_L, MATH_VAR_H
+	tay
+	lda	TAB_SIGN_EXT,y
+	sta	MATH_VAR_U
+	ldx	ARG_THING_IDX
+	clc
+	lda	THING_STRUCT_Y_S,x
+	adc	MATH_VAR_L
+	sta	ARG_THING_Y_S
+	lda	THING_STRUCT_Y_L,x
+	adc	MATH_VAR_H
+	sta	ARG_THING_Y_L
+	lda	THING_STRUCT_Y_H,x
+	adc	MATH_VAR_U
+	sta	ARG_THING_Y_H
+
+	; check new position
+	stz	ARG_THING_SECTOR
+	jsr	thing_check_pos
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; check result
+	lda	THMOVE_SECTOR
 	beq	:+
-	jmp	@xy_fail
+	jmp	@xy_pass
 :
-	; check sliding flag
+	jmp	@no_xy_friction
+
+@skip_wiggle:
+	; check projectile flag
 	lda	THING_STRUCT_EFLAGS,x
-	bmi	:+
-	jmp	@xy_fail
+	bpl	:+
+
+	; stop
+	stz	THING_STRUCT_MX_S,x
+	stz	THING_STRUCT_MX_L,x
+	stz	THING_STRUCT_MY_S,x
+	stz	THING_STRUCT_MY_L,x
+
+	jmp	@no_xy_friction
 :
 	; get speed and angle
 	lda	THING_STRUCT_MX_S,x
@@ -1386,75 +1612,6 @@ thing_tick:
 	inc	THTICK_RETRY
 	ldy	ARG_THING_IDX
 	jmp	@xy_retry
-
-@xy_fail:
-	; stop
-	stz	THING_STRUCT_MX_S,x
-	stz	THING_STRUCT_MX_L,x
-	stz	THING_STRUCT_MY_S,x
-	stz	THING_STRUCT_MY_L,x
-
-	; check retry
-	lda	THTICK_RETRY
-	bne	:+
-	jmp	@no_xy_friction
-:
-	; ang = level_tick << 5
-	lda	G_LEVEL_TICK_L
-	ror
-	ror
-	ror
-	ror
-	and	#$E0
-	tax
-	phx
-
-	; X
-	math_read_sin	MATH_VAR_L, MATH_VAR_H
-	tay
-	lda	TAB_SIGN_EXT,y
-	sta	MATH_VAR_U
-	ldx	ARG_THING_IDX
-	clc
-	lda	THING_STRUCT_X_S,x
-	adc	MATH_VAR_L
-	sta	ARG_THING_X_S
-	lda	THING_STRUCT_X_L,x
-	adc	MATH_VAR_H
-	sta	ARG_THING_X_L
-	lda	THING_STRUCT_X_H,x
-	adc	MATH_VAR_U
-	sta	ARG_THING_X_H
-
-	; Y
-	plx
-	math_read_cos	MATH_VAR_L, MATH_VAR_H
-	tay
-	lda	TAB_SIGN_EXT,y
-	sta	MATH_VAR_U
-	ldx	ARG_THING_IDX
-	clc
-	lda	THING_STRUCT_Y_S,x
-	adc	MATH_VAR_L
-	sta	ARG_THING_Y_S
-	lda	THING_STRUCT_Y_L,x
-	adc	MATH_VAR_H
-	sta	ARG_THING_Y_L
-	lda	THING_STRUCT_Y_H,x
-	adc	MATH_VAR_U
-	sta	ARG_THING_Y_H
-
-	; check new position
-	stz	ARG_THING_SECTOR
-	jsr	thing_check_pos
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; check result
-	lda	THMOVE_SECTOR
-	beq	@no_xy_friction
 
 @xy_pass:
 	; apply
@@ -1764,20 +1921,6 @@ v0_diff_x:
 	rts
 
 ;;;
-; V1 X diff
-;;;
-
-v1_diff_x:
-	sec
-	lda	WALL_STRUCT_VTX_X_L,x
-	sbc	ARG_THING_X_L
-	sta	VERA_FX_CACHE_L
-	lda	WALL_STRUCT_VTX_X_H,x
-	sbc	ARG_THING_X_H
-	sta	VERA_FX_CACHE_M
-	rts
-
-;;;
 ; get sector floor
 ;;;
 ; X - the sector
@@ -1801,6 +1944,36 @@ get_sector_ceilingz:
 	sta	THMOVE_TCZ_L
 	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
 	sta	THMOVE_TCZ_H
+	rts
+
+;;;
+; check point
+;;;
+
+check_point:
+	jsr	math_p2d
+
+	; if(dist >= poscheck.radius)
+	lda	MATH_VAR_H
+	bne	@skip
+	lda	MATH_VAR_L
+	cmp	THMOVE_RADIUS
+	bcs	@skip
+
+	; save point hit
+	lda	#$FF
+	sta	THMOVE_PTHIT
+	lda	WALL_NOW
+	sta	THMOVE_PTWALL
+
+@skip:
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; restore
+	ldy	WALL_NOW
+
 	rts
 
 ;;;

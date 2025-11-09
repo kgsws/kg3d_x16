@@ -252,11 +252,10 @@ static const thing_edit_attr_t thing_attr[] =
 // editable flags
 static const thing_edit_flag_t thing_flag[] =
 {
-	{FLAG_STR("sliding"), THING_EFLAG_SLIDING},
+	{FLAG_STR("projectile"), THING_EFLAG_PROJECTILE},
 	{FLAG_STR("climbable"), THING_EFLAG_CLIMBABLE},
 	{FLAG_STR("spriteclip"), THING_EFLAG_SPRCLIP},
-	{FLAG_STR("noclip"), THING_EFLAG_NOCLIP},
-	{FLAG_STR("projectile"), THING_EFLAG_PROJECTILE},
+	{FLAG_STR("noradius"), THING_EFLAG_NORADIUS},
 	{FLAG_STR("waterspec"), THING_EFLAG_WATERSPEC},
 	{FLAG_STR("no push"), THING_EFLAG_NOPUSH},
 	{FLAG_STR("pushable"), THING_EFLAG_PUSHABLE},

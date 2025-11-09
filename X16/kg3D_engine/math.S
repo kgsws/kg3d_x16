@@ -15,6 +15,7 @@
 .export	math_atan
 .export math_p2a
 .export math_p2d
+.export math_ang8
 .export math_u16
 .export math_intclip
 .export math_txtint
@@ -439,9 +440,9 @@ math_p2a:
 	.word	@p2a_oct5
 
 ;;;
-; point to angle
+; point to distance
 ;;;
-; same as 'point to angle' but with extra processing
+; calls 'point to angle' then calculates point distance
 ; returns 8bit angle in MATH_VAR_U
 ; returns 16bit distance in MATH_VAR_*
 
@@ -460,14 +461,7 @@ math_p2d:
 	jsr	math_p2a
 
 	; ang >>= 4
-	ldx	MATH_VAR_L
-	lda	TAB_SWAP,x
-	and	#$0F
-	sta	MATH_VAR_U
-	ldx	MATH_VAR_H
-	lda	TAB_SWAP,x
-	and	#$F0
-	tsb	MATH_VAR_U
+	jsr	math_ang8
 	ldx	MATH_VAR_U
 
 	;; (vtx.x * tab_sin[ang] + vtx.y * tab_cos[ang]) >> 8
@@ -512,6 +506,21 @@ math_p2d:
 	lda	VERA_DATA0
 	sta	MATH_VAR_H
 
+	rts
+
+;;;
+; MATH_VAR_U = MATH_VAR >> 4
+;;;
+
+math_ang8:
+	ldx	MATH_VAR_L
+	lda	TAB_SWAP,x
+	and	#$0F
+	sta	MATH_VAR_U
+	ldx	MATH_VAR_H
+	lda	TAB_SWAP,x
+	and	#$F0
+	tsb	MATH_VAR_U
 	rts
 
 ;;;
