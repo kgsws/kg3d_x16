@@ -85,6 +85,7 @@ typedef struct
 	//
 	int32_t x, y, z; // 24 bits
 	int16_t mx, my, mz;
+	uint8_t view_height;
 	//
 	int16_t floorz, ceilingz;
 	uint8_t floors, ceilings;

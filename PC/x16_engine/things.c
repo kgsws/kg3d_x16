@@ -30,6 +30,7 @@ typedef struct
 	uint8_t step_height, water_height;
 	uint8_t sector, slot;
 	uint8_t maskblock;
+	uint8_t islink;
 	uint8_t pthit, ptwall;
 	uint8_t pbhit, pbwall;
 	uint8_t hitang;
@@ -116,6 +117,8 @@ static void remove_from_sectors()
 
 static void swap_thing_sector(uint8_t tdx, uint8_t sdx)
 {
+	uint8_t bkup = sdx;
+
 	for(uint32_t j = 1; j < 16; j++)
 	{
 		if(!thingsec[tdx][j])
@@ -127,9 +130,10 @@ static void swap_thing_sector(uint8_t tdx, uint8_t sdx)
 			sdx = thingces[tdx][j];
 			thingces[tdx][j] = thingces[tdx][0];
 			thingces[tdx][0] = sdx;
-			break;
+			return;
 		}
 	}
+	printf("SWAP FAIL! (%u -> %u) %u\n", thingsec[tdx][0], bkup, level_tick);
 }
 
 static int32_t mlimit(int32_t val)
@@ -169,11 +173,23 @@ static void prepare_pos_check(uint8_t tdx, int32_t z)
 
 static void get_sector_floorz(sector_t *sec)
 {
+	if(sec->floor.link)
+	{
+		poscheck.tfz = -16384;
+		return;
+	}
+
 	poscheck.tfz = sec->floor.height;
 }
 
 static void get_sector_ceilingz(sector_t *sec)
 {
+	if(sec->ceiling.link)
+	{
+		poscheck.tcz = 16384;
+		return;
+	}
+
 	poscheck.tcz = sec->ceiling.height;
 }
 
@@ -224,7 +240,7 @@ static void check_point(vertex_t *dd, uint32_t wdx)
 	poscheck.ptwall = wdx;
 }
 
-static void add_sector(uint8_t sdx, uint8_t touch, uint8_t islink)
+static void add_sector_raw(uint8_t sdx, uint8_t touch, uint8_t islink)
 {
 	uint32_t i;
 
@@ -247,6 +263,24 @@ static void add_sector(uint8_t sdx, uint8_t touch, uint8_t islink)
 
 }
 
+static void add_sector_links(uint8_t sdx)
+{
+	sector_t *sec = map_sectors + sdx;
+
+	if(sec->floor.link)
+		add_sector_raw(sec->floor.link, 1, 1);
+
+	if(sec->ceiling.link)
+		add_sector_raw(sec->ceiling.link, 1, 1);
+}
+
+static void add_sector(uint8_t sdx, uint8_t touch)
+{
+	add_sector_raw(sdx, touch, 0);
+	if(touch)
+		add_sector_links(sdx);
+}
+
 //
 // position
 
@@ -265,7 +299,7 @@ void thing_apply_pos()
 	for(uint32_t i = 0; i < poscheck.portal_wr; i++)
 	{
 		uint8_t sec = portals[i].sector;
-		if(portals[i].touch & 0x80 && sec != poscheck.sector)
+		if(portals[i].touch && sec != poscheck.sector)
 			place_to_sector(poscheck.thing, sec);
 	}
 
@@ -326,6 +360,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	while(poscheck.portal_rd < poscheck.portal_wr)
 	{
 		sdx = portals[poscheck.portal_rd].sector;
+		poscheck.islink = portals[poscheck.portal_rd].islink;
 		poscheck.portal_rd++;
 
 		sec = map_sectors + sdx;
@@ -344,7 +379,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 			poscheck.ceilings = sdx;
 		}
 
-		//if(!poscheck.islink)
+		if(!poscheck.islink)
 		{
 			wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
 			wall_t *walf = wall;
@@ -424,7 +459,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 					!(wall->blocking & poscheck.blockedby & 0x7F) &&
 					!check_backsector(wall->backsector, zz)
 				){
-					add_sector(wall->backsector, touch, 0);
+					add_sector(wall->backsector, touch);
 					goto do_next;
 				}
 
@@ -468,7 +503,7 @@ pt_block:
 						if(check_backsector(wall->backsector, zz))
 							goto pt_block;
 						else
-							add_sector(wall->backsector, 1, 0);
+							add_sector(wall->backsector, 1);
 
 						poscheck.pthit--;
 						poscheck.ptwall = wall->next;
@@ -478,7 +513,10 @@ pt_block:
 			}
 
 			if(inside && !poscheck.sector)
+			{
 				poscheck.sector = sdx;
+				add_sector_links(sdx);
+			}
 		}
 	}
 
@@ -564,6 +602,8 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	th->y = y;
 	th->z = z;
 
+	th->view_height = ti->view_height;
+
 	th->angle = 0;
 	th->pitch = 0x80;
 	th->iflags = 0;
@@ -620,7 +660,7 @@ void thing_spawn_player()
 	ticcmd.angle = player_starts[0].angle;
 	ticcmd.pitch = player_starts[0].pitch;
 
-	projection.viewheight = thing_type[th->ticker.type].view_height;
+	projection.viewheight = th->view_height;
 	projection.wh = projection.viewheight;
 	projection.wd = 0;
 }
@@ -918,20 +958,45 @@ apply_pos:
 		zz = th->floorz;
 	}
 
-	// gravity
+	// sector
 	sec = map_sectors + thingsec[tick_idx][0];
 
+	// links
+	if(sec->floor.link)
+	{
+		int32_t tmp = th->view_height;
+
+		tmp += th->z / 256;
+		if(tmp < sec->floor.height)
+		{
+			swap_thing_sector(tick_idx, sec->floor.link);
+			goto did_swap;
+		}
+	}
+	if(sec->ceiling.link)
+	{
+		int32_t tmp = th->view_height;
+
+		tmp += th->z / 256;
+		if(tmp > sec->ceiling.height)
+			swap_thing_sector(tick_idx, sec->ceiling.link);
+	}
+
+did_swap:
+	sec = map_sectors + thingsec[tick_idx][0];
+
+	// water or gravity
 	if(sec->flags & SECTOR_FLAG_WATER)
 	{
 		// under water
 		if(th->eflags & THING_EFLAG_WATERSPEC)
 		{
-			if(thing_type[th->ticker.type].view_height > thing_type[th->ticker.type].water_height)
+			if(thing_type[th->ticker.type].view_height >= thing_type[th->ticker.type].water_height)
 				// floats
-				th->mz = th->gravity << 4;
+				th->mz += th->gravity;
 			else
 				// sinks
-				th->mz = -th->gravity << 4;
+				th->mz -= th->gravity;
 			goto skip_z_friction;
 		}
 	} else

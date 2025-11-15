@@ -105,6 +105,10 @@ thing_spawn_org:
 	lda	THTYPE_STRUCT_BLOCKEDBY,y
 	pha
 
+	; <view height>
+	lda	THTYPE_STRUCT_VIEW_HEIGHT,y
+	pha
+
 	; get spawn animation
 	ldx	THTYPE_ANIM_SPAWN_L,y
 	phx	; <next frame LO>
@@ -198,6 +202,10 @@ thing_spawn_org:
 	; <next frame LO>
 	pla
 	sta	THING_STRUCT_NXTFRM_L,x
+
+	; <view height>
+	pla
+	sta	THING_STRUCT_VIEW_HEIGHT,x
 
 	; <blockedby>
 	pla
@@ -678,6 +686,9 @@ thing_check_spawn:
 	; poscheck.pbhit = 0
 	stz	THMOVE_PBHIT
 
+	; not-a-link
+	stz	THMOVE_ISLINK
+
 	; while(poscheck.portal_rd < poscheck.portal_wr)
 @loop_sec:
 	; sector bank
@@ -711,10 +722,10 @@ thing_check_spawn:
 	; check ceilingz
 	jsr	get_sector_ceilingz
 	sec
-	sbc	THMOVE_TCZ_L
-	lda	THMOVE_CEILINGZ_L
-	sbc	THMOVE_TCZ_H
-	lda	THMOVE_CEILINGZ_H
+	lda	THMOVE_TCZ_L
+	sbc	THMOVE_CEILINGZ_L
+	lda	THMOVE_TCZ_H
+	sbc	THMOVE_CEILINGZ_H
 	bpl	:+
 
 	; poscheck.ceilingz = poscheck.tcz
@@ -725,6 +736,13 @@ thing_check_spawn:
 
 	; poscheck.ceilings = sdx
 	stx	THMOVE_CEILINGS
+:
+	; link check
+	lda	THMOVE_ISLINK
+	beq	:+
+
+	; skip walls
+	jmp	@next_sector
 :
 	; walls
 	lda	SECTOR_STRUCT_WALL_BANK,x
@@ -1140,9 +1158,14 @@ thing_check_spawn:
 	bne	:+
 
 	; poscheck.sector = sdx
-	lda	ARG_THING_SECTOR
-	sta	THMOVE_SECTOR
+	ldx	ARG_THING_SECTOR
+	stx	THMOVE_SECTOR
+
+	; add sector links
+	stx	THMOVE_TOUCH
+	jsr	add_sector_links
 :
+@next_sector:
 	; next sector
 	inc	THMOVE_PORTAL_RD
 	ldy	THMOVE_PORTAL_RD
@@ -1154,6 +1177,8 @@ thing_check_spawn:
 	sta	REG_RAM_BANK
 
 	; get sector
+	lda	MEM_PORTALS_ISLINK,y
+	sta	THMOVE_ISLINK
 	ldx	MEM_PORTALS_SECTOR,y
 	stx	ARG_THING_SECTOR
 	jmp	@loop_sec
@@ -1354,6 +1379,8 @@ thing_apply_heights:
 ;;;
 
 thing_tick:
+	sty	ARG_THING_IDX
+
 	;; XY movement
 	lda	THING_STRUCT_MX_S,y
 	ora	THING_STRUCT_MX_L,y
@@ -1402,7 +1429,6 @@ thing_tick:
 
 	; check new position
 	stz	ARG_THING_SECTOR
-	sty	ARG_THING_IDX
 	jsr	thing_check_pos
 
 	; ticker structure bank
@@ -1730,7 +1756,146 @@ thing_tick:
 	lda	ARG_THING_Z_H
 	sta	THING_STRUCT_Z_H,y
 
+	;; links
+
+	; view Z
+	clc
+	lda	THING_STRUCT_VIEW_HEIGHT,y
+	adc	ARG_THING_Z_L
+	sta	MATH_VAR_L
+	lda	#0
+	adc	ARG_THING_Z_H
+	sta	MATH_VAR_H
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing sector pointer
+	ldx	$B000,y
+
+	; <sector>
+	phx
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; floor
+	lda	SECTOR_STRUCT_FLOOR_LINK,x
+	beq	@no_floor
+	sta	ARG_THING_SECTOR
+
+	; check view Z
+	sec
+	lda	MATH_VAR_L
+	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
+	lda	MATH_VAR_H
+	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	bpl	@no_floor
+
+	; swap sectors
+	jsr	swap_thing_sector
+
+	; <sector>
+	pla
+	lda	ARG_THING_SECTOR
+	pha
+
+	bra	@no_ceil
+
+@no_floor:
+	lda	SECTOR_STRUCT_CEILING_LINK,x
+	beq	@no_ceil
+	sta	ARG_THING_SECTOR
+
+	; check view Z
+	sec
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	sbc	MATH_VAR_L
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
+	sbc	MATH_VAR_H
+	bpl	@no_ceil
+
+	; swap sectors
+	jsr	swap_thing_sector
+
+	; <sector>
+	pla
+	lda	ARG_THING_SECTOR
+	pha
+
+@no_ceil:
+	;; water
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; <sector>
+	plx
+
+	; if(sec->flags & SECTOR_FLAG_WATER)
+	lda	SECTOR_STRUCT_FLAGS,x
+	bpl	@skip_water
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; if(th->eflags & THING_EFLAG_WATERSPEC)
+	lda	THING_STRUCT_EFLAGS,y
+	and	#THING_EFLAG_WATERSPEC
+	beq	@do_z_friction
+
+	; gravity
+	lda	THING_STRUCT_GRAVITY,y
+	sta	MATH_VAR_L
+	stz	MATH_VAR_H
+
+	; get type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; direction check
+	lda	THTYPE_STRUCT_WATER_HEIGHT,x
+	cmp	THTYPE_STRUCT_VIEW_HEIGHT,x
+	bcc	:+
+
+	lda	#$00
+	sbc	MATH_VAR_L
+	sta	MATH_VAR_L
+	bcs	:+
+	dec	MATH_VAR_H
+:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; add
+	clc
+	lda	THING_STRUCT_MZ_S,y
+	adc	MATH_VAR_L
+	sta	THING_STRUCT_MZ_S,y
+	lda	THING_STRUCT_MZ_L,y
+	adc	MATH_VAR_H
+	sta	THING_STRUCT_MZ_L,y
+
+	bra	@no_z_friction
+
+@skip_water:
 	;; gravity
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; gravity check
+	ldx	THING_STRUCT_GRAVITY,y
+	beq	@do_z_friction
 
 	; on floor check
 	sec
@@ -1738,28 +1903,43 @@ thing_tick:
 	sbc	ARG_THING_Z_L
 	lda	THING_STRUCT_FLOORZ_H,y
 	sbc	ARG_THING_Z_H
-	bpl	:+
+	bpl	@no_z_friction
 
 	; th->mz -= th->gravity << 4
-	lda	THING_STRUCT_GRAVITY,y
-	tax
 	lda	TAB_SWAP,x
 	and	#$F0
-	sta	MATH_TEMP_A
+	sta	MATH_VAR_L
 	lda	TAB_SWAP,x
 	and	#$0F
-	sta	MATH_TEMP_B
+	sta	MATH_VAR_H
 	sec
 	lda	THING_STRUCT_MZ_S,y
-	sbc	MATH_TEMP_A
+	sbc	MATH_VAR_L
 	sta	THING_STRUCT_MZ_S,y
 	lda	THING_STRUCT_MZ_L,y
-	sbc	MATH_TEMP_B
+	sbc	MATH_VAR_H
 	sta	THING_STRUCT_MZ_L,y
 
 	bra	@no_z_friction
-:
 
+@do_z_friction:
+	; restore
+	ldx	ARG_THING_IDX
+
+	; MZ
+	lda	THING_STRUCT_MZ_L,x
+	beq	:++
+	cmp	#$FF
+	beq	:+
+	rol
+	ror	THING_STRUCT_MZ_L,x
+	ror	THING_STRUCT_MZ_S,x
+	bra	:+++
+:
+	stz	THING_STRUCT_MZ_L,x
+:
+	stz	THING_STRUCT_MZ_S,x
+:
 @no_z_friction:
 
 	rts
@@ -1926,6 +2106,16 @@ v0_diff_x:
 ; X - the sector
 
 get_sector_floorz:
+	; if(sec->floor.link)
+	lda	SECTOR_STRUCT_FLOOR_LINK,x
+	beq	:+
+
+	; poscheck.tfz = -16384
+	stz	THMOVE_TFZ_L
+	lda	#$C0
+	sta	THMOVE_TFZ_H
+	rts
+:
 	; poscheck.tfz = sec->floor.height
 	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
 	sta	THMOVE_TFZ_L
@@ -1939,6 +2129,16 @@ get_sector_floorz:
 ; X - the sector
 
 get_sector_ceilingz:
+	; if(sec->ceiling.link)
+	lda	SECTOR_STRUCT_CEILING_LINK,x
+	beq	:+
+
+	; poscheck.tcz = 16384
+	stz	THMOVE_TCZ_L
+	lda	#$40
+	sta	THMOVE_TCZ_H
+	rts
+:
 	; poscheck.tcz = sec->ceiling.height
 	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,x
 	sta	THMOVE_TCZ_L
@@ -2052,11 +2252,56 @@ check_backsector:
 	rts
 
 ;;;
-; add sector to portals
+; add sector(s) to portals
 ;;;
 ; X - the sector
 
 add_sector:
+	; base
+	jsr	add_sector_raw
+
+	; links
+	lda	THMOVE_TOUCH
+	beq	addsec_skip_links
+
+add_sector_links:
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; floor
+	lda	SECTOR_STRUCT_FLOOR_LINK,x
+	beq	@no_flr
+
+	; add
+	phx
+	tax
+	stx	THMOVE_ISLINK
+	jsr	add_sector_raw
+	plx
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+@no_flr:
+	; ceiling
+	lda	SECTOR_STRUCT_CEILING_LINK,x
+	beq	@no_clg
+
+	; add
+	phx
+	tax
+	stx	THMOVE_ISLINK
+	jsr	add_sector_raw
+	plx
+
+@no_clg:
+	stz	THMOVE_ISLINK
+addsec_skip_links:
+	rts
+
+add_sector_raw:
 	; portal bank
 	lda	#BANK_PORTALS
 	sta	REG_RAM_BANK
@@ -2084,8 +2329,8 @@ add_sector:
 	ldy	THMOVE_PORTAL_WR
 	txa
 	sta	MEM_PORTALS_SECTOR,y
-;	lda	THMOVE_ISLINK_SAVE
-;	sta	MEM_PORTALS_ISLINK,y
+	lda	THMOVE_ISLINK
+	sta	MEM_PORTALS_ISLINK,y
 	lda	THMOVE_TOUCH
 	sta	MEM_PORTALS_TOUCH,y
 
@@ -2175,5 +2420,57 @@ place_to_sector:
 	bne	@loop
 
 	; out of slots
+	rts
+
+;;;
+; swap thing main sector
+;;;
+; Y - thing index
+; ARG_THING_SECTOR - new main sector
+
+swap_thing_sector:
+	phy
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; find slot
+	ldx	#15
+	lda	#$B1
+	sta	TMP_PTR_H
+	stz	TMP_PTR_L
+@loop:
+	lda	(TMP_PTR_L),y
+	beq	@stop
+	cmp	ARG_THING_SECTOR
+	beq	@found
+
+	; next
+	inc	TMP_PTR_H
+	dex
+	bne	@loop
+@stop:
+	ply
+	rts
+
+@found:
+	; swap sector
+	lda	$B000,y
+	sta	(TMP_PTR_L),y
+	lda	ARG_THING_SECTOR
+	sta	$B000,y
+
+	; swap index
+	lda	#$80
+	sta	TMP_PTR_L
+	ldx	$B080,y
+	lda	(TMP_PTR_L),y
+	sta	$B080,y
+	txa
+	sta	(TMP_PTR_L),y
+
+	; done
+	ply
 	rts
 
