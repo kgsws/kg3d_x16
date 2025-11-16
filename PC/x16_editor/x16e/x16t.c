@@ -236,7 +236,7 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("gravity", gravity), ATTR_TYPE_U8},
 	{THING_ATTR("speed", speed), ATTR_TYPE_U8},
 	{THING_ATTR("scale", scale), ATTR_TYPE_SCALE},
-	{THING_ATTR("step height", step_height), ATTR_TYPE_U7F},
+	{THING_ATTR("step height", step_height), ATTR_TYPE_U8},
 	{THING_ATTR("view height", view_height), ATTR_TYPE_VIEW_HEIGHT},
 	{THING_ATTR("attack height", atk_height), ATTR_TYPE_ATK_HEIGHT},
 	{THING_ATTR("water height", water_height), ATTR_TYPE_WATER_HEIGHT},
@@ -2274,7 +2274,6 @@ static void thing_cleanup()
 	strcpy(ti->name.text, "Player (normal)");
 	ti->name.hash = x16c_crc(ti->name.text, -1, THING_CRC_XOR);
 	ti->info = default_player_info;
-	ti->info.step_height |= 0x80; // halved when in air
 
 	// player (crouch)
 	ti = thing_info + THING_TYPE_PLAYER_C;
@@ -3027,7 +3026,7 @@ void x16t_export()
 						next = 0;
 
 					dst->next = next;
-					dst->frm_nxt = ((next << 5) & 0xE0) | frame;
+					dst->frm_nxt = ((next >> 3) & 0xE0) | frame;
 				}
 
 				dst->sprite = sprite;
@@ -3083,7 +3082,7 @@ void x16t_export()
 			next = ta->index;
 
 			dst->next = next;
-			dst->frm_nxt |= ((next << 5) & 0xE0);
+			dst->frm_nxt |= ((next >> 3) & 0xE0);
 		}
 	}
 

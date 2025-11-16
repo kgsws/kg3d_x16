@@ -119,6 +119,9 @@ tick_add:
 	tya
 	sta	TICKER_STRUCT_PREV,x
 
+	; ticker[i].base.next = 0
+	stz	TICKER_STRUCT_NEXT,x
+
 	; ticker[cur].base.next = i
 	txa
 	sta	TICKER_STRUCT_NEXT,y
@@ -139,7 +142,42 @@ tick_add:
 ;;;
 ; remove ticker
 ;;;
+; Y - the ticker
 
 tick_del:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; func = TFUNC_FREE_SLOT
+	lda	#$FF
+	sta	TICKER_STRUCT_FUNC,y
+
+	; prev->next = next
+	ldx	TICKER_STRUCT_PREV,y
+	lda	TICKER_STRUCT_NEXT,y
+	sta	TICKER_STRUCT_NEXT,x
+
+	; next->prev = prev
+	ldx	TICKER_STRUCT_NEXT,y
+	lda	TICKER_STRUCT_PREV,y
+	sta	TICKER_STRUCT_PREV,x
+
+	; if(idx == top)
+	cpy	G_TICKER_TOP
+	bne	:+
+
+	; top = next
+	lda	TICKER_STRUCT_NEXT,y
+	sta	G_TICKER_TOP
+:
+	; if(idx == cur)
+	cpy	G_TICKER_CUR
+	bne	:+
+
+	; cur = prev
+	lda	TICKER_STRUCT_PREV,y
+	sta	G_TICKER_CUR
+:
 	rts
 

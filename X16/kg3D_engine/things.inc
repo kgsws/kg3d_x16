@@ -6,6 +6,7 @@
 .import thing_launch
 .import thing_check_pos
 .import thing_apply_pos
+.import thing_nextfrm
 
 .import thing_tick
 .import thing_plyr

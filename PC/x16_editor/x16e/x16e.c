@@ -206,15 +206,16 @@ static void error_light_count()
 //
 // stuff
 
-static uint8_t convert_pitch(int16_t pitch)
+static uint8_t convert_pitch(uint16_t pitch)
 {
-	if((pitch & 0x80))
-	{
-		if(pitch < 0xCA)
-			pitch = 0xCA;
-	} else
-	if(pitch > 0x36)
-		pitch = 0x36;
+	pitch += 0x8000;
+	pitch >>= 8;
+
+	if(pitch < 0x4A)
+		pitch = 0x4A;
+	else
+	if(pitch > 0xB6)
+		pitch = 0xB6;
 
 	return pitch;
 }
@@ -342,7 +343,7 @@ static void conv_player_start(kge_thing_t *th, player_start_t *ps)
 	ps->z = th->pos.z;
 	ps->sector = list_get_idx(&edit_list_sector, (link_entry_t*)th->pos.sector - 1) + 1;
 	ps->angle = 0x100 - (th->pos.angle >> 8);
-	ps->pitch = convert_pitch(th->pos.pitch >> 8) ^ 0x80;
+	ps->pitch = convert_pitch(th->pos.pitch);
 	ps->flags = 0;
 
 }
@@ -493,10 +494,16 @@ void x16_export_map()
 
 	// checks
 	if(!count_things)
+	{
 		error_generic("At least one thing must be placed!");
+		return;
+	}
 
 	if(count_starts[0] + count_starts[1] + count_starts[2] > MAX_PLAYER_STARTS)
+	{
 		error_generic("Too many combined player starts!");
+		return;
+	}
 
 	// go trough sectors
 	map_sector = map_sectors;

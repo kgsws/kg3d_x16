@@ -18,7 +18,6 @@
 typedef struct
 {
 	int32_t x, y, z;
-	uint8_t viewheight;
 	uint8_t wh, wd;
 	uint8_t sector;
 	int16_t sin, cos;

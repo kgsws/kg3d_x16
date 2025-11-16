@@ -18,6 +18,7 @@
 .export thing_launch
 .export thing_check_pos
 .export thing_apply_pos
+.export thing_nextfrm
 
 .export thing_tick
 .export thing_plyr
@@ -146,14 +147,14 @@ thing_spawn_org:
 	sta	TICKER_STRUCT_TYPE,x
 
 	; clear
-	lda	#THING_STRUCT_CLEAR_START
+	lda	#THING_STRUCT_CLEAR_FIRST
 	sta	@loop_clr+2
 	sta	@op_clr+2
 	stx	@loop_clr+1
 	txa
 	ora	#$80
 	sta	@op_clr+1
-	ldy	#(THING_STRUCT_CLEAR_STOP-THING_STRUCT_CLEAR_START)
+	ldy	#(1+THING_STRUCT_CLEAR_LAST-THING_STRUCT_CLEAR_FIRST)
 @loop_clr:
 	stz	$AAAA	; modified address
 @op_clr:
@@ -652,10 +653,6 @@ thing_check_spawn:
 	; prepare
 	jsr	prepare_pos_check
 
-	; TODO
-	lda	#$80
-	trb	THMOVE_STEP_HEIGHT
-
 	; portal bank
 	lda	#BANK_PORTALS
 	sta	REG_RAM_BANK
@@ -683,8 +680,8 @@ thing_check_spawn:
 	; poscheck.maskblock = 0
 	stz	THMOVE_MASKBLOCK
 
-	; poscheck.pbhit = 0
-	stz	THMOVE_PBHIT
+	; poscheck.htype = 0
+	stz	THMOVE_HTYPE
 
 	; not-a-link
 	stz	THMOVE_ISLINK
@@ -967,8 +964,8 @@ thing_check_spawn:
 	; if(dist >= 0)
 	bmi	:+
 
-	; !poscheck.pbhit
-	lda	THMOVE_PBHIT
+	; !poscheck.htype
+	lda	THMOVE_HTYPE
 	bne	@next_wall
 
 	; dist - poscheck.radius < 0
@@ -984,8 +981,8 @@ thing_check_spawn:
 
 	bra	@next_wall
 :
-	; !poscheck.pbhit
-	lda	THMOVE_PBHIT
+	; !poscheck.htype
+	lda	THMOVE_HTYPE
 	bne	:+
 
 	; dist + poscheck.radius >= 0
@@ -1009,6 +1006,10 @@ thing_check_spawn:
 	; wall bank
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
+
+	; save
+	sta	THMOVE_HTYPE
+	sty	THMOVE_HIDX
 
 	; store angle
 	ldx	WALL_STRUCT_ANGLE_L,y
@@ -1087,13 +1088,14 @@ thing_check_spawn:
 	sta	REG_RAM_BANK
 
 	; save
-	sta	THMOVE_PBHIT
-	sty	THMOVE_PBWALL
+	lda	WALL_BANK
+	sta	THMOVE_HTYPE
+	sty	THMOVE_HIDX
 
 	; thing
 	ldx	ARG_THING_IDX
 
-	; p2a_coord.x -= th->x >> 8
+	; p2a_coord.x -= th->x / 256
 	sec
 	lda	MATH_P2A_X_L
 	sbc	THING_STRUCT_X_L,x
@@ -1102,7 +1104,7 @@ thing_check_spawn:
 	sbc	THING_STRUCT_X_H,x
 	sta	MATH_P2A_X_H
 
-	; p2a_coord.y -= th->y >> 8
+	; p2a_coord.y -= th->y / 256
 	sec
 	lda	MATH_P2A_Y_L
 	sbc	THING_STRUCT_Y_L,x
@@ -1185,7 +1187,7 @@ thing_check_spawn:
 
 @done:
 	; check point hit
-	lda	THMOVE_PBHIT
+	lda	THMOVE_HTYPE
 	beq	:+
 
 	;; STOP - FAILED
@@ -1194,9 +1196,163 @@ thing_check_spawn:
 	sta	THMOVE_SECTOR
 	rts
 :
+	;; check things
+	stz	THMOVE_PORTAL_RD
+@loop_thsec:
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; get sector
+	ldx	THMOVE_PORTAL_RD
+	ldy	MEM_PORTALS_SECTOR,x
+
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+	; check things
+	lda	#$A0
+	sta	THMOVE_PTR_H
+	sty	THMOVE_PTR_L
+@loop_thing:
+	; check this slot
+	lda	(THMOVE_PTR_L)
+	beq	@next_slot
+
+	; self
+	cmp	ARG_THING_IDX
+	beq	@next_slot
+	tax
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; blocking
+	lda	THING_STRUCT_BLOCKING,x
+	and	THMOVE_BLOCKEDBY
+	beq	@next_slot_ex
+
+	; radius = ht->radius + poscheck.radius
+	clc
+	lda	THING_STRUCT_RADIUS,x
+	adc	THMOVE_RADIUS
+	sta	THMOVE_RADIUS_L
+	stz	THMOVE_RADIUS_H
+	rol	THMOVE_RADIUS_H
+
+	; X diff
+	sec
+	lda	ARG_THING_X_L
+	sbc	THING_STRUCT_X_L,x
+	sta	THMOVE_DIFF_L
+	sta	MATH_P2A_X_L
+	lda	ARG_THING_X_H
+	sbc	THING_STRUCT_X_H,x
+	sta	THMOVE_DIFF_H
+	sta	MATH_P2A_X_H
+
+	; X check
+	jsr	check_radist
+	bpl	@next_slot_ex
+
+	; Y diff
+	sec
+	lda	ARG_THING_Y_L
+	sbc	THING_STRUCT_Y_L,x
+	sta	THMOVE_DIFF_L
+	sta	MATH_P2A_Y_L
+	lda	ARG_THING_Y_H
+	sbc	THING_STRUCT_Y_H,x
+	sta	THMOVE_DIFF_H
+	sta	MATH_P2A_Y_H
+
+	; Y check
+	jsr	check_radist
+	bpl	@next_slot_ex
+
+	; save
+	stx	THMOVE_HIDX
+
+	; dist = point_to_dist()
+	jsr	math_p2d
+
+	; if(dist - radius >= 0)
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_RADIUS_L
+	lda	MATH_VAR_H
+	sbc	THMOVE_RADIUS_H
+	bmi	@do_hit_thing
+
+@next_slot_ex:
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+@next_slot:
+	; next
+	inc	THMOVE_PTR_H
+	lda	THMOVE_PTR_H
+	cmp	#$BF
+	beq	:+
+	jmp	@loop_thing
+:
+	; next
+	inc	THMOVE_PORTAL_RD
+	lda	THMOVE_PORTAL_RD
+	cmp	THMOVE_PORTAL_WR
+	bcs	:+
+	jmp	@loop_thsec
+:
 	;; STOP - PASSED
 	; unset zero flag
 	lda	THMOVE_SECTOR
+	rts
+
+@do_hit_thing:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; things
+	ldy	THMOVE_HIDX
+	ldx	ARG_THING_IDX
+
+	; p2a_coord.x = ht->x / 256 - th->x / 256
+	sec
+	lda	THING_STRUCT_X_L,y
+	sbc	THING_STRUCT_X_L,x
+	sta	MATH_P2A_X_L
+	lda	THING_STRUCT_X_H,y
+	sbc	THING_STRUCT_X_H,x
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = ht->y / 256 - th->y / 256
+	sec
+	lda	THING_STRUCT_Y_L,y
+	sbc	THING_STRUCT_Y_L,x
+	sta	MATH_P2A_Y_L
+	lda	THING_STRUCT_Y_H,y
+	sbc	THING_STRUCT_Y_H,x
+	sta	MATH_P2A_Y_H
+
+	; poscheck.hitang = point_to_angle() >> 4
+	jsr	math_p2a
+	jsr	math_ang8
+	clc
+	lda	MATH_VAR_U
+	adc	#$40
+	sta	THMOVE_HITANG
+
+	; poscheck.htype = 0xFF
+	dec	THMOVE_HTYPE
+
+	;; STOP - FAILED
+	; set zero flag
+	lda	#0
+	sta	THMOVE_SECTOR
 	rts
 
 ;;;
@@ -1375,12 +1531,532 @@ thing_apply_heights:
 	rts
 
 ;;;
+; position check intro
+;;;
+; X - thing index
+
+prepare_pos_check:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; thing type
+	ldy	TICKER_STRUCT_TYPE,x
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; <water_height>
+	lda	THTYPE_STRUCT_WATER_HEIGHT,y
+	pha
+
+	; <step_height>
+	lda	THTYPE_STRUCT_STEP_HEIGHT,y
+	pha
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; poscheck.radius = th->radius
+	lda	THING_STRUCT_RADIUS,x
+	sta	THMOVE_RADIUS
+
+	; poscheck.height = th->height
+	lda	THING_STRUCT_HEIGHT,x
+	sta	THMOVE_HEIGHT
+
+	; poscheck.blockedby = th->blockedby
+	lda	THING_STRUCT_BLOCKEDBY,x
+	sta	THMOVE_BLOCKEDBY
+
+	; poscheck.step_height = thing_type[th->ticker.type].step_height
+	pla	; <step_height>
+	sta	THMOVE_STEP_HEIGHT
+
+	; poscheck.water_height = thing_type[th->ticker.type].water_height
+	pla	; <water_height>
+	sta	THMOVE_WATER_HEIGHT
+
+	; poscheck.th_zh = z + poscheck.height
+	clc
+	lda	ARG_THING_Z_L
+	adc	THMOVE_HEIGHT
+	sta	THMOVE_TH_ZH_L
+	lda	ARG_THING_Z_H
+	adc	#0
+	sta	THMOVE_TH_ZH_H
+
+	; poscheck.floorz = -16384
+	; poscheck.waterz = -16384
+	stz	THMOVE_FLOORZ_L
+	stz	THMOVE_WATERZ_L
+	lda	#$C0
+	sta	THMOVE_FLOORZ_H
+	sta	THMOVE_WATERZ_H
+
+	; poscheck.ceilingz = 16384
+	stz	THMOVE_CEILINGZ_L
+	lda	#$40
+	sta	THMOVE_CEILINGZ_H
+
+	; poscheck.floors = 0
+	stz	THMOVE_FLOORS
+
+	; poscheck.ceilings = 0
+	stz	THMOVE_CEILINGS
+
+	; poscheck.iflags = 0
+	stz	THMOVE_IFLAGS
+
+	rts
+
+;;;
+; V0 X diff
+;;;
+
+v0_diff_x:
+	sec
+	lda	WALL_STRUCT_VTX_X_L,y
+	sbc	ARG_THING_X_L
+	sta	VERA_FX_CACHE_L
+	lda	WALL_STRUCT_VTX_X_H,y
+	sbc	ARG_THING_X_H
+	sta	VERA_FX_CACHE_M
+	rts
+
+;;;
+; get sector floor
+;;;
+; X - the sector
+
+get_sector_floorz:
+	; if(sec->floor.link)
+	lda	SECTOR_STRUCT_FLOOR_LINK,x
+	beq	:+
+
+	; poscheck.tfz = -16384
+	stz	THMOVE_TFZ_L
+	lda	#$C0
+	sta	THMOVE_TFZ_H
+	rts
+:
+	; poscheck.tfz = sec->floor.height
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
+	sta	THMOVE_TFZ_L
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	sta	THMOVE_TFZ_H
+	rts
+
+;;;
+; get sector ceiling
+;;;
+; X - the sector
+
+get_sector_ceilingz:
+	; if(sec->ceiling.link)
+	lda	SECTOR_STRUCT_CEILING_LINK,x
+	beq	:+
+
+	; poscheck.tcz = 16384
+	stz	THMOVE_TCZ_L
+	lda	#$40
+	sta	THMOVE_TCZ_H
+	rts
+:
+	; poscheck.tcz = sec->ceiling.height
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	sta	THMOVE_TCZ_L
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
+	sta	THMOVE_TCZ_H
+	rts
+
+;;;
+; check point
+;;;
+
+check_point:
+	jsr	math_p2d
+
+	; if(dist >= poscheck.radius)
+	lda	MATH_VAR_H
+	bne	@skip
+	lda	MATH_VAR_L
+	cmp	THMOVE_RADIUS
+	bcs	@skip
+
+	; save point hit
+	lda	#$FF
+	sta	THMOVE_PTHIT
+	lda	WALL_NOW
+	sta	THMOVE_PTWALL
+
+@skip:
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; restore
+	ldy	WALL_NOW
+
+	rts
+
+;;;
+; check back sector
+;;;
+; X - the sector
+
+check_backsector:
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+	; check thing count in this sector
+	lda	$BF00,x
+	cmp	#31
+	bcc	:+
+
+	; set negative flag
+	lda	#$FF
+	rts
+:
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; bs->maskblock = poscheck.maskblock
+	lda	THMOVE_MASKBLOCK
+	sta	SECTOR_STRUCT_MASKBLOCK,x
+
+	; get heights
+	jsr	get_sector_floorz
+	jsr	get_sector_ceilingz
+
+	; dist = poscheck.tcz - poscheck.tfz
+	sec
+	lda	THMOVE_TCZ_L
+	sbc	THMOVE_TFZ_L
+	sta	MATH_VAR_L
+	lda	THMOVE_TCZ_H
+	sbc	THMOVE_TFZ_H
+	sta	MATH_VAR_H
+
+	; dist -= poscheck.height
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_HEIGHT
+	lda	MATH_VAR_H
+	sbc	#0
+	bmi	@done
+
+	; dist = th_z - poscheck.tfz
+	sec
+	lda	ARG_THING_Z_L
+	sbc	THMOVE_TFZ_L
+	sta	MATH_VAR_L
+	lda	ARG_THING_Z_H
+	sbc	THMOVE_TFZ_H
+	sta	MATH_VAR_H
+
+	; dist += poscheck.step_height
+	clc
+	lda	MATH_VAR_L
+	adc	THMOVE_STEP_HEIGHT
+	lda	MATH_VAR_H
+	adc	#0
+	bmi	@done
+
+	; dist = poscheck.tcz - poscheck.th_zh
+	sec
+	lda	THMOVE_TCZ_L
+	sbc	THMOVE_TH_ZH_L
+	lda	THMOVE_TCZ_H
+	sbc	THMOVE_TH_ZH_H
+
+@done:
+	rts
+
+;;;
+; check radius distance
+;;;
+
+check_radist:
+	; if(dist >= 0)
+	bmi	@negative
+
+	; if(dist - radius >= 0)
+	sec
+	lda	THMOVE_DIFF_L
+	sbc	THMOVE_RADIUS_L
+	lda	THMOVE_DIFF_H
+	sbc	THMOVE_RADIUS_H
+
+	rts
+
+@negative:
+	; if(dist + radius < 0)
+	clc
+	lda	THMOVE_DIFF_L
+	adc	THMOVE_RADIUS_L
+	lda	THMOVE_DIFF_H
+	adc	THMOVE_RADIUS_H
+	eor	#$FF
+
+	rts
+
+;;;
+; add sector(s) to portals
+;;;
+; X - the sector
+
+add_sector:
+	; base
+	jsr	add_sector_raw
+
+	; links
+	lda	THMOVE_TOUCH
+	beq	addsec_skip_links
+
+add_sector_links:
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; floor
+	lda	SECTOR_STRUCT_FLOOR_LINK,x
+	beq	@no_flr
+
+	; add
+	phx
+	tax
+	stx	THMOVE_ISLINK
+	jsr	add_sector_raw
+	plx
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+@no_flr:
+	; ceiling
+	lda	SECTOR_STRUCT_CEILING_LINK,x
+	beq	@no_clg
+
+	; add
+	phx
+	tax
+	stx	THMOVE_ISLINK
+	jsr	add_sector_raw
+	plx
+
+@no_clg:
+	stz	THMOVE_ISLINK
+addsec_skip_links:
+	rts
+
+add_sector_raw:
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; check existing portals for duplicates
+	ldy	THMOVE_PORTAL_WR
+@loop:
+	dey
+	bmi	@do_save
+
+	; if(portals[i].sector == sdx)
+	txa
+	cmp	MEM_PORTALS_SECTOR,y
+	bne	@loop
+
+	; portals[i].touch |= touch
+	lda	MEM_PORTALS_TOUCH,y
+	ora	THMOVE_TOUCH
+	sta	MEM_PORTALS_TOUCH,y
+
+	rts
+
+@do_save:
+	; portals[portal_wr].sector = sdx
+	ldy	THMOVE_PORTAL_WR
+	txa
+	sta	MEM_PORTALS_SECTOR,y
+	lda	THMOVE_ISLINK
+	sta	MEM_PORTALS_ISLINK,y
+	lda	THMOVE_TOUCH
+	sta	MEM_PORTALS_TOUCH,y
+
+	; portal_wr++
+	inc	THMOVE_PORTAL_WR
+
+	rts
+
+;;;
+; place to sector
+;;;
+; ARG_THING_SECTOR - desired sector
+; ARG_THING_IDX - desired thing
+; THMOVE_PTR_H - slot index pointer in thing, auto increment
+
+place_to_sector:
+	; check pointer slot
+	lda	THMOVE_PTR_H
+	cmp	#$C0
+	bcc	:+
+
+	; all thing slots are full
+	rts
+:
+	stz	THMOVE_PTR_L
+
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+	; find free slot in this sector
+	lda	#$A0
+	sta	HI_PTR_H
+	ldy	ARG_THING_SECTOR
+@loop:
+	lda	(HI_PTR_L),y
+	bne	@not_free
+
+	; add thing to this slot
+	lda	ARG_THING_IDX
+	sta	(HI_PTR_L),y
+
+	; increment thing counter for this sector
+	lda	$BF00,y
+	ina
+	sta	$BF00,y
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; maskblock = sec->maskblock
+	lda	SECTOR_STRUCT_MASKBLOCK,y
+	sta	THMOVE_MASKBLOCK
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing pointer
+	tya
+	ldy	ARG_THING_IDX
+
+	; add this sector to thing
+	sta	(THMOVE_PTR_L),y
+
+	; add slot index to thing
+	lda	THMOVE_PTR_H
+	sta	@opcode+2
+	lda	HI_PTR_H
+	and	#$1F
+	ora	THMOVE_MASKBLOCK
+@opcode:
+	sta	$B080,y	; modified address
+
+	; increment thing slot index
+	inc	THMOVE_PTR_H
+
+	; done
+	rts
+
+@not_free:
+	; next
+	inc	HI_PTR_H
+	lda	HI_PTR_H
+	cmp	#$BF
+	bne	@loop
+
+	; out of slots
+	rts
+
+;;;
+; swap thing main sector
+;;;
+; Y - thing index
+; ARG_THING_SECTOR - new main sector
+
+swap_thing_sector:
+	phy
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; find slot
+	ldx	#15
+	lda	#$B1
+	sta	TMP_PTR_H
+	stz	TMP_PTR_L
+@loop:
+	lda	(TMP_PTR_L),y
+	beq	@stop
+	cmp	ARG_THING_SECTOR
+	beq	@found
+
+	; next
+	inc	TMP_PTR_H
+	dex
+	bne	@loop
+@stop:
+	ply
+	rts
+
+@found:
+	; swap sector
+	lda	$B000,y
+	sta	(TMP_PTR_L),y
+	lda	ARG_THING_SECTOR
+	sta	$B000,y
+
+	; swap index
+	lda	#$80
+	sta	TMP_PTR_L
+	ldx	$B080,y
+	lda	(TMP_PTR_L),y
+	sta	$B080,y
+	txa
+	sta	(TMP_PTR_L),y
+
+	; done
+	ply
+	rts
+
+;;;
 ; thing ticker
 ;;;
 
 thing_tick:
 	sty	ARG_THING_IDX
 
+	;; camera
+	cpy	G_CAMERA_THING
+	bne	@skip_camera
+
+	; projection.wh += projection.wd
+	clc
+	lda	G_VIEWDELTA
+	beq	@skip_camera
+	adc	G_VIEWHEIGHT
+	bcs	:+
+	sta	G_VIEWHEIGHT
+	lda	THING_STRUCT_VIEW_HEIGHT,y
+	cmp	G_VIEWHEIGHT
+	bcs	@skip_camera
+:
+	; projection.wh = th->view_height
+	sta	G_VIEWHEIGHT
+
+	; projection.wd = 0
+	stz	G_VIEWDELTA
+
+@skip_camera:
 	;; XY movement
 	lda	THING_STRUCT_MX_S,y
 	ora	THING_STRUCT_MX_L,y
@@ -1734,10 +2410,51 @@ thing_tick:
 	sec
 	lda	ARG_THING_Z_L
 	sbc	THING_STRUCT_FLOORZ_L,y
+	sta	MATH_VAR_L
 	lda	ARG_THING_Z_H
 	sbc	THING_STRUCT_FLOORZ_H,y
+	bpl	@not_in_floor
+
+	; camera check
+	cpy	G_CAMERA_THING
+	bne	@no_floor_cam
+
+	; camera bump
+	sta	MATH_VAR_H
+
+	; if(th->mz >= 0)
+	lda	THING_STRUCT_MZ_L
 	bpl	:+
 
+	; diff = th->mz >> 10
+	sec
+	ror
+	sec
+	ror
+	sta	MATH_VAR_L
+:
+	; diff = projection.wh + diff
+	clc
+	lda	G_VIEWHEIGHT
+	adc	MATH_VAR_L
+	sta	G_VIEWHEIGHT
+	lda	#0
+	adc	MATH_VAR_H
+
+	; if(diff < 0)
+	bpl	:+
+	stz	G_VIEWHEIGHT
+:
+	; th->view_height - projection.wh
+	sec
+	lda	THING_STRUCT_VIEW_HEIGHT,y
+	sbc	G_VIEWHEIGHT
+	sta	G_VIEWDELTA
+	lsr	G_VIEWDELTA
+	bne	:+
+	inc	G_VIEWDELTA
+:
+@no_floor_cam:
 	; under floor
 	lda	#0
 	sta	THING_STRUCT_MZ_S,y
@@ -1747,7 +2464,8 @@ thing_tick:
 	sta	ARG_THING_Z_L
 	lda	THING_STRUCT_FLOORZ_H,y
 	sta	ARG_THING_Z_H
-:
+
+@not_in_floor:
 	; apply Z
 	lda	ARG_THING_Z_S
 	sta	THING_STRUCT_Z_S,y
@@ -1942,6 +2660,106 @@ thing_tick:
 :
 @no_z_friction:
 
+;;;
+; thing animation
+;;;
+
+thing_anim:
+	; if(!th->ticks)
+	lda	THING_STRUCT_TICKS,y
+	bne	:+
+	rts
+:
+	; th->ticks--
+	dea
+
+	; if(th->ticks)
+	beq	:+
+	sta	THING_STRUCT_TICKS,y
+	rts
+:
+	; state
+	ldx	THING_STRUCT_NXTFRM_L,y
+	lda	THING_STRUCT_NXTFRM_H,y
+	and	#$07
+
+thing_nextfrm:
+	; check for STOP
+	cmp	#0
+	bne	:+
+	cpx	#0
+	bne	:+
+
+	; delete
+	stz	THMOVE_SECTOR
+	jsr	thing_apply_pos
+	jmp	tick_del
+:
+	; thing states bank
+	ora	#BANK_THING_STATES
+	sta	REG_RAM_BANK
+
+	; action
+	lda	THSTATE_STRUCT_ACTION,x
+	asl
+	beq	:+
+
+	; run action
+	;sta	DBG_BYTE0
+:
+	; fullbright
+	lda	THSTATE_STRUCT_ACTION,x
+	and	#$80
+	sta	MATH_VAR_H
+
+	; next H
+	ldy	THSTATE_STRUCT_FRM_NXT,x
+	lda	TAB_BANK,y
+	tsb	MATH_VAR_H
+
+	; next L
+	lda	THSTATE_STRUCT_NEXT,x
+	pha	; <next L>
+
+	; spawn sprite
+	ldy	THSTATE_STRUCT_SPRITE,x
+	bmi	:+
+
+	; sprite and frame
+	lda	THSTATE_STRUCT_FRM_NXT,x
+	and	#$1F
+	clc
+	adc	TAB_SPRITE_REMAP,y
+:
+	pha	; <sprite>
+
+	; ticks
+	lda	THSTATE_STRUCT_TICKS,x
+	pha	; <ticks>
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; ticker
+	ldy	ARG_THING_IDX
+
+	; <ticks>
+	pla
+	sta	THING_STRUCT_TICKS,y
+
+	; <sprite>
+	pla
+	sta	THING_STRUCT_SPRITE,y
+
+	; <next L>
+	pla
+	sta	THING_STRUCT_NXTFRM_L,y
+
+	; next H
+	lda	MATH_VAR_H
+	sta	THING_STRUCT_NXTFRM_H,y
+
 	rts
 
 ;;;
@@ -2001,476 +2819,11 @@ thing_plyr:
 	jsr	thing_launch_ang
 
 @skip_move:
-	; done
-	jmp	thing_tick
-
-;;;
-; position check intro
-;;;
-; X - thing index
-
-prepare_pos_check:
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; thing type
-	ldy	TICKER_STRUCT_TYPE,x
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
-	; <water_height>
-	lda	THTYPE_STRUCT_WATER_HEIGHT,y
-	pha
-
-	; <step_height>
-	lda	THTYPE_STRUCT_STEP_HEIGHT,y
-	pha
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; poscheck.radius = th->radius
-	lda	THING_STRUCT_RADIUS,x
-	sta	THMOVE_RADIUS
-
-	; poscheck.height = th->height
-	lda	THING_STRUCT_HEIGHT,x
-	sta	THMOVE_HEIGHT
-
-	; poscheck.blockedby = th->blockedby
-	lda	THING_STRUCT_BLOCKEDBY,x
-	sta	THMOVE_BLOCKEDBY
-
-	; poscheck.step_height = thing_type[th->ticker.type].step_height
-	pla	; <step_height>
-	sta	THMOVE_STEP_HEIGHT
-
-	; poscheck.water_height = thing_type[th->ticker.type].water_height
-	pla	; <water_height>
-	sta	THMOVE_WATER_HEIGHT
-
-	; poscheck.th_zh = z + poscheck.height
-	clc
-	lda	ARG_THING_Z_L
-	adc	THMOVE_HEIGHT
-	sta	THMOVE_TH_ZH_L
-	lda	ARG_THING_Z_H
-	adc	#0
-	sta	THMOVE_TH_ZH_H
-
-	; poscheck.floorz = -16384
-	; poscheck.waterz = -16384
-	stz	THMOVE_FLOORZ_L
-	stz	THMOVE_WATERZ_L
-	lda	#$C0
-	sta	THMOVE_FLOORZ_H
-	sta	THMOVE_WATERZ_H
-
-	; poscheck.ceilingz = 16384
-	stz	THMOVE_CEILINGZ_L
-	lda	#$40
-	sta	THMOVE_CEILINGZ_H
-
-	; poscheck.floors = 0
-	stz	THMOVE_FLOORS
-
-	; poscheck.ceilings = 0
-	stz	THMOVE_CEILINGS
-
-	; poscheck.iflags = 0
-	stz	THMOVE_IFLAGS
-
-	rts
-
-;;;
-; V0 X diff
-;;;
-
-v0_diff_x:
-	sec
-	lda	WALL_STRUCT_VTX_X_L,y
-	sbc	ARG_THING_X_L
-	sta	VERA_FX_CACHE_L
-	lda	WALL_STRUCT_VTX_X_H,y
-	sbc	ARG_THING_X_H
-	sta	VERA_FX_CACHE_M
-	rts
-
-;;;
-; get sector floor
-;;;
-; X - the sector
-
-get_sector_floorz:
-	; if(sec->floor.link)
-	lda	SECTOR_STRUCT_FLOOR_LINK,x
-	beq	:+
-
-	; poscheck.tfz = -16384
-	stz	THMOVE_TFZ_L
-	lda	#$C0
-	sta	THMOVE_TFZ_H
-	rts
-:
-	; poscheck.tfz = sec->floor.height
-	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
-	sta	THMOVE_TFZ_L
-	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
-	sta	THMOVE_TFZ_H
-	rts
-
-;;;
-; get sector ceiling
-;;;
-; X - the sector
-
-get_sector_ceilingz:
-	; if(sec->ceiling.link)
-	lda	SECTOR_STRUCT_CEILING_LINK,x
-	beq	:+
-
-	; poscheck.tcz = 16384
-	stz	THMOVE_TCZ_L
-	lda	#$40
-	sta	THMOVE_TCZ_H
-	rts
-:
-	; poscheck.tcz = sec->ceiling.height
-	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,x
-	sta	THMOVE_TCZ_L
-	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
-	sta	THMOVE_TCZ_H
-	rts
-
-;;;
-; check point
-;;;
-
-check_point:
-	jsr	math_p2d
-
-	; if(dist >= poscheck.radius)
-	lda	MATH_VAR_H
-	bne	@skip
-	lda	MATH_VAR_L
-	cmp	THMOVE_RADIUS
-	bcs	@skip
-
-	; save point hit
-	lda	#$FF
-	sta	THMOVE_PTHIT
-	lda	WALL_NOW
-	sta	THMOVE_PTWALL
-
-@skip:
-	; wall bank
-	lda	WALL_BANK
-	sta	REG_RAM_BANK
-
-	; restore
-	ldy	WALL_NOW
-
-	rts
-
-;;;
-; check back sector
-;;;
-; X - the sector
-
-check_backsector:
-	; sector things bank
-	lda	#BANK_SECTOR_THINGS
-	sta	REG_RAM_BANK
-
-	; check thing count in this sector
-	lda	$BF00,x
-	cmp	#31
-	bcc	:+
-
-	; set negative flag
-	lda	#$FF
-	rts
-:
-	; sector bank
-	lda	#BANK_SECTORS
-	sta	REG_RAM_BANK
-
-	; bs->maskblock = poscheck.maskblock
-	lda	THMOVE_MASKBLOCK
-	sta	SECTOR_STRUCT_MASKBLOCK,x
-
-	; get heights
-	jsr	get_sector_floorz
-	jsr	get_sector_ceilingz
-
-	; dist = poscheck.tcz - poscheck.tfz
-	sec
-	lda	THMOVE_TCZ_L
-	sbc	THMOVE_TFZ_L
-	sta	MATH_VAR_L
-	lda	THMOVE_TCZ_H
-	sbc	THMOVE_TFZ_H
-	sta	MATH_VAR_H
-
-	; dist -= poscheck.height
-	sec
-	lda	MATH_VAR_L
-	sbc	THMOVE_HEIGHT
-	lda	MATH_VAR_H
-	sbc	#0
-	bmi	@done
-
-	; dist = th_z - poscheck.tfz
-	sec
-	lda	ARG_THING_Z_L
-	sbc	THMOVE_TFZ_L
-	sta	MATH_VAR_L
-	lda	ARG_THING_Z_H
-	sbc	THMOVE_TFZ_H
-	sta	MATH_VAR_H
-
-	; dist += poscheck.step_height
-	clc
-	lda	MATH_VAR_L
-	adc	THMOVE_STEP_HEIGHT
-	lda	MATH_VAR_H
-	adc	#0
-	bmi	@done
-
-	; dist = poscheck.tcz - poscheck.th_zh
-	sec
-	lda	THMOVE_TCZ_L
-	sbc	THMOVE_TH_ZH_L
-	lda	THMOVE_TCZ_H
-	sbc	THMOVE_TH_ZH_H
-
-@done:
-	rts
-
-;;;
-; add sector(s) to portals
-;;;
-; X - the sector
-
-add_sector:
-	; base
-	jsr	add_sector_raw
-
-	; links
-	lda	THMOVE_TOUCH
-	beq	addsec_skip_links
-
-add_sector_links:
-	; sector bank
-	lda	#BANK_SECTORS
-	sta	REG_RAM_BANK
-
-	; floor
-	lda	SECTOR_STRUCT_FLOOR_LINK,x
-	beq	@no_flr
-
-	; add
-	phx
-	tax
-	stx	THMOVE_ISLINK
-	jsr	add_sector_raw
-	plx
-
-	; sector bank
-	lda	#BANK_SECTORS
-	sta	REG_RAM_BANK
-
-@no_flr:
-	; ceiling
-	lda	SECTOR_STRUCT_CEILING_LINK,x
-	beq	@no_clg
-
-	; add
-	phx
-	tax
-	stx	THMOVE_ISLINK
-	jsr	add_sector_raw
-	plx
-
-@no_clg:
-	stz	THMOVE_ISLINK
-addsec_skip_links:
-	rts
-
-add_sector_raw:
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
-	; check existing portals for duplicates
-	ldy	THMOVE_PORTAL_WR
-@loop:
-	dey
-	bmi	@do_save
-
-	; if(portals[i].sector == sdx)
-	txa
-	cmp	MEM_PORTALS_SECTOR,y
-	bne	@loop
-
-	; portals[i].touch |= touch
-	lda	MEM_PORTALS_TOUCH,y
-	ora	THMOVE_TOUCH
-	sta	MEM_PORTALS_TOUCH,y
-
-	rts
-
-@do_save:
-	; portals[portal_wr].sector = sdx
-	ldy	THMOVE_PORTAL_WR
-	txa
-	sta	MEM_PORTALS_SECTOR,y
-	lda	THMOVE_ISLINK
-	sta	MEM_PORTALS_ISLINK,y
-	lda	THMOVE_TOUCH
-	sta	MEM_PORTALS_TOUCH,y
-
-	; portal_wr++
-	inc	THMOVE_PORTAL_WR
-
-	rts
-
-;;;
-; place to sector
-;;;
-; ARG_THING_SECTOR - desired sector
-; ARG_THING_IDX - desired thing
-; THMOVE_PTR_H - slot index pointer in thing, auto increment
-
-place_to_sector:
-	; check pointer slot
-	lda	THMOVE_PTR_H
-	cmp	#$C0
-	bcc	:+
-
-	; all thing slots are full
-	rts
-:
-	stz	THMOVE_PTR_L
-
-	; sector things bank
-	lda	#BANK_SECTOR_THINGS
-	sta	REG_RAM_BANK
-
-	; find free slot in this sector
-	lda	#$A0
-	sta	HI_PTR_H
-	ldy	ARG_THING_SECTOR
-@loop:
-	lda	(HI_PTR_L),y
-	bne	@not_free
-
-	; add thing to this slot
-	lda	ARG_THING_IDX
-	sta	(HI_PTR_L),y
-
-	; increment thing counter for this sector
-	lda	$BF00,y
-	ina
-	sta	$BF00,y
-
-	; sector bank
-	lda	#BANK_SECTORS
-	sta	REG_RAM_BANK
-
-	; maskblock = sec->maskblock
-	lda	SECTOR_STRUCT_MASKBLOCK,y
-	sta	THMOVE_MASKBLOCK
-
-	; thing sectors bank
-	lda	#BANK_THING_SECTORS
-	sta	REG_RAM_BANK
-
-	; thing pointer
-	tya
-	ldy	ARG_THING_IDX
-
-	; add this sector to thing
-	sta	(THMOVE_PTR_L),y
-
-	; add slot index to thing
-	lda	THMOVE_PTR_H
-	sta	@opcode+2
-	lda	HI_PTR_H
-	and	#$1F
-	ora	THMOVE_MASKBLOCK
-@opcode:
-	sta	$B080,y	; modified address
-
-	; increment thing slot index
-	inc	THMOVE_PTR_H
-
-	; done
-	rts
-
-@not_free:
-	; next
-	inc	HI_PTR_H
-	lda	HI_PTR_H
-	cmp	#$BF
-	bne	@loop
-
-	; out of slots
-	rts
-
-;;;
-; swap thing main sector
-;;;
-; Y - thing index
-; ARG_THING_SECTOR - new main sector
-
-swap_thing_sector:
-	phy
-
-	; thing sectors bank
-	lda	#BANK_THING_SECTORS
-	sta	REG_RAM_BANK
-
-	; find slot
-	ldx	#15
-	lda	#$B1
-	sta	TMP_PTR_H
-	stz	TMP_PTR_L
-@loop:
-	lda	(TMP_PTR_L),y
-	beq	@stop
-	cmp	ARG_THING_SECTOR
-	beq	@found
-
-	; next
-	inc	TMP_PTR_H
-	dex
-	bne	@loop
-@stop:
-	ply
-	rts
-
-@found:
-	; swap sector
-	lda	$B000,y
-	sta	(TMP_PTR_L),y
-	lda	ARG_THING_SECTOR
-	sta	$B000,y
-
-	; swap index
-	lda	#$80
-	sta	TMP_PTR_L
-	ldx	$B080,y
-	lda	(TMP_PTR_L),y
-	sta	$B080,y
-	txa
-	sta	(TMP_PTR_L),y
-
-	; done
-	ply
-	rts
+	; thing tick
+	jsr	thing_tick
+
+	; weapon
+	ldy	#0
+	sty	ARG_THING_IDX
+	jmp	thing_anim
 

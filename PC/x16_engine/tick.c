@@ -31,6 +31,7 @@ void tick_run()
 	tick_idx = top;
 	while(tick_idx)
 	{
+		uint32_t next = ticker[tick_idx].base.next;
 		switch(ticker[tick_idx].base.func)
 		{
 			case TFUNC_THING:
@@ -40,7 +41,7 @@ void tick_run()
 				thing_tick_plr();
 			break;
 		}
-		tick_idx = ticker[tick_idx].base.next;
+		tick_idx = next;
 	}
 }
 
@@ -59,6 +60,7 @@ uint32_t tick_add()
 
 	ticker[i].base.func = TFUNC_DUMMY;
 	ticker[i].base.prev = cur;
+	ticker[i].base.next = 0;
 	ticker[cur].base.next = i; // writing to ZERO is ignored
 	cur = i;
 
@@ -73,10 +75,11 @@ void tick_del(uint32_t idx)
 	uint8_t next = ticker[idx].base.next;
 	uint8_t prev = ticker[idx].base.prev;
 
+	ticker[idx].base.func = TFUNC_FREE_SLOT;
+
 	// writing to ZERO is ignored
 	ticker[next].base.prev = prev;
 	ticker[prev].base.next = next;
-	ticker[prev].base.func = TFUNC_FREE_SLOT;
 
 	if(idx == top)
 		top = next;

@@ -1040,14 +1040,8 @@ ex_map_load:
 	lda	TICK_CMD_PITCH
 	sta	THING_STRUCT_PITCH,x
 
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
 	; camera reset
-	ldy	ARG_THING_TYPE
-	lda	THTYPE_STRUCT_VIEW_HEIGHT,y
-	sta	G_VIEW_HEIGHT
+	lda	THING_STRUCT_VIEW_HEIGHT,x
 	sta	G_VIEWHEIGHT
 	stz	G_VIEWDELTA
 	stz	G_DAMAGE_LEVEL

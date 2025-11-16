@@ -32,7 +32,7 @@ typedef struct
 	uint8_t maskblock;
 	uint8_t islink;
 	uint8_t pthit, ptwall;
-	uint8_t pbhit, pbwall;
+	uint8_t htype, hidx;
 	uint8_t hitang;
 } pos_check_t;
 
@@ -319,7 +319,7 @@ void thing_apply_pos()
 uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx)
 {
 	thing_t *th = thing_ptr(tdx);
-	int32_t zz = th->z >> 8;
+	int32_t zz = th->z / 256;
 	sector_t *sec;
 
 	// prepare
@@ -329,24 +329,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	if(!sdx)
 		sdx = thingsec[tdx][0];
 
-	// special step height
-	if(poscheck.step_height & 0x80)
-	{
-		poscheck.step_height &= 0x7F;
-		sec = map_sectors + sdx;
-		if((th->z >> 8) > th->floorz)
-		{
-			if(	sec->floor.link &&
-				map_sectors[sec->floor.link].flags & SECTOR_FLAG_WATER &&
-				nz < sec->floor.height
-			)
-				poscheck.step_height <<= 1;
-			else
-				poscheck.step_height >>= 1;
-		}
-	}
-
-	poscheck.pbhit = 0;
+	poscheck.htype = 0;
 
 	poscheck.sector = 0;
 	poscheck.maskblock = 0;
@@ -442,14 +425,14 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8;
 				if(dist >= 0)
 				{
-					if(	!poscheck.pbhit &&
+					if(	!poscheck.htype &&
 						dist - poscheck.radius < 0
 					)
 						check_point(&dd, wall - map_walls[sec->wall.bank]);
 					goto do_next;
 				}
 
-				if(	!poscheck.pbhit &&
+				if(	!poscheck.htype &&
 					dist + poscheck.radius >= 0
 				)
 					check_point(&dd, wall - map_walls[sec->wall.bank]);
@@ -464,6 +447,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				}
 
 				// solid wall
+				poscheck.htype = sec->wall.bank | 0x10;
 				poscheck.hitang = wall->angle >> 4;
 
 				return 0;
@@ -490,13 +474,13 @@ do_next:
 						(wall->blocking & poscheck.blockedby & 0x7F)
 					){
 pt_block:
-						p2a_coord.x -= th->x >> 8;
-						p2a_coord.y -= th->y >> 8;
+						p2a_coord.x -= th->x / 256;
+						p2a_coord.y -= th->y / 256;
 						poscheck.hitang = point_to_angle() >> 4;
 						poscheck.hitang += 0x40;
 						poscheck.pthit = 0;
-						poscheck.pbhit = 1;
-						poscheck.pbwall = poscheck.ptwall;
+						poscheck.htype = sec->wall.bank | 0x10;
+						poscheck.hidx = poscheck.ptwall;
 					} else
 					{
 						// check backsector
@@ -520,8 +504,75 @@ pt_block:
 		}
 	}
 
-	if(poscheck.pbhit)
+	if(poscheck.htype)
 		return 0;
+
+	poscheck.portal_rd = 0;
+	while(poscheck.portal_rd < poscheck.portal_wr)
+	{
+		sdx = portals[poscheck.portal_rd].sector;
+		poscheck.portal_rd++;
+
+		for(uint32_t i = 0; i < 31; i++)
+		{
+			uint8_t odx = sectorth[sdx][i];
+			int32_t radius;
+			int32_t dist;
+			thing_t *ht;
+
+			if(!odx)
+				continue;
+
+			if(odx == tdx)
+				continue;
+
+			ht = thing_ptr(odx);
+
+			if(!(poscheck.blockedby & ht->blocking))
+				continue;
+
+			// TODO: height checks
+
+			radius = ht->radius + poscheck.radius;
+
+			dist = nx - ht->x / 256;
+			p2a_coord.x = dist;
+			if(dist >= 0)
+			{
+				if(dist - radius >= 0)
+					continue;
+			} else
+			{
+				if(dist + radius < 0)
+					continue;
+			}
+
+			dist = ny - ht->y / 256;
+			p2a_coord.y = dist;
+			if(dist >= 0)
+			{
+				if(dist - radius >= 0)
+					continue;
+			} else
+			{
+				if(dist + radius < 0)
+					continue;
+			}
+
+			dist = point_to_dist();
+			if(dist - radius >= 0)
+				continue;
+
+			p2a_coord.x = ht->x / 256 - th->x / 256;
+			p2a_coord.y = ht->y / 256 - th->y / 256;
+			poscheck.hitang = point_to_angle() >> 4;
+			poscheck.hitang += 0x40;
+			poscheck.htype = 0xFF;
+			poscheck.hidx = odx;
+
+			return 0;
+		}
+	}
 
 	return poscheck.sector;
 }
@@ -627,7 +678,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	else
 		th->sprite = sprite_remap[st->sprite] + (st->frm_nxt & 0x1F);
 
-	if(!thing_check_pos(tdx, x >> 8, y >> 8, z >> 8, sector))
+	if(!thing_check_pos(tdx, x / 256, y / 256, z / 256, sector))
 	{
 		sector_t *sec = map_sectors + sector;
 
@@ -660,8 +711,7 @@ void thing_spawn_player()
 	ticcmd.angle = player_starts[0].angle;
 	ticcmd.pitch = player_starts[0].pitch;
 
-	projection.viewheight = th->view_height;
-	projection.wh = projection.viewheight;
+	projection.wh = th->view_height;
 	projection.wd = 0;
 }
 
@@ -833,23 +883,66 @@ uint32_t thing_init(const char *file)
 //
 //
 
+void thing_frame()
+{
+	thing_t *th = thing_ptr(tick_idx);
+	thing_state_t *st;
+	uint32_t tmp;
+
+	if(!th->ticks)
+		return;
+
+	th->ticks--;
+	if(th->ticks)
+		return;
+
+repeat:
+	tmp = th->next_state & (MAX_X16_STATES-1);
+	if(!tmp)
+	{
+		poscheck.thing = tick_idx;
+		remove_from_sectors();
+		tick_del(tick_idx);
+		return;
+	}
+
+	st = thing_state + tmp;
+
+//	tmp = st->action & 0x7F;
+//	if(tmp && action_func(tick_idx, tmp, st))
+//		goto repeat;
+
+	th->next_state = st->next;
+	th->next_state |= (st->frm_nxt & 0xE0) << 3;
+	th->next_state |= (st->action & 0x80) << 8;
+
+	th->ticks = st->ticks;
+
+	if(st->sprite & 0x80)
+		th->sprite = 0xFF; // 'NONE'
+	else
+		th->sprite = sprite_remap[st->sprite] + (st->frm_nxt & 0x1F);
+}
+
 void thing_tick()
 {
 	thing_t *th = thing_ptr(tick_idx);
 	sector_t *sec;
 	int32_t zz;
 
+	//
 	// camera stuff
 	if(tick_idx == camera_thing)
 	{
 		projection.wh += projection.wd;
-		if(projection.wh > projection.viewheight)
+		if(projection.wh > th->view_height)
 		{
-			projection.wh = projection.viewheight;
+			projection.wh = th->view_height;
 			projection.wd = 0;
 		}
 	}
 
+	//
 	// XY movement
 	if(th->mx || th->my)
 	{
@@ -858,7 +951,7 @@ void thing_tick()
 		nx = th->x + th->mx;
 		ny = th->y + th->my;
 
-		if(thing_check_pos(tick_idx, nx >> 8, ny >> 8, th->z >> 8, 0))
+		if(thing_check_pos(tick_idx, nx / 256, ny / 256, th->z / 256, 0))
 		{
 apply_pos:
 			th->x = nx;
@@ -891,7 +984,7 @@ apply_pos:
 				nx = th->x + vect.x;
 				ny = th->y + vect.y;
 
-				if(thing_check_pos(tick_idx, nx >> 8, ny >> 8, th->z >> 8, 0))
+				if(thing_check_pos(tick_idx, nx / 256, ny / 256, th->z / 256, 0))
 				{
 					th->mx = vect.x;
 					th->my = vect.y;
@@ -906,7 +999,7 @@ apply_pos:
 					nx = th->x + tab_sin[ang];
 					ny = th->y + tab_cos[ang];
 
-					if(thing_check_pos(tick_idx, nx >> 8, ny >> 8, th->z >> 8, 0))
+					if(thing_check_pos(tick_idx, nx / 256, ny / 256, th->z / 256, 0))
 						goto apply_pos;
 				}
 			}
@@ -939,9 +1032,10 @@ apply_pos:
 		}
 	}
 
+	//
 	// Z movement
 	th->z += th->mz;
-	zz = th->z >> 8;
+	zz = th->z / 256;
 
 	// ceiling check
 	if(zz > th->ceilingz)
@@ -953,6 +1047,27 @@ apply_pos:
 	// floor check
 	if(zz < th->floorz)
 	{
+		// camera stuff
+		if(tick_idx == camera_thing)
+		{
+			int32_t diff;
+
+			if(th->mz >= 0)
+				diff = zz - th->floorz;
+			else
+				diff = th->mz >> 10;
+
+			diff = projection.wh + diff;
+			if(diff < 0)
+				projection.wh = 0;
+			else
+				projection.wh = diff;
+
+			projection.wd = (th->view_height - projection.wh) >> 1;
+			if(!projection.wd)
+				projection.wd = 1;
+		}
+
 		th->z = th->floorz << 8;
 		th->mz = 0;
 		zz = th->floorz;
@@ -1023,12 +1138,16 @@ did_swap:
 	}
 
 skip_z_friction:
-	return;
+
+	//
+	// animation
+	thing_frame();
 }
 
 void thing_tick_plr()
 {
 	thing_t *th = thing_ptr(tick_idx);
+	uint8_t bkup = tick_idx;
 
 	if(th->counter)
 	{
@@ -1059,5 +1178,10 @@ void thing_tick_plr()
 	}
 
 	thing_tick();
+
+	// weapon
+	tick_idx = 0;
+	thing_frame();
+	tick_idx = bkup;
 }
 
