@@ -19,15 +19,15 @@ typedef struct
 
 typedef struct
 {
-	int16_t floorz, ceilingz, waterz;
+	int16_t floorz, ceilingz;
 	int16_t tfz, tcz;
-	int16_t th_zh;
+	int16_t th_zh, th_sh;
 	uint8_t portal_rd, portal_wr;
-	uint8_t floors, ceilings;
-	uint8_t thing, iflags;
+	uint8_t floors, floort;
+	uint8_t ceilings, ceilingt;
+	uint8_t thing;
 	uint8_t blockedby;
 	uint8_t radius, height;
-	uint8_t step_height, water_height;
 	uint8_t sector, slot;
 	uint8_t maskblock;
 	uint8_t islink;
@@ -156,19 +156,18 @@ static void prepare_pos_check(uint8_t tdx, int32_t z)
 
 	poscheck.blockedby = th->blockedby;
 
-	poscheck.step_height = thing_type[th->ticker.type].step_height;
-	poscheck.water_height = thing_type[th->ticker.type].water_height;
+	poscheck.th_sh = z + thing_type[th->ticker.type].step_height;
+//	poscheck.water_height = thing_type[th->ticker.type].water_height;
 
 	poscheck.th_zh = z + poscheck.height;
 
 	poscheck.floorz = -16384;
 	poscheck.ceilingz = 16384;
-	poscheck.waterz = -16384;
 
 	poscheck.floors = 0;
 	poscheck.ceilings = 0;
-
-	poscheck.iflags = 0;
+	poscheck.floort = 0;
+	poscheck.ceilingt = 0;
 }
 
 static void get_sector_floorz(sector_t *sec)
@@ -213,13 +212,20 @@ static uint32_t check_backsector(uint8_t sec, int32_t th_z)
 	if(dist < 0)
 		return 1;
 
-	dist = th_z - poscheck.tfz;
-	dist += poscheck.step_height;
+	dist = poscheck.th_sh - poscheck.tfz;
 	if(dist < 0)
 		return 1;
 
 	dist = poscheck.tcz - poscheck.th_zh;
 	if(dist < 0)
+		return 1;
+
+	dist = poscheck.tcz - poscheck.floorz;
+	if(dist < poscheck.height)
+		return 1;
+
+	dist = poscheck.ceilingz - poscheck.tfz;
+	if(dist < poscheck.height)
 		return 1;
 
 	return 0;
@@ -303,17 +309,15 @@ void thing_apply_pos()
 			place_to_sector(poscheck.thing, sec);
 	}
 
-	// update iflags
-	th->iflags &= ~(THING_IFLAG_HEIGHTCHECK | THING_IFLAG_NOJUMP);
-	th->iflags |= poscheck.iflags;
-
 	// save heights
 	th->floorz = poscheck.floorz;
 	th->ceilingz = poscheck.ceilingz - poscheck.height;
 
-	// save sectors
+	// save planes
 	th->floors = poscheck.floors;
+	th->floort = poscheck.floort;
 	th->ceilings = poscheck.ceilings;
+	th->ceilingt = poscheck.ceilingt;
 }
 
 uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx)
@@ -531,8 +535,6 @@ pt_block:
 			if(!(poscheck.blockedby & ht->blocking))
 				continue;
 
-			// TODO: height checks
-
 			radius = ht->radius + poscheck.radius;
 
 			dist = nx - ht->x / 256;
@@ -563,6 +565,33 @@ pt_block:
 			if(dist - radius >= 0)
 				continue;
 
+			dist = ht->z / 256;
+			if(dist - poscheck.th_zh >= 0)
+			{
+				if(dist < poscheck.ceilingz)
+				{
+					poscheck.ceilingz = dist;
+					poscheck.ceilingt = odx;
+				}
+
+set_iflags:
+				th->iflags |= THING_IFLAG_HEIGHTCHECK;
+				ht->iflags |= THING_IFLAG_HEIGHTCHECK;
+
+				continue;
+			}
+
+			dist = ht->z / 256 + ht->height;
+			if(poscheck.th_sh - dist >= 0)
+			{
+				if(poscheck.floorz < dist)
+				{
+					poscheck.floorz = dist;
+					poscheck.floort = odx;
+				}
+				goto set_iflags;
+			}
+
 			p2a_coord.x = ht->x / 256 - th->x / 256;
 			p2a_coord.y = ht->y / 256 - th->y / 256;
 			poscheck.hitang = point_to_angle() >> 4;
@@ -572,6 +601,12 @@ pt_block:
 
 			return 0;
 		}
+	}
+
+	if(poscheck.ceilingz - poscheck.floorz < poscheck.height)
+	{
+		poscheck.htype = 0;
+		return 0;
 	}
 
 	return poscheck.sector;
@@ -665,6 +700,9 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	th->mx = 0;
 	th->my = 0;
 	th->mz = 0;
+
+	th->floort = 0;
+	th->ceilingt = 0;
 
 	state = thing_anim[type][ANIM_SPAWN].state;
 
@@ -960,6 +998,11 @@ apply_pos:
 		} else
 		{
 			if(th->eflags & THING_EFLAG_PROJECTILE)
+			{
+				th->mx = 0;
+				th->my = 0;
+			} else
+			if(!poscheck.htype)
 			{
 				th->mx = 0;
 				th->my = 0;

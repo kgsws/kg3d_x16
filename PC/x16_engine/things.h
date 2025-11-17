@@ -88,7 +88,8 @@ typedef struct
 	uint8_t view_height;
 	//
 	int16_t floorz, ceilingz;
-	uint8_t floors, ceilings;
+	uint8_t floors, floort;
+	uint8_t ceilings, ceilingt;
 	//
 	uint8_t angle;
 	uint8_t pitch;

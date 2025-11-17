@@ -1211,7 +1211,7 @@ thing_check_spawn:
 	lda	#BANK_SECTOR_THINGS
 	sta	REG_RAM_BANK
 
-	; check things
+	; sector things
 	lda	#$A0
 	sta	THMOVE_PTR_H
 	sty	THMOVE_PTR_L
@@ -1306,6 +1306,30 @@ thing_check_spawn:
 	bcs	:+
 	jmp	@loop_thsec
 :
+	; check heights
+	sec
+	lda	THMOVE_CEILINGZ_L
+	sbc	THMOVE_FLOORZ_L
+	sta	MATH_VAR_L
+	lda	THMOVE_CEILINGZ_H
+	sbc	THMOVE_FLOORZ_H
+	sta	MATH_VAR_H
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_HEIGHT
+	lda	MATH_VAR_H
+	sbc	#0
+	bpl	:+
+
+	; bad hit
+	stz	THMOVE_HTYPE
+
+	;; STOP - FAILED
+	; set zero flag
+	lda	#0
+	sta	THMOVE_SECTOR
+	rts
+:
 	;; STOP - PASSED
 	; unset zero flag
 	lda	THMOVE_SECTOR
@@ -1320,6 +1344,80 @@ thing_check_spawn:
 	ldy	THMOVE_HIDX
 	ldx	ARG_THING_IDX
 
+	; under check
+	sec
+	lda	THING_STRUCT_Z_L,y
+	sbc	THMOVE_TH_ZH_L
+	lda	THING_STRUCT_Z_H,y
+	sbc	THMOVE_TH_ZH_H
+	bmi	@not_under
+
+	; check ceilingz
+	sec
+	lda	THING_STRUCT_Z_L,y
+	sbc	THMOVE_CEILINGZ_L
+	lda	THING_STRUCT_Z_H,y
+	sbc	THMOVE_CEILINGZ_H
+	bpl	:+
+
+	; poscheck.ceilingz = dist
+	lda	THING_STRUCT_Z_L,y
+	sta	THMOVE_CEILINGZ_L
+	lda	THING_STRUCT_Z_H,y
+	sta	THMOVE_CEILINGZ_H
+
+	; poscheck.ceilings = odx
+	sty	THMOVE_CEILINGS
+:
+	; set overlap
+@do_overlap:
+	lda	THING_STRUCT_IFLAGS,y
+	ora	#THING_IFLAG_HEIGHTCHECK
+	sta	THING_STRUCT_IFLAGS,y
+
+	lda	THING_STRUCT_IFLAGS,x
+	ora	#THING_IFLAG_HEIGHTCHECK
+	sta	THING_STRUCT_IFLAGS,x
+
+	bra	@next_slot_ex
+
+@not_under:
+	; over check
+	clc
+	lda	THING_STRUCT_Z_L,y
+	adc	THING_STRUCT_HEIGHT,y
+	sta	MATH_VAR_L
+	lda	THING_STRUCT_Z_H,y
+	adc	#0
+	sta	MATH_VAR_H
+	sec
+	lda	THMOVE_TH_SH_L
+	sbc	MATH_VAR_L
+	lda	THMOVE_TH_SH_H
+	sbc	MATH_VAR_H
+	bmi	@hit_over
+
+	; check floorz
+	sec
+	lda	THMOVE_FLOORZ_L
+	sbc	MATH_VAR_L
+	lda	THMOVE_FLOORZ_H
+	sbc	MATH_VAR_H
+	bpl	:+
+
+	; poscheck.floorz = dist
+	lda	MATH_VAR_L
+	sta	THMOVE_FLOORZ_L
+	lda	MATH_VAR_H
+	sta	THMOVE_FLOORZ_H
+
+	; poscheck.floort = odx
+	sty	THMOVE_FLOORT
+:
+	; TODO: overlap
+	bra	@do_overlap
+
+@hit_over:
 	; p2a_coord.x = ht->x / 256 - th->x / 256
 	sec
 	lda	THING_STRUCT_X_L,y
@@ -1515,17 +1613,15 @@ thing_apply_heights:
 	sbc	#0
 	sta	THING_STRUCT_CEILZ_H,x
 
-	; sectors
+	; planes
 	lda	THMOVE_FLOORS
 	sta	THING_STRUCT_FLOORS,x
+	lda	THMOVE_FLOORT
+	sta	THING_STRUCT_FLOORT,x
 	lda	THMOVE_CEILINGS
 	sta	THING_STRUCT_CEILS,x
-
-	; iflags
-	lda	THING_STRUCT_IFLAGS,x
-	and	#<~(THING_IFLAG_HEIGHTCHECK|THING_IFLAG_NOJUMP)
-	ora	THMOVE_IFLAGS
-	sta	THING_STRUCT_IFLAGS,x
+	lda	THMOVE_CEILINGT
+	sta	THING_STRUCT_CEILT,x
 
 	; done
 	rts
@@ -1548,8 +1644,8 @@ prepare_pos_check:
 	sta	REG_RAM_BANK
 
 	; <water_height>
-	lda	THTYPE_STRUCT_WATER_HEIGHT,y
-	pha
+;	lda	THTYPE_STRUCT_WATER_HEIGHT,y
+;	pha
 
 	; <step_height>
 	lda	THTYPE_STRUCT_STEP_HEIGHT,y
@@ -1572,12 +1668,17 @@ prepare_pos_check:
 	sta	THMOVE_BLOCKEDBY
 
 	; poscheck.step_height = thing_type[th->ticker.type].step_height
+	clc
 	pla	; <step_height>
-	sta	THMOVE_STEP_HEIGHT
+	adc	ARG_THING_Z_L
+	sta	THMOVE_TH_SH_L
+	lda	#0
+	adc	ARG_THING_Z_H
+	sta	THMOVE_TH_SH_H
 
 	; poscheck.water_height = thing_type[th->ticker.type].water_height
-	pla	; <water_height>
-	sta	THMOVE_WATER_HEIGHT
+;	pla	; <water_height>
+;	sta	THMOVE_WATER_HEIGHT
 
 	; poscheck.th_zh = z + poscheck.height
 	clc
@@ -1589,12 +1690,9 @@ prepare_pos_check:
 	sta	THMOVE_TH_ZH_H
 
 	; poscheck.floorz = -16384
-	; poscheck.waterz = -16384
 	stz	THMOVE_FLOORZ_L
-	stz	THMOVE_WATERZ_L
 	lda	#$C0
 	sta	THMOVE_FLOORZ_H
-	sta	THMOVE_WATERZ_H
 
 	; poscheck.ceilingz = 16384
 	stz	THMOVE_CEILINGZ_L
@@ -1607,8 +1705,11 @@ prepare_pos_check:
 	; poscheck.ceilings = 0
 	stz	THMOVE_CEILINGS
 
-	; poscheck.iflags = 0
-	stz	THMOVE_IFLAGS
+	; poscheck.floort = 0
+	stz	THMOVE_FLOORT
+
+	; poscheck.ceilingt = 0
+	stz	THMOVE_CEILINGT
 
 	rts
 
@@ -1750,21 +1851,14 @@ check_backsector:
 	sbc	#0
 	bmi	@done
 
-	; dist = th_z - poscheck.tfz
+	; dist = poscheck.th_sh - poscheck.tfz
 	sec
-	lda	ARG_THING_Z_L
+	lda	THMOVE_TH_SH_L
 	sbc	THMOVE_TFZ_L
 	sta	MATH_VAR_L
-	lda	ARG_THING_Z_H
+	lda	THMOVE_TH_SH_H
 	sbc	THMOVE_TFZ_H
 	sta	MATH_VAR_H
-
-	; dist += poscheck.step_height
-	clc
-	lda	MATH_VAR_L
-	adc	THMOVE_STEP_HEIGHT
-	lda	MATH_VAR_H
-	adc	#0
 	bmi	@done
 
 	; dist = poscheck.tcz - poscheck.th_zh
@@ -1773,6 +1867,36 @@ check_backsector:
 	sbc	THMOVE_TH_ZH_L
 	lda	THMOVE_TCZ_H
 	sbc	THMOVE_TH_ZH_H
+	bmi	@done
+
+	; poscheck.tcz - poscheck.floorz
+	sec
+	lda	THMOVE_TCZ_L
+	sbc	THMOVE_FLOORZ_L
+	sta	MATH_VAR_L
+	lda	THMOVE_TCZ_H
+	sbc	THMOVE_FLOORZ_H
+	sta	MATH_VAR_H
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_HEIGHT
+	lda	MATH_VAR_H
+	sbc	#0
+	bmi	@done
+
+	; poscheck.ceilingz - poscheck.tfz
+	sec
+	lda	THMOVE_CEILINGZ_L
+	sbc	THMOVE_TFZ_L
+	sta	MATH_VAR_L
+	lda	THMOVE_CEILINGZ_H
+	sbc	THMOVE_TFZ_H
+	sta	MATH_VAR_H
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_HEIGHT
+	lda	MATH_VAR_H
+	sbc	#0
 
 @done:
 	rts
@@ -2194,6 +2318,7 @@ thing_tick:
 	lda	THING_STRUCT_EFLAGS,x
 	bpl	:+
 
+@just_stop:
 	; stop
 	stz	THING_STRUCT_MX_S,x
 	stz	THING_STRUCT_MX_L,x
@@ -2202,6 +2327,10 @@ thing_tick:
 
 	jmp	@no_xy_friction
 :
+	; check fail hit
+	lda	THMOVE_HTYPE
+	beq	@just_stop
+
 	; get speed and angle
 	lda	THING_STRUCT_MX_S,x
 	sta	MATH_P2A_X_L
@@ -2423,7 +2552,7 @@ thing_tick:
 	sta	MATH_VAR_H
 
 	; if(th->mz >= 0)
-	lda	THING_STRUCT_MZ_L
+	lda	THING_STRUCT_MZ_L,y
 	bpl	:+
 
 	; diff = th->mz >> 10
