@@ -246,6 +246,11 @@ thing_spawn_org:
 	pla
 	sta	THING_STRUCT_TH_ORIGIN,x
 
+	; th->floorz = -16384
+	stz	THING_STRUCT_FLOORZ_L,x
+	lda	#$C0
+	sta	THING_STRUCT_FLOORZ_H,x
+
 	; check position
 	jsr	thing_check_spawn
 	beq	@pos_fail
@@ -1643,13 +1648,13 @@ prepare_pos_check:
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; <water_height>
-;	lda	THTYPE_STRUCT_WATER_HEIGHT,y
-;	pha
+	; poscheck.water_height = thing_type[th->ticker.type].water_height
+	lda	THTYPE_STRUCT_WATER_HEIGHT,y
+	sta	THMOVE_WATER_HEIGHT
 
-	; <step_height>
+	; step_height
 	lda	THTYPE_STRUCT_STEP_HEIGHT,y
-	pha
+	sta	MATH_VAR_U
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
@@ -1667,18 +1672,34 @@ prepare_pos_check:
 	lda	THING_STRUCT_BLOCKEDBY,x
 	sta	THMOVE_BLOCKEDBY
 
-	; poscheck.step_height = thing_type[th->ticker.type].step_height
+	; fz - nz
+	sec
+	lda	THING_STRUCT_FLOORZ_L,x
+	sbc	ARG_THING_Z_L
+	sta	MATH_VAR_L
+	lda	THING_STRUCT_FLOORZ_H,x
+	sbc	ARG_THING_Z_H
+	sta	MATH_VAR_H
+
+	; + step_height
 	clc
-	pla	; <step_height>
+	lda	MATH_VAR_L
+	adc	MATH_VAR_U
+	lda	MATH_VAR_H
+	adc	#0
+
+	; check
+	bpl	:+
+	stz	MATH_VAR_U
+:
+	; poscheck.th_sh = nz + thing_type[th->ticker.type].step_height
+	clc
+	lda	MATH_VAR_U
 	adc	ARG_THING_Z_L
 	sta	THMOVE_TH_SH_L
 	lda	#0
 	adc	ARG_THING_Z_H
 	sta	THMOVE_TH_SH_H
-
-	; poscheck.water_height = thing_type[th->ticker.type].water_height
-;	pla	; <water_height>
-;	sta	THMOVE_WATER_HEIGHT
 
 	; poscheck.th_zh = z + poscheck.height
 	clc
@@ -1735,18 +1756,65 @@ v0_diff_x:
 get_sector_floorz:
 	; if(sec->floor.link)
 	lda	SECTOR_STRUCT_FLOOR_LINK,x
-	beq	:+
+	beq	@no_link
 
+	phy
+	tay
+
+	; poscheck.water_height < 0xFF
+	lda	THMOVE_WATER_HEIGHT
+	ina
+	beq	@no_water
+
+	; map_sectors[sec->floor.link].flags & SECTOR_FLAG_WATER
+	lda	SECTOR_STRUCT_FLAGS,y
+	bpl	@no_water
+
+	; poscheck.tfz = sec->floor.height - poscheck.water_height
+	sec
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
+	sbc	THMOVE_WATER_HEIGHT
+	sta	THMOVE_TFZ_L
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	sbc	#0
+	sta	THMOVE_TFZ_H
+	ply
+	rts
+
+@no_water:
 	; poscheck.tfz = -16384
 	stz	THMOVE_TFZ_L
 	lda	#$C0
 	sta	THMOVE_TFZ_H
+	ply
 	rts
-:
+
+@no_link:
+	lda	SECTOR_STRUCT_FLOOR_DIST,x
+	bne	@do_dist
+
 	; poscheck.tfz = sec->floor.height
 	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
 	sta	THMOVE_TFZ_L
 	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	sta	THMOVE_TFZ_H
+	rts
+
+@do_dist:
+	; sign extend
+	phy
+	tay
+	lda	TAB_SIGN_EXT,y
+	sta	MATH_VAR_SIGN
+	ply
+
+	; poscheck.tfz = sec->floor.height
+	sec
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
+	sbc	SECTOR_STRUCT_FLOOR_DIST,x
+	sta	THMOVE_TFZ_L
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	sbc	MATH_VAR_SIGN
 	sta	THMOVE_TFZ_H
 	rts
 
@@ -2909,7 +2977,7 @@ thing_plyr:
 	sta	TICK_CMD_PITCH
 
 	; done
-	jmp	thing_tick
+	bra	@skip_move
 :
 	; th->angle = ticcmd.angle
 	lda	TICK_CMD_ANGLE

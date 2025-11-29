@@ -26,6 +26,7 @@ typedef struct
 	uint8_t floors, floort;
 	uint8_t ceilings, ceilingt;
 	uint8_t thing;
+	uint8_t water_height;
 	uint8_t blockedby;
 	uint8_t radius, height;
 	uint8_t sector, slot;
@@ -145,7 +146,7 @@ static int32_t mlimit(int32_t val)
 	return val;
 }
 
-static void prepare_pos_check(uint8_t tdx, int32_t z)
+static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz)
 {
 	thing_t *th = thing_ptr(tdx);
 
@@ -156,10 +157,13 @@ static void prepare_pos_check(uint8_t tdx, int32_t z)
 
 	poscheck.blockedby = th->blockedby;
 
-	poscheck.th_sh = z + thing_type[th->ticker.type].step_height;
-//	poscheck.water_height = thing_type[th->ticker.type].water_height;
+	poscheck.th_sh = nz;
+	if(fz - nz + thing_type[th->ticker.type].step_height >= 0)
+		poscheck.th_sh += thing_type[th->ticker.type].step_height;
 
-	poscheck.th_zh = z + poscheck.height;
+	poscheck.water_height = thing_type[th->ticker.type].water_height;
+
+	poscheck.th_zh = nz + poscheck.height;
 
 	poscheck.floorz = -16384;
 	poscheck.ceilingz = 16384;
@@ -170,15 +174,21 @@ static void prepare_pos_check(uint8_t tdx, int32_t z)
 	poscheck.ceilingt = 0;
 }
 
-static void get_sector_floorz(sector_t *sec)
+static void get_sector_floorz(sector_t *sec, int32_t th_z)
 {
 	if(sec->floor.link)
 	{
-		poscheck.tfz = -16384;
+		if(	poscheck.water_height < 0xFF &&
+			map_sectors[sec->floor.link].flags & SECTOR_FLAG_WATER
+		)
+			poscheck.tfz = sec->floor.height - poscheck.water_height;
+		else
+			poscheck.tfz = -16384;
+
 		return;
 	}
 
-	poscheck.tfz = sec->floor.height;
+	poscheck.tfz = sec->floor.height - sec->floordist;
 }
 
 static void get_sector_ceilingz(sector_t *sec)
@@ -204,7 +214,7 @@ static uint32_t check_backsector(uint8_t sec, int32_t th_z)
 
 	map_secext[sec].maskblock = poscheck.maskblock;
 
-	get_sector_floorz(bs);
+	get_sector_floorz(bs, th_z);
 	get_sector_ceilingz(bs);
 
 	dist = poscheck.tcz - poscheck.tfz;
@@ -327,7 +337,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	sector_t *sec;
 
 	// prepare
-	prepare_pos_check(tdx, nz);
+	prepare_pos_check(tdx, nz, th->floorz);
 
 	// target sector
 	if(!sdx)
@@ -352,7 +362,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 
 		sec = map_sectors + sdx;
 
-		get_sector_floorz(sec);
+		get_sector_floorz(sec, nz);
 		if(poscheck.floorz < poscheck.tfz)
 		{
 			poscheck.floorz = poscheck.tfz;
@@ -716,6 +726,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	else
 		th->sprite = sprite_remap[st->sprite] + (st->frm_nxt & 0x1F);
 
+	th->floorz = -16384; // no step height
 	if(!thing_check_pos(tdx, x / 256, y / 256, z / 256, sector))
 	{
 		sector_t *sec = map_sectors + sector;
@@ -1189,8 +1200,16 @@ skip_z_friction:
 
 void thing_tick_plr()
 {
+	sector_t *sec = map_sectors + thingsec[tick_idx][0];
 	thing_t *th = thing_ptr(tick_idx);
 	uint8_t bkup = tick_idx;
+	uint8_t ntype = THING_TYPE_PLAYER_N;
+
+	if(sec->flags & SECTOR_FLAG_WATER)
+		ntype = THING_TYPE_PLAYER_S;
+	else
+	if(!th->gravity)
+		ntype = THING_TYPE_PLAYER_F;
 
 	if(th->counter)
 	{
@@ -1202,7 +1221,7 @@ void thing_tick_plr()
 		th->angle = ticcmd.angle;
 		th->pitch = ticcmd.pitch;
 
-		if(ticcmd.bits_l & TCMD_USE)
+/*		if(ticcmd.bits_l & TCMD_USE)
 		{
 			if(!(th->iflags & THING_IFLAG_USED))
 			{
@@ -1210,13 +1229,60 @@ void thing_tick_plr()
 				printf("USE KEY\n");
 			}
 		} else
-			th->iflags &= ~THING_IFLAG_USED;
+			th->iflags &= ~THING_IFLAG_USED;*/
+
+		if(ticcmd.bits_l & TCMD_GO_UP)
+		{
+			if(sec->flags & SECTOR_FLAG_WATER)
+			{
+				th->mz += thing_type[th->ticker.type].jump_pwr << 8;
+			} else
+			if(	th->mz >= 0 &&
+				!(th->iflags & (THING_IFLAG_NOJUMP | THING_IFLAG_JUMPED)) &&
+				(th->z / 256) <= th->floorz
+			){
+				th->iflags |= THING_IFLAG_JUMPED;
+				th->mz += thing_type[th->ticker.type].jump_pwr << 8;
+			}
+		} else
+			th->iflags &= ~THING_IFLAG_JUMPED;
+
+		if(ticcmd.bits_l & TCMD_GO_DOWN)
+		{
+			if(sec->flags & SECTOR_FLAG_WATER)
+			{
+				th->mz -= thing_type[th->ticker.type].jump_pwr << 8;
+			} else
+				ntype = THING_TYPE_PLAYER_C;
+		}
 
 		if(ticcmd.bits_l & TCMD_MOVING)
 		{
 			uint8_t speed = thing_type[th->ticker.type].speed;
 			uint8_t angle = ticcmd.angle + (ticcmd.bits_h & 0xE0);
 			thing_launch_ang(tick_idx, angle, speed);
+		}
+	}
+
+	if(th->ticker.type != ntype)
+	{
+printf("change %u -> %u\n", th->ticker.type, ntype);
+		int32_t diff = th->ceilingz - th->floorz + th->height;
+
+		if(thing_type[ntype].height - diff < 0)
+		{
+			th->height = thing_type[ntype].height;
+			th->view_height = thing_type[ntype].view_height;
+			th->ticker.type = ntype;
+
+			th->iflags |= THING_IFLAG_HEIGHTCHECK;
+
+			if(tick_idx == camera_thing)
+			{
+				projection.wd = (th->view_height - projection.wh) >> 1;
+				if(!projection.wd)
+					projection.wd = 1;
+			}
 		}
 	}
 
