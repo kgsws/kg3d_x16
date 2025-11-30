@@ -650,7 +650,7 @@ thing_check_pos:
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
 
-	; thing sector pointer
+	; thing sector
 	lda	$B000,x
 	sta	ARG_THING_SECTOR
 :
@@ -1672,6 +1672,10 @@ prepare_pos_check:
 	lda	THING_STRUCT_BLOCKEDBY,x
 	sta	THMOVE_BLOCKEDBY
 
+	; mz >= 0
+	lda	THING_STRUCT_MZ_L,x
+	bmi	:+
+
 	; fz - nz
 	sec
 	lda	THING_STRUCT_FLOORZ_L,x
@@ -1689,7 +1693,8 @@ prepare_pos_check:
 	adc	#0
 
 	; check
-	bpl	:+
+	bpl	:++
+:
 	stz	MATH_VAR_U
 :
 	; poscheck.th_sh = nz + thing_type[th->ticker.type].step_height
@@ -2642,7 +2647,7 @@ thing_tick:
 	bpl	:+
 	stz	G_VIEWHEIGHT
 :
-	; th->view_height - projection.wh
+	; projection.wd = (th->view_height - projection.wh) >> 1
 	sec
 	lda	THING_STRUCT_VIEW_HEIGHT,y
 	sbc	G_VIEWHEIGHT
@@ -2686,7 +2691,7 @@ thing_tick:
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
 
-	; thing sector pointer
+	; thing sector
 	ldx	$B000,y
 
 	; <sector>
@@ -2964,9 +2969,48 @@ thing_nextfrm:
 ;;;
 
 thing_plyr:
+	; ntype = THING_TYPE_PLAYER_N
+	lda	#THING_TYPE_PLAYER_N
+	sta	PLTICK_NTYPE
+
+	; if(!th->gravity)
+	lda	THING_STRUCT_GRAVITY,y
+	bne	:+
+
+	; ntype = THING_TYPE_PLAYER_F
+	lda	#THING_TYPE_PLAYER_F
+	sta	PLTICK_NTYPE
+:
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing sector
+	ldx	$B000,y
+	stx	PLTICK_SECTOR
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; flags
+	lda	SECTOR_STRUCT_FLAGS,x
+	sta	PLTICK_SEC_FLAGS
+
+	; if(sec->flags & SECTOR_FLAG_WATER)
+	bpl	:+
+
+	; ntype = THING_TYPE_PLAYER_S
+	lda	#THING_TYPE_PLAYER_S
+	sta	PLTICK_NTYPE
+:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
 	; check freeze
 	lda	THING_STRUCT_COUNTER,y
-	beq	:+
+	beq	@no_freeze
 
 	; ticcmd.angle = th->angle
 	lda	THING_STRUCT_ANGLE,y
@@ -2977,8 +3021,28 @@ thing_plyr:
 	sta	TICK_CMD_PITCH
 
 	; done
-	bra	@skip_move
-:
+	jmp	@skip_move
+
+@no_freeze:
+	; get type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; speed
+	lda	THTYPE_STRUCT_SPEED,x
+	sta	PLTICK_SPEED
+
+	; jump
+	lda	THTYPE_STRUCT_JUMPZ,x
+	sta	PLTICK_JUMPZ
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
 	; th->angle = ticcmd.angle
 	lda	TICK_CMD_ANGLE
 	sta	THING_STRUCT_ANGLE,y
@@ -2987,8 +3051,76 @@ thing_plyr:
 	lda	TICK_CMD_PITCH
 	sta	THING_STRUCT_PITCH,y
 
+	; if(ticcmd.bits_l & TCMD_GO_UP)
+	bit	TICK_CMD_BITS_L
+	bvs	@try_up
+
+	; th->iflags &= ~THING_IFLAG_JUMPED
+	lda	THING_STRUCT_IFLAGS,y
+	and	#<~THING_IFLAG_JUMPED
+	sta	THING_STRUCT_IFLAGS,y
+
+	bra	@skip_up
+
+@try_up:
+	; if(sec->flags & SECTOR_FLAG_WATER)
+	lda	PLTICK_SEC_FLAGS
+	bmi	@go_up
+
+	; th->mz >= 0
+	lda	THING_STRUCT_MZ_L,y
+	bmi	@skip_up
+
+	; !(th->iflags & (THING_IFLAG_NOJUMP | THING_IFLAG_JUMPED))
+	lda	THING_STRUCT_IFLAGS,y
+	and	#(THING_IFLAG_NOJUMP|THING_IFLAG_JUMPED)
+	bne	@skip_up
+
+	; th->floorz - (th->z / 256) >= 0
+	sec
+	lda	THING_STRUCT_FLOORZ_L,y
+	sbc	THING_STRUCT_Z_L,y
+	lda	THING_STRUCT_FLOORZ_H,y
+	sbc	THING_STRUCT_Z_H,y
+	bmi	@skip_up
+
+	; th->iflags |= THING_IFLAG_JUMPED
+	lda	THING_STRUCT_IFLAGS,y
+	ora	#THING_IFLAG_JUMPED
+	sta	THING_STRUCT_IFLAGS,y
+
+@go_up:
+	; th->mz += jump << 8
+	clc
+	lda	THING_STRUCT_MZ_L,y
+	adc	PLTICK_JUMPZ
+	sta	THING_STRUCT_MZ_L,y
+
+@skip_up:
+	; if(ticcmd.bits_l & TCMD_GO_DOWN)
+	lda	TICK_CMD_BITS_L
+	ror
+	bcc	@skip_down
+
+	; if(sec->flags & SECTOR_FLAG_WATER)
+	lda	PLTICK_SEC_FLAGS
+	bpl	:+
+
+	; th->mz -= jump << 8
+	sec
+	lda	THING_STRUCT_MZ_L,y
+	sbc	PLTICK_JUMPZ
+	sta	THING_STRUCT_MZ_L,y
+
+	bra	@skip_down
+:
+	; ntype = THING_TYPE_PLAYER_C
+	lda	#THING_TYPE_PLAYER_C
+	sta	PLTICK_NTYPE
+
+@skip_down:
 	; if(ticcmd.bits & TCMD_MOVING)
-	ldx	TICK_CMD_BITS_L
+	lda	TICK_CMD_BITS_L
 	bpl	@skip_move
 
 	; get type
@@ -3016,6 +3148,115 @@ thing_plyr:
 	jsr	thing_launch_ang
 
 @skip_move:
+	; if(th->ticker.type != ntype)
+	lda	PLTICK_NTYPE
+	cmp	TICKER_STRUCT_TYPE,y
+	bne	:+
+	jmp	@no_change
+:
+	tax
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; height
+	lda	THTYPE_STRUCT_HEIGHT,x
+	sta	PLTICK_HEIGHT
+
+	; view height
+	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
+	sta	PLTICK_VIEWH
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; diff = th->ceilingz - th->floorz + th->height
+	sec
+	lda	THING_STRUCT_CEILZ_L,y
+	sbc	THING_STRUCT_FLOORZ_L,y
+	sta	MATH_VAR_L
+	lda	THING_STRUCT_CEILZ_H,y
+	sbc	THING_STRUCT_FLOORZ_H,y
+	sta	MATH_VAR_H
+	clc
+	lda	MATH_VAR_L
+	adc	THING_STRUCT_HEIGHT,y
+	sta	MATH_VAR_L
+	bcc	:+
+	inc	MATH_VAR_H
+:
+	; if(ti->height - diff < 0)
+	sec
+	lda	PLTICK_HEIGHT
+	sbc	MATH_VAR_L
+	lda	#0
+	sbc	MATH_VAR_H
+	bpl	@no_change
+
+	; diff = th->view_height - ti->view_height
+	sec
+	lda	THING_STRUCT_VIEW_HEIGHT,y
+	sbc	PLTICK_VIEWH
+	tax
+
+	; th->z += diff << 8
+	clc
+	adc	THING_STRUCT_Z_L,y
+	sta	THING_STRUCT_Z_L,y
+	txa
+	lda	TAB_SIGN_EXT,x
+	adc	THING_STRUCT_Z_H,y
+	sta	THING_STRUCT_Z_H,y
+
+	; if((th->z / 256) < th->floorz)
+	sec
+	lda	THING_STRUCT_Z_L,y
+	sbc	THING_STRUCT_FLOORZ_L,y
+	lda	THING_STRUCT_Z_H,y
+	sbc	THING_STRUCT_FLOORZ_H,y
+	bpl	:+
+
+	; th->z = th->floorz << 8
+	lda	#0
+	sta	THING_STRUCT_Z_S,y
+	lda	THING_STRUCT_FLOORZ_L,y
+	sta	THING_STRUCT_Z_L,y
+	lda	THING_STRUCT_FLOORZ_H,y
+	sta	THING_STRUCT_Z_H,y
+:
+	; th->height = ti->height
+	lda	PLTICK_HEIGHT
+	sta	THING_STRUCT_HEIGHT,y
+
+	; th->view_height = ti->view_height
+	lda	PLTICK_VIEWH
+	sta	THING_STRUCT_VIEW_HEIGHT,y
+
+	; th->iflags |= THING_IFLAG_HEIGHTCHECK
+	lda	THING_STRUCT_IFLAGS,y
+	ora	#THING_IFLAG_HEIGHTCHECK
+	sta	THING_STRUCT_IFLAGS,y
+
+	; th->ticker.type = ntype
+	lda	PLTICK_NTYPE
+	sta	TICKER_STRUCT_TYPE,y
+
+	; camera check
+	cpy	G_CAMERA_THING
+	bne	:+
+
+	; projection.wd = (th->view_height - projection.wh) >> 1
+	sec
+	lda	THING_STRUCT_VIEW_HEIGHT,y
+	sbc	G_VIEWHEIGHT
+	sta	G_VIEWDELTA
+	lsr	G_VIEWDELTA
+	bne	:+
+	inc	G_VIEWDELTA
+:
+@no_change:
 	; thing tick
 	jsr	thing_tick
 

@@ -146,7 +146,7 @@ static int32_t mlimit(int32_t val)
 	return val;
 }
 
-static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz)
+static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz)
 {
 	thing_t *th = thing_ptr(tdx);
 
@@ -158,7 +158,9 @@ static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz)
 	poscheck.blockedby = th->blockedby;
 
 	poscheck.th_sh = nz;
-	if(fz - nz + thing_type[th->ticker.type].step_height >= 0)
+	if(	mz >= 0 &&
+		fz - nz + thing_type[th->ticker.type].step_height >= 0
+	)
 		poscheck.th_sh += thing_type[th->ticker.type].step_height;
 
 	poscheck.water_height = thing_type[th->ticker.type].water_height;
@@ -337,7 +339,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	sector_t *sec;
 
 	// prepare
-	prepare_pos_check(tdx, nz, th->floorz);
+	prepare_pos_check(tdx, nz, th->floorz, th->mz);
 
 	// target sector
 	if(!sdx)
@@ -1205,11 +1207,11 @@ void thing_tick_plr()
 	uint8_t bkup = tick_idx;
 	uint8_t ntype = THING_TYPE_PLAYER_N;
 
-	if(sec->flags & SECTOR_FLAG_WATER)
-		ntype = THING_TYPE_PLAYER_S;
-	else
 	if(!th->gravity)
 		ntype = THING_TYPE_PLAYER_F;
+
+	if(sec->flags & SECTOR_FLAG_WATER)
+		ntype = THING_TYPE_PLAYER_S;
 
 	if(th->counter)
 	{
@@ -1218,6 +1220,10 @@ void thing_tick_plr()
 		ticcmd.pitch = th->pitch;
 	} else
 	{
+		thing_type_t *ti = thing_type + th->ticker.type;
+		int32_t jump = ti->jump_pwr;
+		int32_t speed = ti->speed;
+
 		th->angle = ticcmd.angle;
 		th->pitch = ticcmd.pitch;
 
@@ -1235,14 +1241,14 @@ void thing_tick_plr()
 		{
 			if(sec->flags & SECTOR_FLAG_WATER)
 			{
-				th->mz += thing_type[th->ticker.type].jump_pwr << 8;
+				th->mz += jump << 8;
 			} else
 			if(	th->mz >= 0 &&
 				!(th->iflags & (THING_IFLAG_NOJUMP | THING_IFLAG_JUMPED)) &&
-				(th->z / 256) <= th->floorz
+				th->floorz - (th->z / 256) >= 0
 			){
 				th->iflags |= THING_IFLAG_JUMPED;
-				th->mz += thing_type[th->ticker.type].jump_pwr << 8;
+				th->mz += jump << 8;
 			}
 		} else
 			th->iflags &= ~THING_IFLAG_JUMPED;
@@ -1250,15 +1256,13 @@ void thing_tick_plr()
 		if(ticcmd.bits_l & TCMD_GO_DOWN)
 		{
 			if(sec->flags & SECTOR_FLAG_WATER)
-			{
-				th->mz -= thing_type[th->ticker.type].jump_pwr << 8;
-			} else
+				th->mz -= jump << 8;
+			else
 				ntype = THING_TYPE_PLAYER_C;
 		}
 
 		if(ticcmd.bits_l & TCMD_MOVING)
 		{
-			uint8_t speed = thing_type[th->ticker.type].speed;
 			uint8_t angle = ticcmd.angle + (ticcmd.bits_h & 0xE0);
 			thing_launch_ang(tick_idx, angle, speed);
 		}
@@ -1266,13 +1270,19 @@ void thing_tick_plr()
 
 	if(th->ticker.type != ntype)
 	{
-printf("change %u -> %u\n", th->ticker.type, ntype);
+		thing_type_t *ti = thing_type + ntype;
 		int32_t diff = th->ceilingz - th->floorz + th->height;
 
-		if(thing_type[ntype].height - diff < 0)
+		if(ti->height - diff < 0)
 		{
-			th->height = thing_type[ntype].height;
-			th->view_height = thing_type[ntype].view_height;
+			diff = th->view_height - ti->view_height;
+
+			th->z += diff << 8;
+			if((th->z / 256) < th->floorz)
+				th->z = th->floorz << 8;
+
+			th->height = ti->height;
+			th->view_height = ti->view_height;
 			th->ticker.type = ntype;
 
 			th->iflags |= THING_IFLAG_HEIGHTCHECK;
