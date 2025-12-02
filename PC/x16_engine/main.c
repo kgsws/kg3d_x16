@@ -449,7 +449,6 @@ static uint8_t portal_top, portal_bot;
 static uint8_t map_block_data[8192];
 map_head_t map_head;
 sector_t map_sectors[256];
-sector_extra_t map_secext[256];
 wall_t map_walls[WALL_BANK_COUNT][256];
 
 // font stuff

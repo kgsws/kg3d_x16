@@ -76,7 +76,7 @@ pos_check_t poscheck;
 static void place_to_sector(uint8_t tdx, uint8_t sdx)
 {
 	uint32_t slot;
-	uint8_t maskblock = map_secext[sdx].maskblock;
+	uint8_t maskblock = map_sectors[sdx].maskblock;
 
 	// get free sector slot
 	for(slot = 0; slot < 31; slot++)
@@ -163,7 +163,10 @@ static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz)
 	)
 		poscheck.th_sh += thing_type[th->ticker.type].step_height;
 
-	poscheck.water_height = thing_type[th->ticker.type].water_height;
+	if(th->mz / 256 > -32)
+		poscheck.water_height = thing_type[th->ticker.type].water_height;
+	else
+		poscheck.water_height = 0xFF;
 
 	poscheck.th_zh = nz + poscheck.height;
 
@@ -213,8 +216,6 @@ static uint32_t check_backsector(uint8_t sec, int32_t th_z)
 		return 1;
 
 	bs = map_sectors + sec;
-
-	map_secext[sec].maskblock = poscheck.maskblock;
 
 	get_sector_floorz(bs, th_z);
 	get_sector_ceilingz(bs);
@@ -736,7 +737,8 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 		printf("BAD thing spawn\n");
 
 		poscheck.slot = 0;
-		map_secext[sector].maskblock = 0;
+
+		sec->maskblock = 0;
 		place_to_sector(tdx, sector);
 
 		th->ceilingz = sec->ceiling.height - th->height;

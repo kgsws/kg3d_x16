@@ -287,6 +287,7 @@ THMOVE_HTYPE = $CC
 THMOVE_HIDX = $CD
 THMOVE_HITANG = $CE
 THMOVE_ISLINK = $CF
+THMOVE_MZ_L = $D0
 
 ; thing movement (overlap)
 THMOVE_DIFF_L = THMOVE_TFZ_L
@@ -295,7 +296,7 @@ THMOVE_RADIUS_L = THMOVE_TCZ_L
 THMOVE_RADIUS_H = THMOVE_TCZ_H
 
 ; thing ticker (overlaps movement)
-THTICK_RETRY = $D0
+THTICK_RETRY = $D8
 
 ; player ticker
 PLTICK_SECTOR = $B0

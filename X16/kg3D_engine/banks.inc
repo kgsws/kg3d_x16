@@ -57,7 +57,7 @@ BANK_PLAYER_START = BANK_MAPWALLS + 0	; loaded from map file
 
 ; sectors in things
 ; index 0 to 127 is used for 'thing id' [thingsec]
-; index 128 to 255 is used for 'offset in table above' [thingces]
+; index 128 to 255 is used for 'offset in sector things table' [thingces]
 BANK_THING_SECTORS = BANK_MAPWALLS + 7
 
 ; thing states

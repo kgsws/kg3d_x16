@@ -73,7 +73,7 @@ typedef struct
 
 typedef struct
 {
-	// limit is 31 bytes
+	// 32 bytes total
 	sector_plane_t floor;
 	sector_plane_t ceiling;
 	struct
@@ -84,6 +84,10 @@ typedef struct
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
 	uint8_t floormasked;
+	//
+	uint8_t fillter[8];
+	// used by engine
+	uint8_t maskblock;
 } __attribute__((packed)) sector_t;
 
 typedef struct
@@ -901,7 +905,7 @@ void x16_export_map()
 
 	// sectors
 	for(uint32_t i = 1; i < 256; i++)
-		place_struct(map_block_data, i, map_sectors + i - 1, 32);
+		place_struct(map_block_data, i, map_sectors + i - 1, sizeof(sector_t));
 	write(fd, map_block_data, 256 * 32);
 
 	// player starts

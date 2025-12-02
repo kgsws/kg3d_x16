@@ -82,7 +82,7 @@ typedef struct
 
 typedef struct
 {
-	// limit is 31 bytes
+	// 32 bytes total
 	sector_plane_t floor;
 	sector_plane_t ceiling;
 	struct
@@ -93,12 +93,11 @@ typedef struct
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
 	uint8_t floormasked;
-} __attribute__((packed)) sector_t;
-
-typedef struct
-{
+	//
+	uint8_t fillter[8];
+	// used by engine
 	uint8_t maskblock;
-} sector_extra_t;
+} __attribute__((packed)) sector_t;
 
 typedef struct
 {
@@ -122,7 +121,6 @@ extern p2a_t p2a_coord;
 extern projection_t projection;
 
 extern sector_t map_sectors[256];
-extern sector_extra_t map_secext[256];
 extern wall_t map_walls[WALL_BANK_COUNT][256];
 
 extern uint8_t sectorth[256][32]; // list of things which are in specific sector, last slot is a counter

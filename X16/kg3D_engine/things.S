@@ -1660,6 +1660,16 @@ prepare_pos_check:
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
+	; if(th->mz / 256 > -32)
+	lda	THING_STRUCT_MZ_L,x
+	bpl	:+
+	cmp	#$E1
+	bcs	:+
+
+	; poscheck.water_height = 255
+	lda	#$FF
+	sta	THMOVE_WATER_HEIGHT
+:
 	; poscheck.radius = th->radius
 	lda	THING_STRUCT_RADIUS,x
 	sta	THMOVE_RADIUS
@@ -1898,10 +1908,6 @@ check_backsector:
 	; sector bank
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
-
-	; bs->maskblock = poscheck.maskblock
-	lda	THMOVE_MASKBLOCK
-	sta	SECTOR_STRUCT_MASKBLOCK,x
 
 	; get heights
 	jsr	get_sector_floorz
