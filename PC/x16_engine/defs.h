@@ -92,11 +92,8 @@ typedef struct
 	} wall;
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
-	uint8_t floormasked;
 	//
-	uint8_t fillter[8];
-	// used by engine
-	uint8_t maskblock;
+	uint8_t fillter[10];
 } __attribute__((packed)) sector_t;
 
 typedef struct

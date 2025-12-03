@@ -83,11 +83,8 @@ typedef struct
 	} wall;
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
-	uint8_t floormasked;
 	//
-	uint8_t fillter[8];
-	// used by engine
-	uint8_t maskblock;
+	uint8_t fillter[10];
 } __attribute__((packed)) sector_t;
 
 typedef struct
@@ -408,7 +405,6 @@ void x16_export_map()
 	uint32_t count_walls = 0;
 	uint32_t count_things = 0;
 	uint32_t count_wbanks = 0;
-	uint32_t masked_height;
 	wall_t wall_tmp[EDIT_MAX_SECTOR_LINES];
 	uint8_t widx[EDIT_MAX_SECTOR_LINES];
 
@@ -520,7 +516,6 @@ void x16_export_map()
 		int32_t wfrst = -1;
 		uint32_t wcnt;
 
-		masked_height = 0;
 		memset(wall_tmp, 0, sizeof(wall_tmp));
 
 		// go trough lines
@@ -574,6 +569,8 @@ void x16_export_map()
 
 				if(line->texture[2].idx)
 				{
+					editor_texture_t *et = editor_texture + line->texture[2].idx;
+
 					ret = mark_texture(line->texture[2].idx, sec->light.idx);
 					if(ret < 0)
 					{
@@ -588,11 +585,6 @@ void x16_export_map()
 
 					if(line->texture[2].flags & TEXFLAG_PEG_MID_BACK)
 						wall->tflags |= 0b10000000;
-					else
-					{
-						editor_texture_t *et = editor_texture + line->texture[2].idx;
-						masked_height = et->height + line->texture[2].oy;
-					}
 
 					wall->blockmid = line->info.blockmid;
 					wall->mid.texture = ret;
@@ -796,7 +788,6 @@ void x16_export_map()
 		map_sector->wall.first = wall_first;
 
 		map_sector->floordist = sec->plane[PLANE_BOT].dist;
-		map_sector->floormasked = masked_height * 2;
 
 		// flags will be added later
 

@@ -30,7 +30,6 @@ typedef struct
 	uint8_t blockedby;
 	uint8_t radius, height;
 	uint8_t sector, slot;
-	uint8_t maskblock;
 	uint8_t islink;
 	uint8_t pthit, ptwall;
 	uint8_t htype, hidx;
@@ -76,7 +75,6 @@ pos_check_t poscheck;
 static void place_to_sector(uint8_t tdx, uint8_t sdx)
 {
 	uint32_t slot;
-	uint8_t maskblock = map_sectors[sdx].maskblock;
 
 	// get free sector slot
 	for(slot = 0; slot < 31; slot++)
@@ -96,7 +94,7 @@ static void place_to_sector(uint8_t tdx, uint8_t sdx)
 	sectorth[sdx][31]++;
 	sectorth[sdx][slot] = tdx;
 	thingsec[tdx][poscheck.slot] = sdx;
-	thingces[tdx][poscheck.slot] = slot | maskblock;
+	thingces[tdx][poscheck.slot] = slot;
 	poscheck.slot++;
 }
 
@@ -349,7 +347,6 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	poscheck.htype = 0;
 
 	poscheck.sector = 0;
-	poscheck.maskblock = 0;
 
 	poscheck.portal_rd = 0;
 	poscheck.portal_wr = 1;
@@ -738,7 +735,6 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 
 		poscheck.slot = 0;
 
-		sec->maskblock = 0;
 		place_to_sector(tdx, sector);
 
 		th->ceilingz = sec->ceiling.height - th->height;
@@ -1088,6 +1084,10 @@ apply_pos:
 				break;
 			}
 		}
+	} else
+	if(th->iflags & THING_IFLAG_HEIGHTCHECK)
+	{
+		th->iflags &= ~THING_IFLAG_HEIGHTCHECK;
 	}
 
 	//

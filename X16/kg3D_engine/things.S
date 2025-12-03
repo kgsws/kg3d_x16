@@ -278,11 +278,6 @@ thing_spawn_org:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	; sec->maskblock = 0
-	ldy	ARG_THING_SECTOR
-	lda	#0
-	sta	SECTOR_STRUCT_MASKBLOCK,y
-
 	; place to sector
 	lda	#$B0
 	sta	THMOVE_PTR_H
@@ -681,9 +676,6 @@ thing_check_spawn:
 
 	; poscheck.sector = 0
 	stz	THMOVE_SECTOR
-
-	; poscheck.maskblock = 0
-	stz	THMOVE_MASKBLOCK
 
 	; poscheck.htype = 0
 	stz	THMOVE_HTYPE
@@ -1502,8 +1494,6 @@ thing_apply_pos:
 
 	; get slot in sector
 	lda	(THCES_PTR_L),y
-	and	#$1F
-	ora	#$A0
 	sta	TMP_PTR_H
 
 	; sector things bank
@@ -2139,10 +2129,6 @@ place_to_sector:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	; maskblock = sec->maskblock
-	lda	SECTOR_STRUCT_MASKBLOCK,y
-	sta	THMOVE_MASKBLOCK
-
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
@@ -2154,12 +2140,11 @@ place_to_sector:
 	; add this sector to thing
 	sta	(THMOVE_PTR_L),y
 
-	; add slot index to thing
+	; add slot index to thing (pointer)
 	lda	THMOVE_PTR_H
 	sta	@opcode+2
 	lda	HI_PTR_H
-	and	#$1F
-	ora	THMOVE_MASKBLOCK
+	ora	#$A0
 @opcode:
 	sta	$B080,y	; modified address
 
