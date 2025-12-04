@@ -257,6 +257,91 @@ static void check_point(vertex_t *dd, uint32_t wdx)
 	poscheck.ptwall = wdx;
 }
 
+static uint32_t check_things(uint8_t tdx, uint8_t sdx, int32_t nx, int32_t ny)
+{
+	thing_t *th = thing_ptr(tdx);
+
+	for(uint32_t i = 0; i < 31; i++)
+	{
+		uint8_t odx = sectorth[sdx][i];
+		int32_t radius;
+		int32_t dist;
+		thing_t *ht;
+
+		if(!odx)
+			continue;
+
+		if(odx == tdx)
+			continue;
+
+		ht = thing_ptr(odx);
+
+		if(!(poscheck.blockedby & ht->blocking))
+			continue;
+
+		radius = ht->radius + poscheck.radius;
+
+		dist = nx - ht->x / 256;
+		p2a_coord.x = dist;
+		if(dist >= 0)
+		{
+			if(dist - radius >= 0)
+				continue;
+		} else
+		{
+			if(dist + radius < 0)
+				continue;
+		}
+
+		dist = ny - ht->y / 256;
+		p2a_coord.y = dist;
+		if(dist >= 0)
+		{
+			if(dist - radius >= 0)
+				continue;
+		} else
+		{
+			if(dist + radius < 0)
+				continue;
+		}
+
+		dist = point_to_dist();
+		if(dist - radius >= 0)
+			continue;
+
+		dist = ht->z / 256;
+		if(dist - poscheck.th_zh >= 0)
+		{
+			if(dist < poscheck.ceilingz)
+			{
+				poscheck.ceilingz = dist;
+				poscheck.ceilingt = odx;
+			}
+
+set_iflags:
+			th->iflags |= THING_IFLAG_HEIGHTCHECK;
+			ht->iflags |= THING_IFLAG_HEIGHTCHECK;
+
+			continue;
+		}
+
+		dist = ht->z / 256 + ht->height;
+		if(poscheck.th_sh - dist >= 0)
+		{
+			if(poscheck.floorz < dist)
+			{
+				poscheck.floorz = dist;
+				poscheck.floort = odx;
+			}
+			goto set_iflags;
+		}
+
+		return odx;
+	}
+
+	return 0;
+}
+
 static void add_sector_raw(uint8_t sdx, uint8_t touch, uint8_t islink)
 {
 	uint32_t i;
@@ -329,6 +414,46 @@ void thing_apply_pos()
 	th->floort = poscheck.floort;
 	th->ceilings = poscheck.ceilings;
 	th->ceilingt = poscheck.ceilingt;
+}
+
+void thing_height_check(uint8_t tdx)
+{
+	thing_t *th = thing_ptr(tdx);
+	int32_t nz = th->z / 256;
+
+	prepare_pos_check(tick_idx, nz, th->floorz, th->mz);
+
+	// hack for things
+	poscheck.th_sh = nz + 256;
+
+	// go trough sectors
+	for(uint32_t i = 0; i < 16; i++)
+	{
+		uint8_t sdx = thingsec[tdx][i];
+		sector_t *sec;
+
+		if(!sdx)
+			break;
+
+		sec = map_sectors + sdx;
+
+		get_sector_floorz(sec, nz);
+		if(poscheck.floorz < poscheck.tfz)
+		{
+			poscheck.floorz = poscheck.tfz;
+			poscheck.floors = sdx;
+		}
+
+		get_sector_ceilingz(sec);
+		if(poscheck.tcz < poscheck.ceilingz)
+		{
+			poscheck.ceilingz = poscheck.tcz;
+			poscheck.ceilings = sdx;
+		}
+
+		// go trough things
+		check_things(tdx, sdx, th->x / 256, th->y / 256);
+	}
 }
 
 uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx)
@@ -524,83 +649,15 @@ pt_block:
 	poscheck.portal_rd = 0;
 	while(poscheck.portal_rd < poscheck.portal_wr)
 	{
+		uint8_t odx;
+
 		sdx = portals[poscheck.portal_rd].sector;
 		poscheck.portal_rd++;
 
-		for(uint32_t i = 0; i < 31; i++)
+		odx = check_things(tdx, sdx, nx, ny);
+		if(odx)
 		{
-			uint8_t odx = sectorth[sdx][i];
-			int32_t radius;
-			int32_t dist;
-			thing_t *ht;
-
-			if(!odx)
-				continue;
-
-			if(odx == tdx)
-				continue;
-
-			ht = thing_ptr(odx);
-
-			if(!(poscheck.blockedby & ht->blocking))
-				continue;
-
-			radius = ht->radius + poscheck.radius;
-
-			dist = nx - ht->x / 256;
-			p2a_coord.x = dist;
-			if(dist >= 0)
-			{
-				if(dist - radius >= 0)
-					continue;
-			} else
-			{
-				if(dist + radius < 0)
-					continue;
-			}
-
-			dist = ny - ht->y / 256;
-			p2a_coord.y = dist;
-			if(dist >= 0)
-			{
-				if(dist - radius >= 0)
-					continue;
-			} else
-			{
-				if(dist + radius < 0)
-					continue;
-			}
-
-			dist = point_to_dist();
-			if(dist - radius >= 0)
-				continue;
-
-			dist = ht->z / 256;
-			if(dist - poscheck.th_zh >= 0)
-			{
-				if(dist < poscheck.ceilingz)
-				{
-					poscheck.ceilingz = dist;
-					poscheck.ceilingt = odx;
-				}
-
-set_iflags:
-				th->iflags |= THING_IFLAG_HEIGHTCHECK;
-				ht->iflags |= THING_IFLAG_HEIGHTCHECK;
-
-				continue;
-			}
-
-			dist = ht->z / 256 + ht->height;
-			if(poscheck.th_sh - dist >= 0)
-			{
-				if(poscheck.floorz < dist)
-				{
-					poscheck.floorz = dist;
-					poscheck.floort = odx;
-				}
-				goto set_iflags;
-			}
+			thing_t *ht = thing_ptr(odx);
 
 			p2a_coord.x = ht->x / 256 - th->x / 256;
 			p2a_coord.y = ht->y / 256 - th->y / 256;
@@ -1088,6 +1145,18 @@ apply_pos:
 	if(th->iflags & THING_IFLAG_HEIGHTCHECK)
 	{
 		th->iflags &= ~THING_IFLAG_HEIGHTCHECK;
+
+		thing_height_check(tick_idx);
+
+		// save heights
+		th->floorz = poscheck.floorz;
+		th->ceilingz = poscheck.ceilingz - poscheck.height;
+
+		// save planes
+		th->floors = poscheck.floors;
+		th->floort = poscheck.floort;
+		th->ceilings = poscheck.ceilings;
+		th->ceilingt = poscheck.ceilingt;
 	}
 
 	//

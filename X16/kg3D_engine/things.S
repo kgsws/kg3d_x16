@@ -17,6 +17,7 @@
 .export thing_launch_ang
 .export thing_launch
 .export thing_check_pos
+.export thing_check_heights
 .export thing_apply_pos
 .export thing_nextfrm
 
@@ -625,6 +626,56 @@ skip_pitch:
 	rts
 
 ;;;
+; thing height check
+;;;
+; ARG_THING_X_*, ARG_THING_Y_*, ARG_THING_Z_* (only L and H) - current position
+; ARG_THING_IDX - thing index
+
+thing_check_heights:
+	ldx	ARG_THING_IDX
+
+	; prepare
+	jsr	prepare_pos_check
+
+	; poscheck.th_sh = nz - 256
+	lda	ARG_THING_Z_L
+	sta	THMOVE_TH_SH_L
+	lda	ARG_THING_Z_H
+	ina
+	sta	THMOVE_TH_SH_H
+
+	; go trough sectors
+	stx	@opcode+1
+	lda	#$B0
+	sta	@opcode+2
+@loop:
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing sector
+@opcode:
+	ldx	$B000	; modified address
+	beq	@stop
+
+	; floor and ceiling
+	phx
+	jsr	check_planes
+
+	; go trough things
+	ply
+	jsr	check_things
+
+	; next
+	inc	@opcode+2
+	lda	@opcode+2
+	cmp	#$C0
+	bcc	@loop
+
+@stop:
+	rts
+
+;;;
 ; thing position check
 ;;;
 ; ARG_THING_X_*, ARG_THING_Y_*, ARG_THING_Z_* (only L and H) - desired position
@@ -685,52 +736,16 @@ thing_check_spawn:
 
 	; while(poscheck.portal_rd < poscheck.portal_wr)
 @loop_sec:
-	; sector bank
-	lda	#BANK_SECTORS
-	sta	REG_RAM_BANK
-
 	; inside = any non-zero number
+	lda	#$FF
 	sta	THMOVE_INSIDE
 
 	; poscheck.pthit = 0
 	stz	THMOVE_PTHIT
 
-	; check floorz
-	jsr	get_sector_floorz
-	sec
-	lda	THMOVE_FLOORZ_L
-	sbc	THMOVE_TFZ_L
-	lda	THMOVE_FLOORZ_H
-	sbc	THMOVE_TFZ_H
-	bpl	:+
+	; floor and ceiling
+	jsr	check_planes
 
-	; poscheck.floorz = poscheck.tfz
-	lda	THMOVE_TFZ_L
-	sta	THMOVE_FLOORZ_L
-	lda	THMOVE_TFZ_H
-	sta	THMOVE_FLOORZ_H
-
-	; poscheck.floors
-	stx	THMOVE_FLOORS
-:
-	; check ceilingz
-	jsr	get_sector_ceilingz
-	sec
-	lda	THMOVE_TCZ_L
-	sbc	THMOVE_CEILINGZ_L
-	lda	THMOVE_TCZ_H
-	sbc	THMOVE_CEILINGZ_H
-	bpl	:+
-
-	; poscheck.ceilingz = poscheck.tcz
-	lda	THMOVE_TCZ_L
-	sta	THMOVE_CEILINGZ_L
-	lda	THMOVE_TCZ_H
-	sta	THMOVE_CEILINGZ_H
-
-	; poscheck.ceilings = sdx
-	stx	THMOVE_CEILINGS
-:
 	; link check
 	lda	THMOVE_ISLINK
 	beq	:+
@@ -1204,98 +1219,10 @@ thing_check_spawn:
 	ldx	THMOVE_PORTAL_RD
 	ldy	MEM_PORTALS_SECTOR,x
 
-	; sector things bank
-	lda	#BANK_SECTOR_THINGS
-	sta	REG_RAM_BANK
+	; go trough things
+	jsr	check_things
+	bmi	@do_thing_block
 
-	; sector things
-	lda	#$A0
-	sta	THMOVE_PTR_H
-	sty	THMOVE_PTR_L
-@loop_thing:
-	; check this slot
-	lda	(THMOVE_PTR_L)
-	beq	@next_slot
-
-	; self
-	cmp	ARG_THING_IDX
-	beq	@next_slot
-	tax
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; blocking
-	lda	THING_STRUCT_BLOCKING,x
-	and	THMOVE_BLOCKEDBY
-	beq	@next_slot_ex
-
-	; radius = ht->radius + poscheck.radius
-	clc
-	lda	THING_STRUCT_RADIUS,x
-	adc	THMOVE_RADIUS
-	sta	THMOVE_RADIUS_L
-	stz	THMOVE_RADIUS_H
-	rol	THMOVE_RADIUS_H
-
-	; X diff
-	sec
-	lda	ARG_THING_X_L
-	sbc	THING_STRUCT_X_L,x
-	sta	THMOVE_DIFF_L
-	sta	MATH_P2A_X_L
-	lda	ARG_THING_X_H
-	sbc	THING_STRUCT_X_H,x
-	sta	THMOVE_DIFF_H
-	sta	MATH_P2A_X_H
-
-	; X check
-	jsr	check_radist
-	bpl	@next_slot_ex
-
-	; Y diff
-	sec
-	lda	ARG_THING_Y_L
-	sbc	THING_STRUCT_Y_L,x
-	sta	THMOVE_DIFF_L
-	sta	MATH_P2A_Y_L
-	lda	ARG_THING_Y_H
-	sbc	THING_STRUCT_Y_H,x
-	sta	THMOVE_DIFF_H
-	sta	MATH_P2A_Y_H
-
-	; Y check
-	jsr	check_radist
-	bpl	@next_slot_ex
-
-	; save
-	stx	THMOVE_HIDX
-
-	; dist = point_to_dist()
-	jsr	math_p2d
-
-	; if(dist - radius >= 0)
-	sec
-	lda	MATH_VAR_L
-	sbc	THMOVE_RADIUS_L
-	lda	MATH_VAR_H
-	sbc	THMOVE_RADIUS_H
-	bmi	@do_hit_thing
-
-@next_slot_ex:
-	; sector things bank
-	lda	#BANK_SECTOR_THINGS
-	sta	REG_RAM_BANK
-
-@next_slot:
-	; next
-	inc	THMOVE_PTR_H
-	lda	THMOVE_PTR_H
-	cmp	#$BF
-	beq	:+
-	jmp	@loop_thing
-:
 	; next
 	inc	THMOVE_PORTAL_RD
 	lda	THMOVE_PORTAL_RD
@@ -1332,89 +1259,7 @@ thing_check_spawn:
 	lda	THMOVE_SECTOR
 	rts
 
-@do_hit_thing:
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; things
-	ldy	THMOVE_HIDX
-	ldx	ARG_THING_IDX
-
-	; under check
-	sec
-	lda	THING_STRUCT_Z_L,y
-	sbc	THMOVE_TH_ZH_L
-	lda	THING_STRUCT_Z_H,y
-	sbc	THMOVE_TH_ZH_H
-	bmi	@not_under
-
-	; check ceilingz
-	sec
-	lda	THING_STRUCT_Z_L,y
-	sbc	THMOVE_CEILINGZ_L
-	lda	THING_STRUCT_Z_H,y
-	sbc	THMOVE_CEILINGZ_H
-	bpl	:+
-
-	; poscheck.ceilingz = dist
-	lda	THING_STRUCT_Z_L,y
-	sta	THMOVE_CEILINGZ_L
-	lda	THING_STRUCT_Z_H,y
-	sta	THMOVE_CEILINGZ_H
-
-	; poscheck.ceilings = odx
-	sty	THMOVE_CEILINGS
-:
-	; set overlap
-@do_overlap:
-	lda	THING_STRUCT_IFLAGS,y
-	ora	#THING_IFLAG_HEIGHTCHECK
-	sta	THING_STRUCT_IFLAGS,y
-
-	lda	THING_STRUCT_IFLAGS,x
-	ora	#THING_IFLAG_HEIGHTCHECK
-	sta	THING_STRUCT_IFLAGS,x
-
-	bra	@next_slot_ex
-
-@not_under:
-	; over check
-	clc
-	lda	THING_STRUCT_Z_L,y
-	adc	THING_STRUCT_HEIGHT,y
-	sta	MATH_VAR_L
-	lda	THING_STRUCT_Z_H,y
-	adc	#0
-	sta	MATH_VAR_H
-	sec
-	lda	THMOVE_TH_SH_L
-	sbc	MATH_VAR_L
-	lda	THMOVE_TH_SH_H
-	sbc	MATH_VAR_H
-	bmi	@hit_over
-
-	; check floorz
-	sec
-	lda	THMOVE_FLOORZ_L
-	sbc	MATH_VAR_L
-	lda	THMOVE_FLOORZ_H
-	sbc	MATH_VAR_H
-	bpl	:+
-
-	; poscheck.floorz = dist
-	lda	MATH_VAR_L
-	sta	THMOVE_FLOORZ_L
-	lda	MATH_VAR_H
-	sta	THMOVE_FLOORZ_H
-
-	; poscheck.floort = odx
-	sty	THMOVE_FLOORT
-:
-	; TODO: overlap
-	bra	@do_overlap
-
-@hit_over:
+@do_thing_block:
 	; p2a_coord.x = ht->x / 256 - th->x / 256
 	sec
 	lda	THING_STRUCT_X_L,y
@@ -1584,7 +1429,7 @@ thing_apply_spawn:
 ;;;
 ; apply thing position
 ;;;
-; Y - the thing
+; X - the thing
 ; call after 'thing_check_heights'
 ; falltrough from 'thing_apply_pos'
 
@@ -1844,6 +1689,241 @@ get_sector_ceilingz:
 	sta	THMOVE_TCZ_L
 	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
 	sta	THMOVE_TCZ_H
+	rts
+
+;;;
+; check plane heights
+;;;
+; X - the sector
+
+check_planes:
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; check floorz
+	jsr	get_sector_floorz
+	sec
+	lda	THMOVE_FLOORZ_L
+	sbc	THMOVE_TFZ_L
+	lda	THMOVE_FLOORZ_H
+	sbc	THMOVE_TFZ_H
+	bpl	:+
+
+	; poscheck.floorz = poscheck.tfz
+	lda	THMOVE_TFZ_L
+	sta	THMOVE_FLOORZ_L
+	lda	THMOVE_TFZ_H
+	sta	THMOVE_FLOORZ_H
+
+	; poscheck.floors
+	stx	THMOVE_FLOORS
+:
+	; check ceilingz
+	jsr	get_sector_ceilingz
+	sec
+	lda	THMOVE_TCZ_L
+	sbc	THMOVE_CEILINGZ_L
+	lda	THMOVE_TCZ_H
+	sbc	THMOVE_CEILINGZ_H
+	bpl	:+
+
+	; poscheck.ceilingz = poscheck.tcz
+	lda	THMOVE_TCZ_L
+	sta	THMOVE_CEILINGZ_L
+	lda	THMOVE_TCZ_H
+	sta	THMOVE_CEILINGZ_H
+
+	; poscheck.ceilings = sdx
+	stx	THMOVE_CEILINGS
+:
+	rts
+
+;;;
+; check things in a sector
+;;;
+; Y - the sector
+; negative flag set = fail
+
+check_things:
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+	; sector things
+	lda	#$A0
+	sta	THMOVE_PTR_H
+	sty	THMOVE_PTR_L
+@loop_thing:
+	; check this slot
+	lda	(THMOVE_PTR_L)
+	beq	@next_slot
+
+	; self
+	cmp	ARG_THING_IDX
+	beq	@next_slot
+	tax
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; blocking
+	lda	THING_STRUCT_BLOCKING,x
+	and	THMOVE_BLOCKEDBY
+	beq	@next_slot_ex
+
+	; radius = ht->radius + poscheck.radius
+	clc
+	lda	THING_STRUCT_RADIUS,x
+	adc	THMOVE_RADIUS
+	sta	THMOVE_RADIUS_L
+	stz	THMOVE_RADIUS_H
+	rol	THMOVE_RADIUS_H
+
+	; X diff
+	sec
+	lda	ARG_THING_X_L
+	sbc	THING_STRUCT_X_L,x
+	sta	THMOVE_DIFF_L
+	sta	MATH_P2A_X_L
+	lda	ARG_THING_X_H
+	sbc	THING_STRUCT_X_H,x
+	sta	THMOVE_DIFF_H
+	sta	MATH_P2A_X_H
+
+	; X check
+	jsr	check_radist
+	bpl	@next_slot_ex
+
+	; Y diff
+	sec
+	lda	ARG_THING_Y_L
+	sbc	THING_STRUCT_Y_L,x
+	sta	THMOVE_DIFF_L
+	sta	MATH_P2A_Y_L
+	lda	ARG_THING_Y_H
+	sbc	THING_STRUCT_Y_H,x
+	sta	THMOVE_DIFF_H
+	sta	MATH_P2A_Y_H
+
+	; Y check
+	jsr	check_radist
+	bpl	@next_slot_ex
+
+	; save
+	stx	THMOVE_HIDX
+
+	; dist = point_to_dist()
+	jsr	math_p2d
+
+	; if(dist - radius >= 0)
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_RADIUS_L
+	lda	MATH_VAR_H
+	sbc	THMOVE_RADIUS_H
+	bmi	@do_hit_thing
+
+@next_slot_ex:
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+@next_slot:
+	; next
+	inc	THMOVE_PTR_H
+	lda	THMOVE_PTR_H
+	cmp	#$BF
+	beq	:+
+	jmp	@loop_thing
+:
+	; clear negative flag
+	lda	#0
+	rts
+
+@do_hit_thing:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; things
+	ldy	THMOVE_HIDX
+	ldx	ARG_THING_IDX
+
+	; under check
+	sec
+	lda	THING_STRUCT_Z_L,y
+	sbc	THMOVE_TH_ZH_L
+	lda	THING_STRUCT_Z_H,y
+	sbc	THMOVE_TH_ZH_H
+	bmi	@not_under
+
+	; check ceilingz
+	sec
+	lda	THING_STRUCT_Z_L,y
+	sbc	THMOVE_CEILINGZ_L
+	lda	THING_STRUCT_Z_H,y
+	sbc	THMOVE_CEILINGZ_H
+	bpl	:+
+
+	; poscheck.ceilingz = dist
+	lda	THING_STRUCT_Z_L,y
+	sta	THMOVE_CEILINGZ_L
+	lda	THING_STRUCT_Z_H,y
+	sta	THMOVE_CEILINGZ_H
+
+	; poscheck.ceilingt = odx
+	sty	THMOVE_CEILINGT
+:
+	; set overlap
+@do_overlap:
+	lda	THING_STRUCT_IFLAGS,y
+	ora	#THING_IFLAG_HEIGHTCHECK
+	sta	THING_STRUCT_IFLAGS,y
+
+	lda	THING_STRUCT_IFLAGS,x
+	ora	#THING_IFLAG_HEIGHTCHECK
+	sta	THING_STRUCT_IFLAGS,x
+
+	bra	@next_slot_ex
+
+@not_under:
+	; over check
+	clc
+	lda	THING_STRUCT_Z_L,y
+	adc	THING_STRUCT_HEIGHT,y
+	sta	MATH_VAR_L
+	lda	THING_STRUCT_Z_H,y
+	adc	#0
+	sta	MATH_VAR_H
+	sec
+	lda	THMOVE_TH_SH_L
+	sbc	MATH_VAR_L
+	lda	THMOVE_TH_SH_H
+	sbc	MATH_VAR_H
+	bmi	@hit_over
+
+	; check floorz
+	sec
+	lda	THMOVE_FLOORZ_L
+	sbc	MATH_VAR_L
+	lda	THMOVE_FLOORZ_H
+	sbc	MATH_VAR_H
+	bpl	:+
+
+	; poscheck.floorz = dist
+	lda	MATH_VAR_L
+	sta	THMOVE_FLOORZ_L
+	lda	MATH_VAR_H
+	sta	THMOVE_FLOORZ_H
+
+	; poscheck.floort = odx
+	sty	THMOVE_FLOORT
+:
+	bra	@do_overlap
+
+@hit_over:
 	rts
 
 ;;;
@@ -2250,9 +2330,44 @@ thing_tick:
 	ora	THING_STRUCT_MX_L,y
 	ora	THING_STRUCT_MY_S,y
 	ora	THING_STRUCT_MY_L,y
-	bne	:+
+	bne	@do_xy_move
+
+	; if(th->iflags & THING_IFLAG_HEIGHTCHECK)
+	lda	THING_STRUCT_IFLAGS,y
+	bpl	@no_heights
+
+	; th->iflags &= ~THING_IFLAG_HEIGHTCHECK
+	and	#<~THING_IFLAG_HEIGHTCHECK
+	sta	THING_STRUCT_IFLAGS,y
+
+	; read X
+	lda	THING_STRUCT_X_L,y
+	sta	ARG_THING_X_L
+	lda	THING_STRUCT_X_H,y
+	sta	ARG_THING_X_H
+
+	; read Y
+	lda	THING_STRUCT_Y_L,y
+	sta	ARG_THING_Y_L
+	lda	THING_STRUCT_Y_H,y
+	sta	ARG_THING_Y_H
+
+	; read Z
+	lda	THING_STRUCT_Z_L,y
+	sta	ARG_THING_Z_L
+	lda	THING_STRUCT_Z_H,y
+	sta	ARG_THING_Z_H
+
+	; new heights
+	jsr	thing_check_heights
+	ldx	ARG_THING_IDX
+	jsr	thing_apply_heights
+	ldy	ARG_THING_IDX
+
+@no_heights:
 	jmp	@no_xy_move
-:
+
+@do_xy_move:
 	stz	THTICK_RETRY
 @xy_retry:
 	; new X
