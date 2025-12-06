@@ -2325,6 +2325,11 @@ thing_tick:
 	stz	G_VIEWDELTA
 
 @skip_camera:
+	; th->iflags &= ~THING_IFLAG_BLOCKED
+	lda	THING_STRUCT_IFLAGS,y
+	and	#<~THING_IFLAG_BLOCKED
+	sta	THING_STRUCT_IFLAGS,y
+
 	;; XY movement
 	lda	THING_STRUCT_MX_S,y
 	ora	THING_STRUCT_MX_L,y
@@ -2493,6 +2498,11 @@ thing_tick:
 	jmp	@no_xy_friction
 
 @skip_wiggle:
+	; th->iflags |= THING_IFLAG_BLOCKED
+	lda	THING_STRUCT_IFLAGS,x
+	ora	#THING_IFLAG_BLOCKED
+	sta	THING_STRUCT_IFLAGS,x
+
 	; check projectile flag
 	lda	THING_STRUCT_EFLAGS,x
 	bpl	:+
@@ -2745,14 +2755,22 @@ thing_tick:
 	clc
 	lda	G_VIEWHEIGHT
 	adc	MATH_VAR_L
-	sta	G_VIEWHEIGHT
+	sta	MATH_VAR_U
 	lda	#0
 	adc	MATH_VAR_H
 
 	; if(diff < 0)
 	bpl	:+
 	stz	G_VIEWHEIGHT
+	bra	@force_dip
 :
+	; if((uint8_t)diff <= projection.wh)
+	lda	MATH_VAR_U
+	cmp	G_VIEWHEIGHT
+	bcs	@no_floor_cam
+	sta	G_VIEWHEIGHT
+
+@force_dip:
 	; projection.wd = (th->view_height - projection.wh) >> 1
 	sec
 	lda	THING_STRUCT_VIEW_HEIGHT,y
@@ -3099,6 +3117,10 @@ thing_plyr:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
+	; floor link
+	lda	SECTOR_STRUCT_FLOOR_LINK,x
+	sta	PLTICK_SEC_FLINK
+
 	; flags
 	lda	SECTOR_STRUCT_FLAGS,x
 	sta	PLTICK_SEC_FLAGS
@@ -3177,9 +3199,9 @@ thing_plyr:
 	lda	THING_STRUCT_MZ_L,y
 	bmi	@skip_up
 
-	; !(th->iflags & (THING_IFLAG_NOJUMP | THING_IFLAG_JUMPED))
+	; !(th->iflags & THING_IFLAG_JUMPED)
 	lda	THING_STRUCT_IFLAGS,y
-	and	#(THING_IFLAG_NOJUMP|THING_IFLAG_JUMPED)
+	and	#THING_IFLAG_JUMPED
 	bne	@skip_up
 
 	; th->floorz - (th->z / 256) >= 0
@@ -3190,6 +3212,25 @@ thing_plyr:
 	sbc	THING_STRUCT_Z_H,y
 	bmi	@skip_up
 
+	; th->floort
+	lda	THING_STRUCT_FLOORT,y
+	bne	@do_jump
+
+	; !sec->floor.link
+	lda	PLTICK_SEC_FLINK
+	beq	@do_jump
+
+	; th->floors != thingsec[tick_idx][0]
+	lda	THING_STRUCT_FLOORS,y
+	cmp	PLTICK_SECTOR
+	bne	@do_jump
+
+	; th->iflags & THING_IFLAG_BLOCKED
+	lda	THING_STRUCT_IFLAGS,y
+	lsr
+	bcc	@skip_up
+
+@do_jump:
 	; th->iflags |= THING_IFLAG_JUMPED
 	lda	THING_STRUCT_IFLAGS,y
 	ora	#THING_IFLAG_JUMPED
@@ -3307,31 +3348,43 @@ thing_plyr:
 	sbc	PLTICK_VIEWH
 	tax
 
-	; th->z += diff << 8
+	; nz = th->z / 256 + diff
 	clc
 	adc	THING_STRUCT_Z_L,y
-	sta	THING_STRUCT_Z_L,y
-	txa
+	sta	PLTICK_NZ_L
 	lda	TAB_SIGN_EXT,x
 	adc	THING_STRUCT_Z_H,y
-	sta	THING_STRUCT_Z_H,y
+	sta	PLTICK_NZ_H
 
-	; if((th->z / 256) < th->floorz)
+	; diff = nz + ti->height - th->height
+	clc
+	lda	PLTICK_NZ_L
+	adc	PLTICK_HEIGHT
+	sta	MATH_VAR_L
+	lda	PLTICK_NZ_H
+	adc	#0
+	sta	MATH_VAR_H
 	sec
-	lda	THING_STRUCT_Z_L,y
-	sbc	THING_STRUCT_FLOORZ_L,y
-	lda	THING_STRUCT_Z_H,y
-	sbc	THING_STRUCT_FLOORZ_H,y
-	bpl	:+
-
-	; th->z = th->floorz << 8
-	lda	#0
-	sta	THING_STRUCT_Z_S,y
-	lda	THING_STRUCT_FLOORZ_L,y
-	sta	THING_STRUCT_Z_L,y
-	lda	THING_STRUCT_FLOORZ_H,y
-	sta	THING_STRUCT_Z_H,y
+	lda	MATH_VAR_L
+	sbc	THING_STRUCT_HEIGHT,y
+	sta	MATH_VAR_L
+	bcs	:+
+	dec	MATH_VAR_H
 :
+	; if(th->ceilingz - diff >= 0)
+	sec
+	lda	THING_STRUCT_CEILZ_L,y
+	sbc	MATH_VAR_L
+	lda	THING_STRUCT_CEILZ_H,y
+	sbc	MATH_VAR_H
+	bmi	@no_change
+
+	; th->z = (nz * 256) | (th->z & 0xFF)
+	lda	PLTICK_NZ_L
+	sta	THING_STRUCT_Z_L,y
+	lda	PLTICK_NZ_H
+	sta	THING_STRUCT_Z_H,y
+
 	; th->height = ti->height
 	lda	PLTICK_HEIGHT
 	sta	THING_STRUCT_HEIGHT,y
@@ -3339,6 +3392,9 @@ thing_plyr:
 	; th->view_height = ti->view_height
 	lda	PLTICK_VIEWH
 	sta	THING_STRUCT_VIEW_HEIGHT,y
+
+	; projection.wh = ti->view_height
+	sta	G_VIEWHEIGHT
 
 	; th->iflags |= THING_IFLAG_HEIGHTCHECK
 	lda	THING_STRUCT_IFLAGS,y
@@ -3349,19 +3405,6 @@ thing_plyr:
 	lda	PLTICK_NTYPE
 	sta	TICKER_STRUCT_TYPE,y
 
-	; camera check
-	cpy	G_CAMERA_THING
-	bne	:+
-
-	; projection.wd = (th->view_height - projection.wh) >> 1
-	sec
-	lda	THING_STRUCT_VIEW_HEIGHT,y
-	sbc	G_VIEWHEIGHT
-	sta	G_VIEWDELTA
-	lsr	G_VIEWDELTA
-	bne	:+
-	inc	G_VIEWDELTA
-:
 @no_change:
 	; thing tick
 	jsr	thing_tick

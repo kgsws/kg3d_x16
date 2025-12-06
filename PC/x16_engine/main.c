@@ -2703,8 +2703,11 @@ static void render()
 	float angle;
 
 	frame_counter++;
-
+#if 1
 	if(!(frame_counter % 4))
+#else
+	if(!(frame_counter % 32))
+#endif
 	{
 		if(camera_damage <= 3)
 			camera_damage = 0;

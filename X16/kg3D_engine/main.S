@@ -83,6 +83,10 @@ start:
 	sta	G_TICK_COUNT
 	stz	G_NEW_TICS
 
+	; DEBUG - force single tick
+;	lda	#1
+;	sta	G_TICK_COUNT
+
 	; enable math
 	jsr	math_setup_vera
 

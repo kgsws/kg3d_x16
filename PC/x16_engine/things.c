@@ -8,6 +8,8 @@
 #include "things.h"
 #include "actions.h"
 
+//#define DBG_NO_CAMERA_DIP
+
 //
 
 typedef struct
@@ -242,6 +244,25 @@ static uint32_t check_backsector(uint8_t sec, int32_t th_z)
 	return 0;
 }
 
+static void check_planes(uint8_t sdx, int32_t nz)
+{
+	sector_t *sec = map_sectors + sdx;
+
+	get_sector_floorz(sec, nz);
+	if(poscheck.floorz < poscheck.tfz)
+	{
+		poscheck.floorz = poscheck.tfz;
+		poscheck.floors = sdx;
+	}
+
+	get_sector_ceilingz(sec);
+	if(poscheck.tcz < poscheck.ceilingz)
+	{
+		poscheck.ceilingz = poscheck.tcz;
+		poscheck.ceilings = sdx;
+	}
+}
+
 static void check_point(vertex_t *dd, uint32_t wdx)
 {
 	int32_t dist;
@@ -386,6 +407,19 @@ static void add_sector(uint8_t sdx, uint8_t touch)
 //
 // position
 
+static void apply_heights(thing_t *th)
+{
+	// save heights
+	th->floorz = poscheck.floorz;
+	th->ceilingz = poscheck.ceilingz - poscheck.height;
+
+	// save planes
+	th->floors = poscheck.floors;
+	th->floort = poscheck.floort;
+	th->ceilings = poscheck.ceilings;
+	th->ceilingt = poscheck.ceilingt;
+}
+
 void thing_apply_pos()
 {
 	thing_t *th = thing_ptr(poscheck.thing);
@@ -405,15 +439,8 @@ void thing_apply_pos()
 			place_to_sector(poscheck.thing, sec);
 	}
 
-	// save heights
-	th->floorz = poscheck.floorz;
-	th->ceilingz = poscheck.ceilingz - poscheck.height;
-
-	// save planes
-	th->floors = poscheck.floors;
-	th->floort = poscheck.floort;
-	th->ceilings = poscheck.ceilings;
-	th->ceilingt = poscheck.ceilingt;
+	// plane info
+	apply_heights(th);
 }
 
 void thing_height_check(uint8_t tdx)
@@ -430,26 +457,12 @@ void thing_height_check(uint8_t tdx)
 	for(uint32_t i = 0; i < 16; i++)
 	{
 		uint8_t sdx = thingsec[tdx][i];
-		sector_t *sec;
 
 		if(!sdx)
 			break;
 
-		sec = map_sectors + sdx;
-
-		get_sector_floorz(sec, nz);
-		if(poscheck.floorz < poscheck.tfz)
-		{
-			poscheck.floorz = poscheck.tfz;
-			poscheck.floors = sdx;
-		}
-
-		get_sector_ceilingz(sec);
-		if(poscheck.tcz < poscheck.ceilingz)
-		{
-			poscheck.ceilingz = poscheck.tcz;
-			poscheck.ceilings = sdx;
-		}
+		// floor and ceiling
+		check_planes(sdx, nz);
 
 		// go trough things
 		check_things(tdx, sdx, th->x / 256, th->y / 256);
@@ -487,19 +500,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 
 		sec = map_sectors + sdx;
 
-		get_sector_floorz(sec, nz);
-		if(poscheck.floorz < poscheck.tfz)
-		{
-			poscheck.floorz = poscheck.tfz;
-			poscheck.floors = sdx;
-		}
-
-		get_sector_ceilingz(sec);
-		if(poscheck.tcz < poscheck.ceilingz)
-		{
-			poscheck.ceilingz = poscheck.tcz;
-			poscheck.ceilings = sdx;
-		}
+		check_planes(sdx, nz);
 
 		if(!poscheck.islink)
 		{
@@ -1038,6 +1039,10 @@ void thing_tick()
 
 	//
 	// camera stuff
+#ifdef DBG_NO_CAMERA_DIP
+	projection.wh = th->view_height;
+	projection.wd = 0;
+#else
 	if(tick_idx == camera_thing)
 	{
 		projection.wh += projection.wd;
@@ -1047,9 +1052,11 @@ void thing_tick()
 			projection.wd = 0;
 		}
 	}
+#endif
 
 	//
 	// XY movement
+	th->iflags &= ~THING_IFLAG_BLOCKED;
 	if(th->mx || th->my)
 	{
 		int32_t nx, ny;
@@ -1065,6 +1072,8 @@ apply_pos:
 			thing_apply_pos();
 		} else
 		{
+			th->iflags |= THING_IFLAG_BLOCKED;
+
 			if(th->eflags & THING_EFLAG_PROJECTILE)
 			{
 				th->mx = 0;
@@ -1146,17 +1155,11 @@ apply_pos:
 	{
 		th->iflags &= ~THING_IFLAG_HEIGHTCHECK;
 
+		// new heights
 		thing_height_check(tick_idx);
 
-		// save heights
-		th->floorz = poscheck.floorz;
-		th->ceilingz = poscheck.ceilingz - poscheck.height;
-
-		// save planes
-		th->floors = poscheck.floors;
-		th->floort = poscheck.floort;
-		th->ceilings = poscheck.ceilings;
-		th->ceilingt = poscheck.ceilingt;
+		// plane info
+		apply_heights(th);
 	}
 
 	//
@@ -1174,6 +1177,7 @@ apply_pos:
 	// floor check
 	if(zz < th->floorz)
 	{
+#ifndef DBG_NO_CAMERA_DIP
 		// camera stuff
 		if(tick_idx == camera_thing)
 		{
@@ -1186,15 +1190,17 @@ apply_pos:
 
 			diff = projection.wh + diff;
 			if(diff < 0)
-				projection.wh = 0;
-			else
+				diff = 0;
+
+			if((uint8_t)diff <= projection.wh)
+			{
 				projection.wh = diff;
-
-			projection.wd = (th->view_height - projection.wh) >> 1;
-			if(!projection.wd)
-				projection.wd = 1;
+				projection.wd = (th->view_height - projection.wh) >> 1;
+				if(!projection.wd)
+					projection.wd = 1;
+			}
 		}
-
+#endif
 		th->z = th->floorz << 8;
 		th->mz = 0;
 		zz = th->floorz;
@@ -1315,11 +1321,17 @@ void thing_tick_plr()
 				th->mz += jump << 8;
 			} else
 			if(	th->mz >= 0 &&
-				!(th->iflags & (THING_IFLAG_NOJUMP | THING_IFLAG_JUMPED)) &&
+				!(th->iflags & THING_IFLAG_JUMPED) &&
 				th->floorz - (th->z / 256) >= 0
 			){
-				th->iflags |= THING_IFLAG_JUMPED;
-				th->mz += jump << 8;
+				if(	th->floort ||
+					!sec->floor.link ||
+					th->iflags & THING_IFLAG_BLOCKED ||
+					th->floors != thingsec[tick_idx][0]
+				){
+					th->iflags |= THING_IFLAG_JUMPED;
+					th->mz += jump << 8;
+				}
 			}
 		} else
 			th->iflags &= ~THING_IFLAG_JUMPED;
@@ -1343,26 +1355,25 @@ void thing_tick_plr()
 	{
 		thing_type_t *ti = thing_type + ntype;
 		int32_t diff = th->ceilingz - th->floorz + th->height;
+		int32_t nz;
 
 		if(ti->height - diff < 0)
 		{
 			diff = th->view_height - ti->view_height;
+			nz = th->z / 256 + diff;
 
-			th->z += diff << 8;
-			if((th->z / 256) < th->floorz)
-				th->z = th->floorz << 8;
-
-			th->height = ti->height;
-			th->view_height = ti->view_height;
-			th->ticker.type = ntype;
-
-			th->iflags |= THING_IFLAG_HEIGHTCHECK;
-
-			if(tick_idx == camera_thing)
+			diff = nz + (int32_t)ti->height - (int32_t)th->height;
+			if(th->ceilingz - diff >= 0)
 			{
-				projection.wd = (th->view_height - projection.wh) >> 1;
-				if(!projection.wd)
-					projection.wd = 1;
+				th->z = (nz * 256) | (th->z & 0xFF);
+
+				th->height = ti->height;
+				th->view_height = ti->view_height;
+				th->ticker.type = ntype;
+
+				th->iflags |= THING_IFLAG_HEIGHTCHECK;
+
+				projection.wh = ti->view_height;
 			}
 		}
 	}

@@ -264,7 +264,7 @@ WPART__STRUCT_SIZE = $04
 ; internal thing flags
 ;;;
 
-THING_IFLAG_NOJUMP = $01	; forced by code
+THING_IFLAG_BLOCKED = $01	; forced by code
 THING_IFLAG_GOTHIT = $02
 THING_IFLAG_CORPSE = $04
 THING_IFLAG_USED = $20
