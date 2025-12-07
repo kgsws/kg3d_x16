@@ -17,6 +17,7 @@ typedef struct
 	uint8_t sector;
 	uint8_t islink;
 	uint8_t touch;
+	uint8_t midhit;
 } portal_t;
 
 typedef struct
@@ -36,6 +37,7 @@ typedef struct
 	uint8_t pthit, ptwall;
 	uint8_t htype, hidx;
 	uint8_t hitang;
+	uint8_t midhit;
 } pos_check_t;
 
 //
@@ -74,7 +76,7 @@ pos_check_t poscheck;
 //
 //
 
-static void place_to_sector(uint8_t tdx, uint8_t sdx)
+static void place_to_sector(uint8_t tdx, uint8_t sdx, uint8_t mh)
 {
 	uint32_t slot;
 
@@ -96,7 +98,7 @@ static void place_to_sector(uint8_t tdx, uint8_t sdx)
 	sectorth[sdx][31]++;
 	sectorth[sdx][slot] = tdx;
 	thingsec[tdx][poscheck.slot] = sdx;
-	thingces[tdx][poscheck.slot] = slot;
+	thingces[tdx][poscheck.slot] = slot | mh;
 	poscheck.slot++;
 }
 
@@ -194,6 +196,9 @@ static void get_sector_floorz(sector_t *sec, int32_t th_z)
 	}
 
 	poscheck.tfz = sec->floor.height - sec->floordist;
+
+	if(poscheck.midhit)
+		poscheck.tfz += (int32_t)sec->midheight * 2;
 }
 
 static void get_sector_ceilingz(sector_t *sec)
@@ -212,8 +217,11 @@ static uint32_t check_backsector(uint8_t sec, int32_t th_z)
 	sector_t *bs;
 	int16_t dist;
 
+	// thing limit
 	if(sectorth[sec][31] >= 31)
 		return 1;
+
+	// backsector
 
 	bs = map_sectors + sec;
 
@@ -372,6 +380,7 @@ static void add_sector_raw(uint8_t sdx, uint8_t touch, uint8_t islink)
 		if(portals[i].sector == sdx)
 		{
 			portals[i].touch |= touch;
+			portals[i].midhit |= poscheck.midhit;
 			break;
 		}
 	}
@@ -381,6 +390,7 @@ static void add_sector_raw(uint8_t sdx, uint8_t touch, uint8_t islink)
 		portals[poscheck.portal_wr].sector = sdx;
 		portals[poscheck.portal_wr].islink = islink;
 		portals[poscheck.portal_wr].touch = touch;
+		portals[poscheck.portal_wr].midhit = poscheck.midhit;
 		poscheck.portal_wr++;
 	}
 
@@ -429,14 +439,14 @@ void thing_apply_pos()
 
 	// place to first sector
 	poscheck.slot = 0;
-	place_to_sector(poscheck.thing, poscheck.sector);
+	place_to_sector(poscheck.thing, poscheck.sector, 0);
 
 	// place to detected sectors
 	for(uint32_t i = 0; i < poscheck.portal_wr; i++)
 	{
 		uint8_t sec = portals[i].sector;
 		if(portals[i].touch && sec != poscheck.sector)
-			place_to_sector(poscheck.thing, sec);
+			place_to_sector(poscheck.thing, sec, portals[i].midhit);
 	}
 
 	// plane info
@@ -462,6 +472,7 @@ void thing_height_check(uint8_t tdx)
 			break;
 
 		// floor and ceiling
+		poscheck.midhit = thingces[tdx][i] & 0x80;
 		check_planes(sdx, nz);
 
 		// go trough things
@@ -491,11 +502,13 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 
 	portals[0].sector = sdx;
 	portals[0].islink = 0;
+	portals[0].midhit = 0;
 
 	while(poscheck.portal_rd < poscheck.portal_wr)
 	{
 		sdx = portals[poscheck.portal_rd].sector;
 		poscheck.islink = portals[poscheck.portal_rd].islink;
+		poscheck.midhit = portals[poscheck.portal_rd].midhit;
 		poscheck.portal_rd++;
 
 		sec = map_sectors + sdx;
@@ -560,6 +573,9 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				vtx = &waln->vtx;
 				dd.x = vtx->x - nx;
 				dd.y = vtx->y - ny;
+
+				// midblock
+				poscheck.midhit = wall->blockmid & poscheck.blockedby ? 0x80 : 0x00;
 
 				// get right side
 				dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8;
@@ -793,7 +809,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 
 		poscheck.slot = 0;
 
-		place_to_sector(tdx, sector);
+		place_to_sector(tdx, sector, 0);
 
 		th->ceilingz = sec->ceiling.height - th->height;
 		th->floorz = sec->floor.height;

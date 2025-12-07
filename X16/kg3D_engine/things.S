@@ -280,9 +280,9 @@ thing_spawn_org:
 	sta	REG_RAM_BANK
 
 	; place to sector
+	stz	THMOVE_MIDHIT
 	lda	#$B0
 	sta	THMOVE_PTR_H
-	lda	ARG_THING_SECTOR
 	jsr	place_to_sector
 
 	; sector bank
@@ -645,18 +645,24 @@ thing_check_heights:
 	sta	THMOVE_TH_SH_H
 
 	; go trough sectors
-	stx	@opcode+1
+	stx	TMP_PTR_L
 	lda	#$B0
-	sta	@opcode+2
+	sta	TMP_PTR_H
 @loop:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
 
-	; thing sector
-@opcode:
-	ldx	$B000	; modified address
+	; get sector at this slot
+	lda	(TMP_PTR_L)	; thingsec
 	beq	@stop
+	tax
+
+	; get midhit flag
+	ldy	#$80
+	lda	(TMP_PTR_L),y	; thingces
+	and	#$80
+	sta	THMOVE_MIDHIT
 
 	; floor and ceiling
 	phx
@@ -667,8 +673,8 @@ thing_check_heights:
 	jsr	check_things
 
 	; next
-	inc	@opcode+2
-	lda	@opcode+2
+	inc	TMP_PTR_H
+	lda	TMP_PTR_H
 	cmp	#$C0
 	bcc	@loop
 
@@ -718,6 +724,9 @@ thing_check_spawn:
 	; portals[0].touch = 0
 	stz	MEM_PORTALS_TOUCH
 
+	; portals[0].midhit = 0
+	stz	MEM_PORTALS_MIDHIT
+
 	; portal_rd = 0
 	stz	THMOVE_PORTAL_RD
 
@@ -733,6 +742,9 @@ thing_check_spawn:
 
 	; not-a-link
 	stz	THMOVE_ISLINK
+
+	; no-midhit
+	stz	THMOVE_MIDHIT
 
 	; while(poscheck.portal_rd < poscheck.portal_wr)
 @loop_sec:
@@ -921,6 +933,14 @@ thing_check_spawn:
 	bpl	:+
 	jmp	@next_wall
 :
+	; poscheck.midhit = wall->blockmid & poscheck.blockedby & 0x7F ? 0x80 : 0x00
+	lda	WALL_STRUCT_BLOCKMID,y
+	and	THMOVE_BLOCKEDBY
+	beq	:+
+	lda	#$80
+:
+	sta	THMOVE_MIDHIT
+
 	;; right side
 	; dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8
 
@@ -1191,6 +1211,8 @@ thing_check_spawn:
 	sta	REG_RAM_BANK
 
 	; get sector
+	lda	MEM_PORTALS_MIDHIT,y
+	sta	THMOVE_MIDHIT
 	lda	MEM_PORTALS_ISLINK,y
 	sta	THMOVE_ISLINK
 	ldx	MEM_PORTALS_SECTOR,y
@@ -1339,6 +1361,8 @@ thing_apply_pos:
 
 	; get slot in sector
 	lda	(THCES_PTR_L),y
+	and	#31
+	ora	#$A0
 	sta	TMP_PTR_H
 
 	; sector things bank
@@ -1382,6 +1406,7 @@ thing_apply_pos:
 thing_apply_spawn:
 	; place to first sector
 	sta	ARG_THING_SECTOR
+	stz	THMOVE_MIDHIT
 	lda	#$B0
 	sta	THMOVE_PTR_H
 	jsr	place_to_sector
@@ -1404,11 +1429,17 @@ thing_apply_spawn:
 	cmp	THMOVE_SECTOR
 	beq	:+
 
+	; the sector
+	sta	ARG_THING_SECTOR
+
+	; mid hit
+	lda	MEM_PORTALS_MIDHIT,x
+	sta	THMOVE_MIDHIT
+
 	; backup
 	phx
 
 	; place to this sector
-	sta	ARG_THING_SECTOR
 	jsr	place_to_sector
 
 	; restore
@@ -1648,6 +1679,29 @@ get_sector_floorz:
 	sta	THMOVE_TFZ_L
 	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
 	sta	THMOVE_TFZ_H
+
+@do_midhit:
+	; if(poscheck.midhit)
+	lda	THMOVE_MIDHIT
+	bne	:+
+
+	rts
+:
+	; poscheck.tfz += (int32_t)sec->midheight * 2
+	clc
+	lda	SECTOR_STRUCT_MIDHEIGHT,x
+	adc	SECTOR_STRUCT_MIDHEIGHT,x
+	sta	MATH_VAR_L
+	stz	MATH_VAR_H
+	rol	MATH_VAR_H
+;	clc
+	lda	THMOVE_TFZ_L
+	adc	MATH_VAR_L
+	sta	THMOVE_TFZ_L
+	lda	THMOVE_TFZ_H
+	adc	MATH_VAR_H
+	sta	THMOVE_TFZ_H
+
 	rts
 
 @do_dist:
@@ -1666,7 +1720,8 @@ get_sector_floorz:
 	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
 	sbc	MATH_VAR_SIGN
 	sta	THMOVE_TFZ_H
-	rts
+
+	bra	@do_midhit
 
 ;;;
 ; get sector ceiling
@@ -2149,6 +2204,11 @@ add_sector_raw:
 	ora	THMOVE_TOUCH
 	sta	MEM_PORTALS_TOUCH,y
 
+	; portals[i].midhit |= poscheck.midhit
+	lda	MEM_PORTALS_MIDHIT,y
+	ora	THMOVE_MIDHIT
+	sta	MEM_PORTALS_MIDHIT,y
+
 	rts
 
 @do_save:
@@ -2160,6 +2220,8 @@ add_sector_raw:
 	sta	MEM_PORTALS_ISLINK,y
 	lda	THMOVE_TOUCH
 	sta	MEM_PORTALS_TOUCH,y
+	lda	THMOVE_MIDHIT
+	sta	MEM_PORTALS_MIDHIT,y
 
 	; portal_wr++
 	inc	THMOVE_PORTAL_WR
@@ -2172,6 +2234,7 @@ add_sector_raw:
 ; ARG_THING_SECTOR - desired sector
 ; ARG_THING_IDX - desired thing
 ; THMOVE_PTR_H - slot index pointer in thing, auto increment
+; THMOVE_MIDHIT - mid hit flag
 
 place_to_sector:
 	; check pointer slot
@@ -2224,7 +2287,8 @@ place_to_sector:
 	lda	THMOVE_PTR_H
 	sta	@opcode+2
 	lda	HI_PTR_H
-	ora	#$A0
+	and	#31
+	ora	THMOVE_MIDHIT
 @opcode:
 	sta	$B080,y	; modified address
 
@@ -2339,7 +2403,7 @@ thing_tick:
 
 	; if(th->iflags & THING_IFLAG_HEIGHTCHECK)
 	lda	THING_STRUCT_IFLAGS,y
-	bpl	@no_heights
+;	bpl	@no_heights
 
 	; th->iflags &= ~THING_IFLAG_HEIGHTCHECK
 	and	#<~THING_IFLAG_HEIGHTCHECK

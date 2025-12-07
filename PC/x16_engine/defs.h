@@ -92,8 +92,9 @@ typedef struct
 	} wall;
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
+	uint8_t midheight;
 	//
-	uint8_t fillter[10];
+	uint8_t filler[9];
 } __attribute__((packed)) sector_t;
 
 typedef struct

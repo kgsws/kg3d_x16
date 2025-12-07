@@ -83,8 +83,9 @@ typedef struct
 	} wall;
 	uint8_t flags; // light, palette, underwater
 	int8_t floordist;
+	uint8_t midheight;
 	//
-	uint8_t fillter[10];
+	uint8_t filler[9];
 } __attribute__((packed)) sector_t;
 
 typedef struct
@@ -511,6 +512,7 @@ void x16_export_map()
 	while(ent)
 	{
 		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
+		uint32_t mid_height = 0;
 		int32_t wall_bank = -1;
 		int32_t wall_first;
 		int32_t wfrst = -1;
@@ -578,15 +580,18 @@ void x16_export_map()
 						return;
 					}
 
-					wall->blockmid = line->info.blockmid & 0b01111111;
-
 					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
 						wall->tflags |= 0b00001000;
 
 					if(line->texture[2].flags & TEXFLAG_PEG_MID_BACK)
 						wall->tflags |= 0b10000000;
+					else
+					{
+						editor_texture_t *et = editor_texture + line->texture[2].idx;
+						mid_height = et->height + line->texture[2].oy;
+					}
 
-					wall->blockmid = line->info.blockmid;
+					wall->blockmid = line->info.blockmid & 0b01111111;
 					wall->mid.texture = ret;
 					wall->mid.ox = line->texture[2].ox;
 					wall->mid.oy = line->texture[2].oy;
@@ -626,7 +631,6 @@ void x16_export_map()
 						return;
 					}
 
-					wall->blockmid = 0;
 					wall->mid.texture = ret;
 					wall->mid.ox = line->texture[2].ox;
 					wall->mid.oy = line->texture[2].oy;
@@ -788,6 +792,8 @@ void x16_export_map()
 		map_sector->wall.first = wall_first;
 
 		map_sector->floordist = sec->plane[PLANE_BOT].dist;
+
+		map_sector->midheight = mid_height;
 
 		// flags will be added later
 

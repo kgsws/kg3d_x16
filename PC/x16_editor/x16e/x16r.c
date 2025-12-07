@@ -89,8 +89,7 @@ typedef union
 		uint8_t vidoffs_x[128];	// @ 0xBB00 (bank 63)
 		uint8_t vidoffs_y[128];	// @ 0xBB80 (bank 63)
 		uint8_t printint[256];	// @ 0xBC00 (bank 63)
-		// 0xBD00 contains portals (512 bytes)
-		// 0xBF00 contains keyboard input table (256 bytes)
+		// 0xBEC0 contains portals
 	};
 } tables_A000_t;
 
