@@ -737,6 +737,9 @@ thing_check_spawn:
 	; poscheck.sector = 0
 	stz	THMOVE_SECTOR
 
+	; poscheck.midsec = 0
+	stz	THMOVE_MIDSEC
+
 	; poscheck.htype = 0
 	stz	THMOVE_HTYPE
 
@@ -781,7 +784,8 @@ thing_check_spawn:
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
-	; touch = any non-zero number
+	; touch = 0xFF
+	lda	#$FF
 	sta	THMOVE_TOUCH
 
 	; swap check
@@ -933,8 +937,9 @@ thing_check_spawn:
 	bpl	:+
 	jmp	@next_wall
 :
-	; poscheck.midhit = wall->blockmid & poscheck.blockedby & 0x7F ? 0x80 : 0x00
+	; poscheck.midhit = touch & wall->blockmid & poscheck.blockedby ? 0x80 : 0x00
 	lda	WALL_STRUCT_BLOCKMID,y
+	and	THMOVE_TOUCH
 	and	THMOVE_BLOCKEDBY
 	beq	:+
 	lda	#$80
@@ -1066,8 +1071,8 @@ thing_check_spawn:
 	and	#$7F
 	bne	@do_block
 
-	; !check_backsector(wall->backsector, zz)
-	jsr	check_backsector
+	; !check_line_block(wall->backsector, zz)
+	jsr	check_line_block
 	bmi	@do_block
 
 	; add sector
@@ -1089,8 +1094,9 @@ thing_check_spawn:
 :
 	; check point
 	lda	THMOVE_PTHIT
-	beq	@skip_point
-
+	bne	:+
+	jmp	@skip_point
+:
 	; wall
 	ldy	THMOVE_PTWALL
 
@@ -1162,8 +1168,16 @@ thing_check_spawn:
 	and	#$7F
 	bne	@point_block
 
-	; check_backsector(wall->backsector, zz)
-	jsr	check_backsector
+	; poscheck.midhit = wall->blockmid & poscheck.blockedby ? 0x80 : 0x00
+	lda	WALL_STRUCT_BLOCKMID,y
+	and	THMOVE_BLOCKEDBY
+	beq	:+
+	lda	#$80
+:
+	sta	THMOVE_MIDHIT
+
+	; check_line_block(wall->backsector, zz)
+	jsr	check_line_block
 	bmi	@point_block
 
 	; add backsector
@@ -1195,6 +1209,22 @@ thing_check_spawn:
 	ldx	ARG_THING_SECTOR
 	stx	THMOVE_SECTOR
 
+	; if(poscheck.midsec == sdx)
+	cpx	THMOVE_MIDSEC
+	bne	@skip_mid_sec
+
+	; poscheck.midhit = 0x80
+	lda	#$80
+	sta	THMOVE_MIDHIT
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; re-check floor
+	jsr	check_floor_plane
+
+@skip_mid_sec:
 	; add sector links
 	stx	THMOVE_TOUCH
 	jsr	add_sector_links
@@ -1406,7 +1436,15 @@ thing_apply_pos:
 thing_apply_spawn:
 	; place to first sector
 	sta	ARG_THING_SECTOR
+
+	; poscheck.midsec == poscheck.sector ? 0x80 : 0x00
 	stz	THMOVE_MIDHIT
+	cmp	THMOVE_MIDSEC
+	bne	:+
+	lda	#$80
+	sta	THMOVE_MIDHIT
+:
+	; place to first sector
 	lda	#$B0
 	sta	THMOVE_PTR_H
 	jsr	place_to_sector
@@ -1756,24 +1794,6 @@ check_planes:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	; check floorz
-	jsr	get_sector_floorz
-	sec
-	lda	THMOVE_FLOORZ_L
-	sbc	THMOVE_TFZ_L
-	lda	THMOVE_FLOORZ_H
-	sbc	THMOVE_TFZ_H
-	bpl	:+
-
-	; poscheck.floorz = poscheck.tfz
-	lda	THMOVE_TFZ_L
-	sta	THMOVE_FLOORZ_L
-	lda	THMOVE_TFZ_H
-	sta	THMOVE_FLOORZ_H
-
-	; poscheck.floors
-	stx	THMOVE_FLOORS
-:
 	; check ceilingz
 	jsr	get_sector_ceilingz
 	sec
@@ -1791,6 +1811,28 @@ check_planes:
 
 	; poscheck.ceilings = sdx
 	stx	THMOVE_CEILINGS
+:
+check_floor_plane:
+	; check floorz
+	jsr	get_sector_floorz
+	sec
+	lda	THMOVE_FLOORZ_L
+	sbc	THMOVE_TFZ_L
+	lda	THMOVE_FLOORZ_H
+	sbc	THMOVE_TFZ_H
+	bpl	:+
+
+	; poscheck.floorz = poscheck.tfz
+	lda	THMOVE_TFZ_L
+	sta	THMOVE_FLOORZ_L
+	lda	THMOVE_TFZ_H
+	sta	THMOVE_FLOORZ_H
+
+	; poscheck.floors
+	stz	THMOVE_FLOORS
+	lda	THMOVE_MIDHIT
+	bne	:+
+	stx	THMOVE_FLOORS
 :
 	rts
 
@@ -2015,8 +2057,9 @@ check_point:
 ; check back sector
 ;;;
 ; X - the sector
+; Y - the wall
 
-check_backsector:
+check_line_block:
 	; sector things bank
 	lda	#BANK_SECTOR_THINGS
 	sta	REG_RAM_BANK
@@ -2030,6 +2073,75 @@ check_backsector:
 	lda	#$FF
 	rts
 :
+	; touch
+	lda	THMOVE_TOUCH
+	beq	@no_mid
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; wall->blockmid & poscheck.blockedby
+	lda	WALL_STRUCT_BLOCKMID,y
+	and	THMOVE_BLOCKEDBY
+	beq	@no_mid
+
+	; !(wall->tflags & 0b10000000)
+	lda	WALL_STRUCT_TFLAGS,y
+	bmi	@no_mid
+
+	; bkup = poscheck.midhit
+	lda	THMOVE_MIDHIT
+	pha
+
+	; poscheck.midhit = 0x80
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; get height
+	phx
+	ldx	ARG_THING_SECTOR
+	jsr	get_sector_floorz
+	plx
+
+	; poscheck.midhit = bkup
+	pla
+	sta	THMOVE_MIDHIT
+
+	; dist = poscheck.ceilingz - poscheck.tfz
+	sec
+	lda	THMOVE_TCZ_L
+	sbc	THMOVE_TFZ_L
+	sta	MATH_VAR_L
+	lda	THMOVE_TCZ_H
+	sbc	THMOVE_TFZ_H
+	sta	MATH_VAR_H
+
+	; dist -= poscheck.height
+	sec
+	lda	MATH_VAR_L
+	sbc	THMOVE_HEIGHT
+	lda	MATH_VAR_H
+	sbc	#0
+	bmi	@done
+
+	; dist = poscheck.th_sh - poscheck.tfz
+	sec
+	lda	THMOVE_TH_SH_L
+	sbc	THMOVE_TFZ_L
+	sta	MATH_VAR_L
+	lda	THMOVE_TH_SH_H
+	sbc	THMOVE_TFZ_H
+	sta	MATH_VAR_H
+	bmi	@done
+
+	; poscheck.midsec = sec - map_sectors
+	lda	ARG_THING_SECTOR
+	sta	THMOVE_MIDSEC
+
+@no_mid:
 	; sector bank
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK

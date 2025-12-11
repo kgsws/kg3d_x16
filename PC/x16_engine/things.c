@@ -37,7 +37,7 @@ typedef struct
 	uint8_t pthit, ptwall;
 	uint8_t htype, hidx;
 	uint8_t hitang;
-	uint8_t midhit;
+	uint8_t midhit, midsec;
 } pos_check_t;
 
 //
@@ -212,18 +212,42 @@ static void get_sector_ceilingz(sector_t *sec)
 	poscheck.tcz = sec->ceiling.height;
 }
 
-static uint32_t check_backsector(uint8_t sec, int32_t th_z)
+static uint32_t check_line_block(sector_t *sec, wall_t *wall, int32_t th_z, uint32_t touch)
 {
 	sector_t *bs;
 	int16_t dist;
 
 	// thing limit
-	if(sectorth[sec][31] >= 31)
+	if(sectorth[wall->backsector][31] >= 31)
 		return 1;
+
+	// mid block
+	if(	touch &&
+		wall->blockmid & poscheck.blockedby &&
+		!(wall->tflags & 0b10000000)
+	){
+		uint8_t bkup = poscheck.midhit;
+
+		poscheck.midhit = 0x80;
+		get_sector_floorz(sec, th_z);
+
+		poscheck.midhit = bkup;
+
+		dist = poscheck.ceilingz - poscheck.tfz;
+		dist -= poscheck.height;
+		if(dist < 0)
+			return 1;
+
+		dist = poscheck.th_sh - poscheck.tfz;
+		if(dist < 0)
+			return 1;
+
+		poscheck.midsec = sec - map_sectors;
+	}
 
 	// backsector
 
-	bs = map_sectors + sec;
+	bs = map_sectors + wall->backsector;
 
 	get_sector_floorz(bs, th_z);
 	get_sector_ceilingz(bs);
@@ -256,18 +280,18 @@ static void check_planes(uint8_t sdx, int32_t nz)
 {
 	sector_t *sec = map_sectors + sdx;
 
-	get_sector_floorz(sec, nz);
-	if(poscheck.floorz < poscheck.tfz)
-	{
-		poscheck.floorz = poscheck.tfz;
-		poscheck.floors = sdx;
-	}
-
 	get_sector_ceilingz(sec);
 	if(poscheck.tcz < poscheck.ceilingz)
 	{
 		poscheck.ceilingz = poscheck.tcz;
 		poscheck.ceilings = sdx;
+	}
+
+	get_sector_floorz(sec, nz);
+	if(poscheck.floorz < poscheck.tfz)
+	{
+		poscheck.floorz = poscheck.tfz;
+		poscheck.floors = poscheck.midhit ? 0 : sdx;
 	}
 }
 
@@ -439,7 +463,7 @@ void thing_apply_pos()
 
 	// place to first sector
 	poscheck.slot = 0;
-	place_to_sector(poscheck.thing, poscheck.sector, 0);
+	place_to_sector(poscheck.thing, poscheck.sector, poscheck.midsec == poscheck.sector ? 0x80 : 0x00);
 
 	// place to detected sectors
 	for(uint32_t i = 0; i < poscheck.portal_wr; i++)
@@ -496,6 +520,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	poscheck.htype = 0;
 
 	poscheck.sector = 0;
+	poscheck.midsec = 0;
 
 	poscheck.portal_rd = 0;
 	poscheck.portal_wr = 1;
@@ -575,7 +600,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				dd.y = vtx->y - ny;
 
 				// midblock
-				poscheck.midhit = wall->blockmid & poscheck.blockedby ? 0x80 : 0x00;
+				poscheck.midhit = touch & wall->blockmid & poscheck.blockedby ? 0x80 : 0x00;
 
 				// get right side
 				dist = (dd.x * wall->dist.x + dd.y * wall->dist.y) >> 8;
@@ -596,7 +621,7 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 				// check backsector
 				if(	wall->backsector &&
 					!(wall->blocking & poscheck.blockedby & 0x7F) &&
-					!check_backsector(wall->backsector, zz)
+					!check_line_block(sec, wall, zz, touch)
 				){
 					add_sector(wall->backsector, touch);
 					goto do_next;
@@ -639,8 +664,11 @@ pt_block:
 						poscheck.hidx = poscheck.ptwall;
 					} else
 					{
+						// midblock
+						poscheck.midhit = wall->blockmid & poscheck.blockedby ? 0x80 : 0x00;
+
 						// check backsector
-						if(check_backsector(wall->backsector, zz))
+						if(check_line_block(sec, wall, zz, 1))
 							goto pt_block;
 						else
 							add_sector(wall->backsector, 1);
@@ -655,6 +683,20 @@ pt_block:
 			if(inside && !poscheck.sector)
 			{
 				poscheck.sector = sdx;
+
+				if(poscheck.midsec == sdx)
+				{
+					poscheck.midhit = 0x80;
+
+					// re-check floor
+					get_sector_floorz(sec, nz);
+					if(poscheck.floorz < poscheck.tfz)
+					{
+						poscheck.floorz = poscheck.tfz;
+						poscheck.floors = 0;
+					}
+				}
+
 				add_sector_links(sdx);
 			}
 		}

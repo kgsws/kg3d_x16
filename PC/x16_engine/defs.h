@@ -94,7 +94,9 @@ typedef struct
 	int8_t floordist;
 	uint8_t midheight;
 	//
-	uint8_t filler[9];
+	uint8_t filler[8];
+	// internal
+	uint8_t midhit;
 } __attribute__((packed)) sector_t;
 
 typedef struct
