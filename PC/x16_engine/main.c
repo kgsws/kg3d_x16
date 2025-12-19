@@ -2224,8 +2224,7 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 
 	// bot clip
 	if(	th->eflags & THING_EFLAG_SPRCLIP ||
-		sec->floor.link ||
-		sec->floordist
+		sec->floor.link
 	){
 		zdiff = projection.z - sec->floor.height;
 		y1 = (dist * zdiff) >> 8;

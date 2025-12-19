@@ -115,7 +115,6 @@ enum
 	CBOR_SECPLANE_OFFS_Y,
 	CBOR_SECPLANE_ANGLE,
 	CBOR_SECPLANE_LINK,
-	CBOR_SECPLANE_DIST,
 	//
 	NUM_CBOR_SECPLANE
 };
@@ -681,13 +680,7 @@ static const edit_cbor_obj_t cbor_secplane[] =
 		.type = EDIT_CBOR_TYPE_S32,
 		.ptr = (void*)&load_secplane.link,
 	},
-	[CBOR_SECPLANE_DIST] =
-	{
-		.name = "dist",
-		.nlen = 4,
-		.type = EDIT_CBOR_TYPE_S8,
-		.s8 = &load_secplane.dist,
-	},	// terminator
+	// terminator
 	[NUM_CBOR_SECPLANE] = {}
 };
 
@@ -2344,7 +2337,6 @@ static int32_t cbor_sector_ceiling(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type
 {
 	if(type == KGCBOR_TYPE_TERMINATOR_CB)
 	{
-		load_secplane.dist = 0; // not enabled!
 		load_sector->plane[PLANE_TOP] = load_secplane;
 		return 1;
 	}
@@ -3891,10 +3883,7 @@ void edit_highlight_changed()
 			sp = edit_hit.sector->plane + PLANE_BOT;
 			dst = text;
 			tmp = sp->link ? "FLOOR" : "Floor";
-			if(sp->dist)
-				dst += sprintf(text, "%s\x0B\n\n\n\n\nZ: %.0f %+d", tmp, sp->height, -sp->dist);
-			else
-				dst += sprintf(text, "%s\x0B\n\n\n\n\nZ: %.0f", tmp, sp->height);
+			dst += sprintf(text, "%s\x0B\n\n\n\n\nZ: %.0f", tmp, sp->height);
 			sprintf(dst, "\nRot: %u\nx: %u y: %u", sp->texture.angle, sp->texture.ox, sp->texture.oy);
 			glui_set_text(&ui_edit_highlight_textA, text, glui_font_tiny_kfn, GLUI_ALIGN_CENTER_TOP);
 

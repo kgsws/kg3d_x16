@@ -195,7 +195,7 @@ static void get_sector_floorz(sector_t *sec, int32_t th_z)
 		return;
 	}
 
-	poscheck.tfz = sec->floor.height - sec->floordist;
+	poscheck.tfz = sec->floor.height;
 
 	if(poscheck.midhit)
 		poscheck.tfz += (int32_t)sec->midheight * 2;
@@ -325,6 +325,9 @@ static uint32_t check_things(uint8_t tdx, uint8_t sdx, int32_t nx, int32_t ny)
 			continue;
 
 		if(odx == tdx)
+			continue;
+
+		if(th->origin == odx)
 			continue;
 
 		ht = thing_ptr(odx);
@@ -1073,9 +1076,9 @@ repeat:
 
 	st = thing_state + tmp;
 
-//	tmp = st->action & 0x7F;
-//	if(tmp && action_func(tick_idx, tmp, st))
-//		goto repeat;
+	tmp = st->action & 0x7F;
+	if(tmp && action_func(tick_idx, tmp, st))
+		goto repeat;
 
 	th->next_state = st->next;
 	th->next_state |= (st->frm_nxt & 0xE0) << 3;

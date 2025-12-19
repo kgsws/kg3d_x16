@@ -19,7 +19,8 @@
 .export thing_check_pos
 .export thing_check_heights
 .export thing_apply_pos
-.export thing_nextfrm
+.export thing_actdone
+.export thing_actnext
 
 .export thing_tick
 .export thing_plyr
@@ -34,14 +35,14 @@
 ; thing spawn
 ;;;
 ; requires all ARG_THING_* arguments
-; X is originator for '_org' variant
+; Y is originator for '_org' variant
 ; zero flag set = fail
-; returns thing in X and ARG_THING_IDX
+; returns thing in X and RET_THING_IDX
 
 thing_spawn:
-	ldx	#0
+	ldy	#0
 thing_spawn_org:
-	phx	; <origin>
+	phy	; <origin>
 
 	; sector things bank
 	lda	#BANK_SECTOR_THINGS
@@ -64,7 +65,7 @@ thing_spawn_org:
 	beq	@stop
 
 	; the thing
-	stx	ARG_THING_IDX
+	stx	RET_THING_IDX
 
 	; thing type
 	ldy	ARG_THING_TYPE
@@ -139,7 +140,7 @@ thing_spawn_org:
 	sta	REG_RAM_BANK
 
 	; ticker
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 	lda	#TICKER_FUNC_THING
 	sta	TICKER_STRUCT_FUNC,x
 
@@ -264,7 +265,7 @@ thing_spawn_org:
 	sta	REG_RAM_BANK
 
 	; DONE
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 	rts
 
 @pos_fail:
@@ -273,7 +274,7 @@ thing_spawn_org:
 	; this ignores linked sectors
 	; this ignores floor dist
 
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -328,6 +329,8 @@ thing_spawn_org:
 	sta	THING_STRUCT_FLOORS,x
 	sta	THING_STRUCT_CEILS,x
 
+	; DONE
+	ldx	RET_THING_IDX
 	rts
 
 ;;;
@@ -629,10 +632,10 @@ skip_pitch:
 ; thing height check
 ;;;
 ; ARG_THING_X_*, ARG_THING_Y_*, ARG_THING_Z_* (only L and H) - current position
-; ARG_THING_IDX - thing index
+; RET_THING_IDX - thing index
 
 thing_check_heights:
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 	; prepare
 	jsr	prepare_pos_check
@@ -686,13 +689,13 @@ thing_check_heights:
 ;;;
 ; ARG_THING_X_*, ARG_THING_Y_*, ARG_THING_Z_* (only L and H) - desired position
 ; ARG_THING_SECTOR - target sector (zero = from thing)
-; ARG_THING_IDX - thing index
+; RET_THING_IDX - thing index
 ; zero flag set = fail
 ; A = new thing sector
 ; THMOVE_SECTOR = new thing sector
 
 thing_check_pos:
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 	; target sector
 	lda	ARG_THING_SECTOR
@@ -1131,7 +1134,7 @@ thing_check_spawn:
 	sty	THMOVE_HIDX
 
 	; thing
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 	; p2a_coord.x -= th->x / 256
 	sec
@@ -1355,7 +1358,7 @@ thing_check_spawn:
 ;;;
 ; apply thing position
 ;;;
-; ARG_THING_IDX - the thing
+; RET_THING_IDX - the thing
 ; run only after 'thing_check_position' or to remove from all sectors
 ; if THMOVE_SECTOR is zero, thing is only removed from all sectors
 
@@ -1374,7 +1377,7 @@ thing_apply_pos:
 	ldx	#16
 @loop_del:
 	; thing index
-	ldy	ARG_THING_IDX
+	ldy	RET_THING_IDX
 
 	; get sector at this slot
 	lda	(THSEC_PTR_L),y
@@ -1493,7 +1496,7 @@ thing_apply_spawn:
 	bne	@loop_place
 
 	; restore
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 ;;;
 ; apply thing position
@@ -1585,6 +1588,10 @@ prepare_pos_check:
 	; poscheck.blockedby = th->blockedby
 	lda	THING_STRUCT_BLOCKEDBY,x
 	sta	THMOVE_BLOCKEDBY
+
+	; origin
+	lda	THING_STRUCT_TH_ORIGIN,x
+	sta	THMOVE_ORIGIN
 
 	; mz >= 0
 	lda	THING_STRUCT_MZ_L,x
@@ -1709,16 +1716,12 @@ get_sector_floorz:
 	rts
 
 @no_link:
-	lda	SECTOR_STRUCT_FLOOR_DIST,x
-	bne	@do_dist
-
 	; poscheck.tfz = sec->floor.height
 	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
 	sta	THMOVE_TFZ_L
 	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
 	sta	THMOVE_TFZ_H
 
-@do_midhit:
 	; if(poscheck.midhit)
 	lda	THMOVE_MIDHIT
 	bne	:+
@@ -1741,25 +1744,6 @@ get_sector_floorz:
 	sta	THMOVE_TFZ_H
 
 	rts
-
-@do_dist:
-	; sign extend
-	phy
-	tay
-	lda	TAB_SIGN_EXT,y
-	sta	MATH_VAR_SIGN
-	ply
-
-	; poscheck.tfz = sec->floor.height
-	sec
-	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
-	sbc	SECTOR_STRUCT_FLOOR_DIST,x
-	sta	THMOVE_TFZ_L
-	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
-	sbc	MATH_VAR_SIGN
-	sta	THMOVE_TFZ_H
-
-	bra	@do_midhit
 
 ;;;
 ; get sector ceiling
@@ -1857,13 +1841,17 @@ check_things:
 	beq	@next_slot
 
 	; self
-	cmp	ARG_THING_IDX
+	cmp	RET_THING_IDX
 	beq	@next_slot
 	tax
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
+
+	; origin
+	cpx	THMOVE_ORIGIN
+	beq	@next_slot_ex
 
 	; blocking
 	lda	THING_STRUCT_BLOCKING,x
@@ -1946,7 +1934,7 @@ check_things:
 
 	; things
 	ldy	THMOVE_HIDX
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 	; under check
 	sec
@@ -2344,7 +2332,7 @@ add_sector_raw:
 ; place to sector
 ;;;
 ; ARG_THING_SECTOR - desired sector
-; ARG_THING_IDX - desired thing
+; RET_THING_IDX - desired thing
 ; THMOVE_PTR_H - slot index pointer in thing, auto increment
 ; THMOVE_MIDHIT - mid hit flag
 
@@ -2372,7 +2360,7 @@ place_to_sector:
 	bne	@not_free
 
 	; add thing to this slot
-	lda	ARG_THING_IDX
+	lda	RET_THING_IDX
 	sta	(HI_PTR_L),y
 
 	; increment thing counter for this sector
@@ -2390,7 +2378,7 @@ place_to_sector:
 
 	; thing pointer
 	tya
-	ldy	ARG_THING_IDX
+	ldy	RET_THING_IDX
 
 	; add this sector to thing
 	sta	(THMOVE_PTR_L),y
@@ -2477,7 +2465,7 @@ swap_thing_sector:
 ;;;
 
 thing_tick:
-	sty	ARG_THING_IDX
+	sty	RET_THING_IDX
 
 	;; camera
 	cpy	G_CAMERA_THING
@@ -2541,9 +2529,9 @@ thing_tick:
 
 	; new heights
 	jsr	thing_check_heights
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 	jsr	thing_apply_heights
-	ldy	ARG_THING_IDX
+	ldy	RET_THING_IDX
 
 @no_heights:
 	jmp	@no_xy_move
@@ -2601,7 +2589,7 @@ thing_tick:
 	jmp	@xy_pass
 :
 	; restore
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 	; check retry
 	lda	THTICK_RETRY
@@ -2628,7 +2616,7 @@ thing_tick:
 	tay
 	lda	TAB_SIGN_EXT,y
 	sta	MATH_VAR_U
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 	clc
 	lda	THING_STRUCT_X_S,x
 	adc	MATH_VAR_L
@@ -2646,7 +2634,7 @@ thing_tick:
 	tay
 	lda	TAB_SIGN_EXT,y
 	sta	MATH_VAR_U
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 	clc
 	lda	THING_STRUCT_Y_S,x
 	adc	MATH_VAR_L
@@ -2712,7 +2700,7 @@ thing_tick:
 	sta	REG_RAM_BANK
 
 	; restore
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 	; ang = 0x40 - (poscheck.hitang - p2a_coord.a)
 	sec
@@ -2806,7 +2794,7 @@ thing_tick:
 
 	; retry
 	inc	THTICK_RETRY
-	ldy	ARG_THING_IDX
+	ldy	RET_THING_IDX
 	jmp	@xy_retry
 
 @xy_pass:
@@ -2862,7 +2850,7 @@ thing_tick:
 :
 @no_xy_friction:
 	; restore
-	ldy	ARG_THING_IDX
+	ldy	RET_THING_IDX
 
 @no_xy_move:
 	;; Z movement
@@ -3115,7 +3103,7 @@ thing_tick:
 
 	; gravity check
 	ldx	THING_STRUCT_GRAVITY,y
-	beq	@do_z_friction
+	beq	@no_z_friction
 
 	; on floor check
 	sec
@@ -3144,7 +3132,7 @@ thing_tick:
 
 @do_z_friction:
 	; restore
-	ldx	ARG_THING_IDX
+	ldx	RET_THING_IDX
 
 	; MZ
 	lda	THING_STRUCT_MZ_L,x
@@ -3167,6 +3155,9 @@ thing_tick:
 ;;;
 
 thing_anim:
+	; backup
+	sty	THTICK_STATE_TDX
+
 	; if(!th->ticks)
 	lda	THING_STRUCT_TICKS,y
 	bne	:+
@@ -3183,11 +3174,11 @@ thing_anim:
 	; state
 	ldx	THING_STRUCT_NXTFRM_L,y
 	lda	THING_STRUCT_NXTFRM_H,y
+
+thing_actnext:
 	and	#$07
 
-thing_nextfrm:
 	; check for STOP
-	cmp	#0
 	bne	:+
 	cpx	#0
 	bne	:+
@@ -3200,14 +3191,29 @@ thing_nextfrm:
 	; thing states bank
 	ora	#BANK_THING_STATES
 	sta	REG_RAM_BANK
+	sta	THTICK_STATE_BANK
 
 	; action
 	lda	THSTATE_STRUCT_ACTION,x
 	asl
 	beq	:+
 
+	; backup
+	stx	THTICK_STATE_IDX
+
 	; run action
-	;sta	DBG_BYTE0
+	tax
+	jmp	(action_table-2,x)
+
+thing_actdone:
+	; restore
+	ldx	THTICK_STATE_IDX
+	ldy	THTICK_STATE_TDX
+	sty	RET_THING_IDX
+
+	; thing states bank
+	lda	THTICK_STATE_BANK
+	sta	REG_RAM_BANK
 :
 	; fullbright
 	lda	THSTATE_STRUCT_ACTION,x
@@ -3244,7 +3250,7 @@ thing_nextfrm:
 	sta	REG_RAM_BANK
 
 	; ticker
-	ldy	ARG_THING_IDX
+	ldy	RET_THING_IDX
 
 	; <ticks>
 	pla
@@ -3587,6 +3593,6 @@ thing_plyr:
 
 	; weapon
 	ldy	#0
-	sty	ARG_THING_IDX
+	sty	RET_THING_IDX
 	jmp	thing_anim
 

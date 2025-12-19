@@ -4424,10 +4424,6 @@ prepare_sprite:
 	lda	SPRITE_CLIP_FLAG
 	bne	:+
 
-	; check if required (dist)
-	lda	SECTOR_STRUCT_FLOOR_DIST,y
-	bne	:+
-
 	; check if required (link)
 	lda	SECTOR_STRUCT_FLOOR_LINK,y
 	beq	@no_bot_clip

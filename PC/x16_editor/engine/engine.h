@@ -180,7 +180,6 @@ typedef struct kge_sector_stuff_s
 typedef struct kge_secplane_s
 {
 	float height;
-	int8_t dist;
 	kge_x16_tex_t texture;
 	struct kge_sector_s *link;
 } kge_secplane_t;

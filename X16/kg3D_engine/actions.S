@@ -9,19 +9,16 @@
 .include "things.inc"
 .include "hitscan.inc"
 
-.export action_run
-.export action_get_XY
+.export action_table
 
 ;;;
 ; NOTES: action callback
 ;;;
-; Y is current thing; 0 = player weapon; (does not have to be preserved) (also available in TICK_IDX)
-; THANIM_PTR_* points to current frame
-; ARG_THING_SPAWN_SECTOR is current thing sector; invalid for weapons
-; BANK_THING_STATES is active bank
-; jump to 'thing_act_cont' to continue
-; jump to 'thing_act_rept' to repeat
-; set TMP_STACT_TICK_ADD to add extra state duration
+; X Y and BANK can be trashed
+; Y - the thing; 0 = player weapon; (also stored in THTICK_STATE_TDX)
+; THTICK_STATE_IDX : THTICK_STATE_BANK - current state (also current bank)
+; jump to 'thing_actdone' to continue
+; jump to 'thing_actnext'; TODO: more info on X and A
 
 ;;;
 ; CODE
@@ -30,118 +27,41 @@
 .segment "CODE"
 
 ;;;
-; get XY
+; copy XY to arguments
 ;;;
+; Y - the thing
 
-action_get_XY:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+action_xy:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; X
 	lda	THING_STRUCT_X_S,y
-	sta	ARG_THING_SPAWN_X_S
+	sta	ARG_THING_X_S
 	lda	THING_STRUCT_X_L,y
-	sta	ARG_THING_SPAWN_X_L
+	sta	ARG_THING_X_L
 	lda	THING_STRUCT_X_H,y
-	sta	ARG_THING_SPAWN_X_H
+	sta	ARG_THING_X_H
 
 	; Y
 	lda	THING_STRUCT_Y_S,y
-	sta	ARG_THING_SPAWN_Y_S
+	sta	ARG_THING_Y_S
 	lda	THING_STRUCT_Y_L,y
-	sta	ARG_THING_SPAWN_Y_L
+	sta	ARG_THING_Y_L
 	lda	THING_STRUCT_Y_H,y
-	sta	ARG_THING_SPAWN_Y_H
+	sta	ARG_THING_Y_H
 
 	rts
 
 ;;;
-; get args
-;;;
-
-handle_args:
-	phy
-	ldy	#THSTATE_STRUCT_ARG0
-	lda	(THANIM_PTR_L),y
-	sta	TMP_STACT_ARG_0
-	iny
-	lda	(THANIM_PTR_L),y
-	sta	TMP_STACT_ARG_1
-	iny
-	lda	(THANIM_PTR_L),y
-	sta	TMP_STACT_ARG_2
-	ply
-	rts
-
-;;;
-; get base info
-;;;
-
-handle_base_info:
-	; args
-	jsr	handle_args
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-	; check for weapon
-	tya
-	bne	:+
-
-	; use player thing
-	ldy	G_PLAYER_THING
-
-	; thing sectors bank
-	lda	#BANK_THING_SECTORS
-	sta	REG_RAM_BANK
-
-	; thing sector pointer
-	lda	$A000,y
-	sta	ARG_THING_SPAWN_SECTOR
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-:
-	; save for return
-	phy
-
-	; origin type
-	ldx	THING_STRUCT_TYPE,y
-
-	; weapon type
-	ldy	TICK_IDX
-	lda	THING_STRUCT_TYPE,y
-	tay
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
-	; spawn type
-	lda	TMP_STACT_ARG_0
-	ora	#>THTYPE_STRUCT_SPAWN_A
-	sta	@opcode+2
-@opcode:
-	lda	THTYPE_STRUCT_SPAWN_A,y	; modified address
-	sta	ARG_THING_SPAWN_TYPE
-
-	; attack height
-	lda	THTYPE_STRUCT_ATK_HEIGHT,x
-
-	ply
-	rts
-
-;;;
-; action: weapon ready
+; weapon: ready
 ;;;
 ; can be run only from local weapon
 
 act_wpn_ready:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; not attacking
@@ -150,9 +70,6 @@ act_wpn_ready:
 	; cmd = ticcmd.bits_h & 0x1F
 	lda	TICK_CMD_BITS_H
 	and	#$1F
-
-	; if(cmd)
-	beq	@no_swap
 
 	; cmd--
 	dea
@@ -172,134 +89,93 @@ act_wpn_ready:
 
 	; if(cmd != th->type)
 	txa
-	cmp	THING_STRUCT_TYPE
+	cmp	TICKER_STRUCT_TYPE
 	beq	@no_swap
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; check animation	; TO BE REPLACED
+	; check animation	; TO BE REPLACED (inventory check)
 	lda	THTYPE_ANIM_RAISE_L,x
 	ora	THTYPE_ANIM_RAISE_H,x
-	beq	:+
+	beq	@no_swap
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	; th->counter = cmd
-	stx	THING_STRUCT_COUNTER
+	; current type
+	ldy	TICKER_STRUCT_TYPE
 
-	; get thing type
-	ldx	THING_STRUCT_TYPE
+	; th->ticker.type = cmd
+	stx	TICKER_STRUCT_TYPE
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; get animation
-	lda	THTYPE_ANIM_LOWER_L,x
-	sta	TMP_STACT_FRM_L
-	lda	THTYPE_ANIM_LOWER_H,x
-	sta	TMP_STACT_FRM_H
-
-	jmp	apply_animation
-:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
+	; animation
+	ldx	THTYPE_ANIM_LOWER_L,y
+	lda	THTYPE_ANIM_LOWER_H,y
+	jmp	thing_actnext
 
 @no_swap:
 	; check primary fire
 	lda	TICK_CMD_BITS_L
 	and	#TCMD_ATK
-	beq	@skip_atk
+	bne	@atk_pri
 
-	; get thing type
-	ldx	THING_STRUCT_TYPE
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
-	; check animation
-	lda	THTYPE_ANIM_ATK_L,x
-	sta	TMP_STACT_FRM_L
-	lda	THTYPE_ANIM_ATK_H,x
-	sta	TMP_STACT_FRM_H
-	ora	TMP_STACT_FRM_L
-	beq	@no_atk
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-	; attacking
-	lda	#1
-	sta	THING_STRUCT_IFLAGS
-
-	; apply
-	jmp	apply_animation_ex
-
-@no_atk:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-@skip_atk:
 	; check secondary fire
 	lda	TICK_CMD_BITS_L
 	and	#TCMD_ALT
-	beq	@skip_alt
+	bne	@atk_alt
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+@done:
+	; done
+	jmp	thing_actdone
+
+@atk_pri:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	; get thing type
-	ldx	THING_STRUCT_TYPE
+	; type
+	ldy	TICKER_STRUCT_TYPE
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; check animation
-	lda	THTYPE_ANIM_ALT_L,x
-	sta	TMP_STACT_FRM_L
-	lda	THTYPE_ANIM_ALT_H,x
-	sta	TMP_STACT_FRM_H
-	ora	TMP_STACT_FRM_L
-	beq	@no_alt
+	; animation
+	lda	THTYPE_ANIM_ATK_L,y
+	ora	THTYPE_ANIM_ATK_H,y
+	beq	@done
+	ldx	THTYPE_ANIM_ATK_L,y
+	lda	THTYPE_ANIM_ATK_H,y
+	jmp	thing_actnext
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+@atk_alt:
+	; thing info bank
+	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; attacking
-	lda	#2
-	sta	THING_STRUCT_IFLAGS
-
-	; apply
-	jmp	apply_animation_ex
-
-@no_alt:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-@skip_alt:
-	; no changes
-	jmp	thing_act_cont
+	; animation
+	lda	THTYPE_ANIM_ALT_L,y
+	ora	THTYPE_ANIM_ALT_H,y
+	beq	@done
+	ldx	THTYPE_ANIM_ALT_L,y
+	lda	THTYPE_ANIM_ALT_H,y
+	jmp	thing_actnext
 
 ;;;
-; action: weapon raise
+; weapon: raise
 ;;;
 ; can be run only from local weapon
 
 act_wpn_raise:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; raise
@@ -312,34 +188,31 @@ act_wpn_raise:
 	sta	THING_STRUCT_HEIGHT
 
 	; check
-	bne	:+
+	beq	@change
 
-	; get thing type
-	ldx	THING_STRUCT_TYPE
+	; done
+	jmp	thing_actdone
+
+@change:
+	ldy	TICKER_STRUCT_TYPE
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; get animation
-	lda	THTYPE_ANIM_READY_L,x
-	sta	TMP_STACT_FRM_L
-	lda	THTYPE_ANIM_READY_H,x
-	sta	TMP_STACT_FRM_H
-
-	jmp	apply_animation
-:
-	; no changes
-	jmp	thing_act_cont
+	; animation
+	ldx	THTYPE_ANIM_READY_L,y
+	lda	THTYPE_ANIM_READY_H,y
+	jmp	thing_actnext
 
 ;;;
-; action: weapon lower
+; weapon: lower
 ;;;
 ; can be run only from local weapon
 
 act_wpn_lower:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; lower
@@ -347,323 +220,141 @@ act_wpn_lower:
 	lda	THING_STRUCT_HEIGHT
 	adc	#8
 	sta	THING_STRUCT_HEIGHT
-	cmp	#64
-	bcs	:+
+	cmp	#52
+	bcs	@do_change
 
-	; no changes
-	jmp	thing_act_cont
-:
-	; th->height = 64
-	lda	#64
+	; done
+	jmp	thing_actdone
+
+@do_change:
+	; th->height = 52
+	lda	#52
 	sta	THING_STRUCT_HEIGHT
 
-	; th->type = th->counter
-	lda	THING_STRUCT_COUNTER
-	sta	THING_STRUCT_TYPE
-	tax
+	; new type
+	ldy	TICKER_STRUCT_TYPE
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; get animation
-	lda	THTYPE_ANIM_RAISE_L,x
-	sta	TMP_STACT_FRM_L
-	lda	THTYPE_ANIM_RAISE_H,x
-	sta	TMP_STACT_FRM_H
-
-	jmp	apply_animation
+	; animation
+	ldx	THTYPE_ANIM_RAISE_L,y
+	lda	THTYPE_ANIM_RAISE_H,y
+	jmp	thing_actnext
 
 ;;;
-; action: projectile attack
+; attack: projectile
 ;;;
 
 act_atk_projectile:
-	; origin
-	jsr	handle_base_info
-	pha
+	; st->arg[0]
+	ldx	THTICK_STATE_IDX
+	lda	THSTATE_STRUCT_ARG0,x
+	ora	#>THTYPE_STRUCT_SPAWN_A
+	sta	@opcode_spawn+2
 
-	; projectile height / 2
-	ldx	ARG_THING_SPAWN_TYPE
-	lda	THTYPE_STRUCT_HEIGHT,x
-	lsr
-	sta	MATH_TEMP_A
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
 
-	; Z offset
-	pla
-	sec
-	sbc	MATH_TEMP_A
-	sta	MATH_TEMP_A
+	; th->ticker.type
+	ldx	TICKER_STRUCT_TYPE,y
 
-	; projectile speed
-	lda	THTYPE_STRUCT_SPEED,x
-	pha
-
-	; X Y
-	jsr	action_get_XY
-
-	; Z
-	lda	THING_STRUCT_Z_S,y
-	sta	ARG_THING_SPAWN_Z_S
-	clc
-	lda	THING_STRUCT_Z_L,y
-	adc	MATH_TEMP_A
-	sta	ARG_THING_SPAWN_Z_L
-	lda	THING_STRUCT_Z_H,y
-	adc	#0
-	sta	ARG_THING_SPAWN_Z_H
-
-	; spawn thing
-	phy
-	jsr	thing_spawn_org
-	ply
-	ldx	RET_THING_SPAWN
-	beq	:+
-
-	; angle + pitch
-	jsr	aim_rng
-	clc
-	lda	ARG_HITSCAN_ANGLE
-	adc	TMP_STACT_ARG_2
-	sta	THING_STRUCT_ANGLE,x
-	lda	ARG_HITSCAN_HALF_PITCH
-	asl
-	sta	THING_STRUCT_PITCH,x
-
-	; launch
-	ldy	RET_THING_SPAWN
-	plx
-	jsr	thing_launch
-	pha
+	; check_weapon_th
+	tya
+	bne	:+
+	ldy	G_PLAYER_THING
 :
-	pla
+	sty	THTICK_ACT_TDX
 
-	; no changes
-	jmp	thing_act_cont
+	; th->ticker.type
+	lda	TICKER_STRUCT_TYPE,y
+	sta	@opcode_orgt+1
 
-;;;
-; action: projectile attack
-;;;
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
 
-act_atk_hitscan:
-	; origin
-	jsr	handle_base_info
+	; type = thing_type[th->ticker.type].spawn[st->arg[0]]
+@opcode_spawn:
+	lda	THTYPE_STRUCT_SPAWN_A,x	; modified address
+	sta	ARG_THING_TYPE
 	tax
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
+	; speed
+	lda	THTYPE_STRUCT_SPEED,x
+	sta	THTICK_ACT_SPEED
 
-@loop:
-	; save
-	phx
-	phy
-	lda	ARG_HITSCAN_TYPE
-	pha
-
-	; angle + pitch
-	jsr	aim_rng
-
-	; attack
-	jsr	hitscan_attack
-
-	; restore
-	pla
-	sta	ARG_HITSCAN_TYPE
-	ply
-	plx
-
-	; next
-	dec	TMP_STACT_ARG_2
-	bne	@loop
-
-	; no changes
-	jmp	thing_act_cont
-
-;;;
-; effect: blood splat
-;;;
-
-act_eff_blood:
-	; args
-	jsr	handle_args
-
-	; tmp = rng_get()
-	jsr	rng_get
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-	; th->mz = 0
-	lda	#0
-	sta	THING_STRUCT_MZ_S,y
-	sta	THING_STRUCT_MZ_L,y
-
-	; if(st->arg[0])
-	ldx	TMP_STACT_ARG_0
-	beq	@no_power
-
-	; tmp & 0x80
-	lda	MATH_TEMP
-	and	#$80
+	; diff = thing_type[th->ticker.type].atk_height - thing_type[type].height / 2
+	lda	THTYPE_STRUCT_HEIGHT,x
+	lsr
+	sta	MATH_VAR_L
+	sec
+@opcode_orgt:
+	lda	THTYPE_STRUCT_ATK_HEIGHT	; modified address
+	sbc	MATH_VAR_L
 	sta	MATH_VAR_L
 
-	; th->angle += 0x40
+	; XY
+	jsr	action_xy
+
+	; Z
+	stz	ARG_THING_Z_S
 	clc
-	lda	THING_STRUCT_ANGLE,y
-	adc	#$40
+	lda	THING_STRUCT_Z_L,y
+	adc	MATH_VAR_L
+	sta	ARG_THING_Z_L
+	lda	THING_STRUCT_Z_H,y
+	adc	#0
+	sta	ARG_THING_Z_H
 
-	; th->angle ^= tmp & 0x80
-	eor	MATH_VAR_L
-	sta	THING_STRUCT_ANGLE,y
-
-	; thing_launch(tdx, st->arg[0])
-	jsr	thing_launch
-
-	; th->mz = st->arg[0] << 8
-	lda	TMP_STACT_ARG_0
-	sta	THING_STRUCT_MZ_L,y
-
-@no_power:
-	; tmp & 0x7F
-	lda	MATH_TEMP
-	and	#$7F
-
-	; if(st->arg[2] > (tmp & 0x7F))
-	cmp	TMP_STACT_ARG_2
-	bcs	@no_boost
-
-	; th->mz = st->arg[1] << 8
-	lda	TMP_STACT_ARG_1
-	sta	THING_STRUCT_MZ_L,y
-
-@no_boost:
-	; no changes
-	jmp	thing_act_cont
-
-;;;
-; ticks: add
-;;;
-
-act_tick_add:
-	; rng mask add from arg0
-	jsr	rng_get
-	ldy	#THSTATE_STRUCT_ARG0
-	lda	(THANIM_PTR_L),y
-	and	MATH_TEMP
-	sta	TMP_STACT_TICK_ADD
-
-	; no changes
-	jmp	thing_act_cont
-
-;;;
-; death: simple
-;;;
-
-act_die_simple:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
 
-	lda	#0
-	sta	THING_STRUCT_BLOCKING,y
+	; sector
+	lda	$B000,y
+	sta	ARG_THING_SECTOR
 
-	lda	#128
-	sta	THING_STRUCT_GRAVITY,y
+	; spawn
+	jsr	thing_spawn_org
+	beq	:+
 
-	; no changes
-	jmp	thing_act_cont
-
-;;;
-; apply new animation
-;;;
-
-apply_animation:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
-
-apply_animation_ex:
-	; change animation
-	lda	TMP_STACT_FRM_L
-	sta	THING_STRUCT_NXTFRM_L
-	lda	TMP_STACT_FRM_H
-	sta	THING_STRUCT_NXTFRM_H
-
-	; apply
-	jmp	thing_act_rept
-
-;;;
-; randomize
-;;;
-; X is randomizer index to table
-; randomizer will never pick zero
-; result is in A
-
-randomize:
-	jsr	rng_get
-	lda	rng_aim_tab-1,x
-	and	MATH_TEMP
-	inc
-	bpl	:+
-	eor	#$7F
-	inc
-:
-	clc
-	rts
-
-;;;
-; angle and pitch with RNG from ARG1
-;;;
-
-aim_rng:
-	phx
+	; restore
+	ldy	THTICK_ACT_TDX
 
 	; angle
 	lda	THING_STRUCT_ANGLE,y
-	sta	ARG_HITSCAN_ANGLE
+	sta	THING_STRUCT_ANGLE,x
 
-	; random
-	lda	TMP_STACT_ARG_1
-	and	#$07
-	beq	:+
-	tax
-	lda	rng_aim_tab-1,x
-	sta	MATH_COUNTER
-	jsr	randomize
-	adc	ARG_HITSCAN_ANGLE
-	sta	ARG_HITSCAN_ANGLE
-:
 	; pitch
 	lda	THING_STRUCT_PITCH,y
-	lsr
-	sta	ARG_HITSCAN_HALF_PITCH
+	sta	THING_STRUCT_PITCH,x
 
-	; random
-	lda	TMP_STACT_ARG_1
-	and	#$70
-	beq	:+
-	tax
-	lda	TAB_SWAP,x
-	tax
-	lda	rng_aim_tab-1,x
-	sta	MATH_COUNTER
-	jsr	randomize
-	adc	ARG_HITSCAN_HALF_PITCH
-	sta	ARG_HITSCAN_HALF_PITCH
+	; go
+	ldx	THTICK_ACT_SPEED
+	ldy	RET_THING_IDX
+	jsr	thing_launch
 :
-	plx
-	rts
+	; done
+	jmp	thing_actdone
 
 ;;;
-; state action calling
+; TODO
 ;;;
 
-action_run:
-	asl
-	tax
-	jmp	(action_table-2,x)
+act_atk_hitscan:
+act_eff_blood:
+act_tick_add:
+act_die_simple:
+;	stx	DBG_BYTE0
+
+	jmp	thing_actdone
+
+;;;
+; state action table
+;;;
 
 action_table:
 	.word	act_wpn_ready

@@ -71,7 +71,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 						if(state)
 						{
 							th->next_state = thing_anim[th->ticker.type][ANIM_LOWER].state;
-							th->counter = cmd;
+							th->ticker.type = cmd;
 							return 1;
 						}
 					}
@@ -104,10 +104,9 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		break;
 		case 3: // weapon: lower
 			th->height += st->arg[0];
-			if(th->height >= 64)
+			if(th->height >= 52)
 			{
-				th->height = 64;
-				th->ticker.type = th->counter;
+				th->height = 52;
 				th->next_state = thing_anim[th->ticker.type][ANIM_RAISE].state;
 				return 1;
 			}
