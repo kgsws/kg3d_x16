@@ -3103,7 +3103,7 @@ thing_tick:
 
 	; gravity check
 	ldx	THING_STRUCT_GRAVITY,y
-	beq	@no_z_friction
+	beq	@do_z_friction
 
 	; on floor check
 	sec
@@ -3133,6 +3133,11 @@ thing_tick:
 @do_z_friction:
 	; restore
 	ldx	RET_THING_IDX
+
+	; if(th->eflags & THING_EFLAG_PROJECTILE)
+	lda	THING_STRUCT_EFLAGS,x
+	and	#THING_EFLAG_PROJECTILE
+	bne	@no_z_friction
 
 	; MZ
 	lda	THING_STRUCT_MZ_L,x
@@ -3176,9 +3181,11 @@ thing_anim:
 	lda	THING_STRUCT_NXTFRM_H,y
 
 thing_actnext:
-	and	#$07
+	; restore
+	ldy	THTICK_STATE_TDX
 
 	; check for STOP
+	and	#$07
 	bne	:+
 	cpx	#0
 	bne	:+

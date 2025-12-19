@@ -9,6 +9,7 @@
 .include "things.inc"
 .include "hitscan.inc"
 
+.export action_xy
 .export action_table
 
 ;;;
@@ -18,7 +19,7 @@
 ; Y - the thing; 0 = player weapon; (also stored in THTICK_STATE_TDX)
 ; THTICK_STATE_IDX : THTICK_STATE_BANK - current state (also current bank)
 ; jump to 'thing_actdone' to continue
-; jump to 'thing_actnext'; TODO: more info on X and A
+; jump to 'thing_actnext'; TODO: more info
 
 ;;;
 ; CODE
@@ -341,10 +342,51 @@ act_atk_projectile:
 	jmp	thing_actdone
 
 ;;;
-; TODO
+; action: hitscan attack
 ;;;
 
 act_atk_hitscan:
+	; arguments
+	ldx	THTICK_STATE_IDX
+	lda	THSTATE_STRUCT_ARG1,x
+	sta	THTICK_STATE_SPREAD
+	lda	THSTATE_STRUCT_ARG2,x
+	sta	THTICK_STATE_COUNT
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; check_weapon_th
+	tya
+	bne	:+
+	ldy	G_PLAYER_THING
+:
+	; TEMP
+	lda	THING_STRUCT_ANGLE,y
+	sta	ARG_HITSCAN_ANGLE
+	lda	THING_STRUCT_PITCH,y
+	lsr
+	sta	ARG_HITSCAN_HALF_PITCH
+	lda	#110
+	sta	ARG_THING_TYPE
+
+@loop:
+
+	; attack
+	jsr	hitscan_attack
+
+	; next
+;	dec	
+;	bne	@loop
+
+	; done
+	jmp	thing_actdone
+
+;;;
+; TODO
+;;;
+
 act_eff_blood:
 act_tick_add:
 act_die_simple:

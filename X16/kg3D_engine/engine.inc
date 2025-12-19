@@ -50,7 +50,7 @@ TCMD_GO_UP = $40	; forced by code
 TCMD_MOVING = $80	; forced by code
 
 ;;;
-; function arguments
+; function stuff
 ;;;
 
 ARG_THING_X_S = $02
@@ -66,6 +66,9 @@ ARG_THING_SECTOR = $0B
 ARG_THING_TYPE = $0C
 
 RET_THING_IDX = $0D
+
+ARG_HITSCAN_ANGLE = $0E
+ARG_HITSCAN_HALF_PITCH = $0F
 
 ;;;
 ; function arguments for 'text'
