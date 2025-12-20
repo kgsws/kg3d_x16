@@ -31,6 +31,7 @@ typedef struct
 	uint8_t thing;
 	uint8_t water_height;
 	uint8_t blockedby;
+	uint8_t noradius;
 	uint8_t radius, height;
 	uint8_t sector, slot;
 	uint8_t islink;
@@ -158,6 +159,7 @@ static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz)
 	poscheck.height = th->height;
 
 	poscheck.blockedby = th->blockedby;
+	poscheck.noradius = th->eflags & THING_EFLAG_NORADIUS;
 
 	poscheck.th_sh = nz;
 	if(	mz >= 0 &&
@@ -220,6 +222,10 @@ static uint32_t check_line_block(sector_t *sec, wall_t *wall, int32_t th_z, uint
 	// thing limit
 	if(sectorth[wall->backsector][31] >= 31)
 		return 1;
+
+	// do not care
+	if(poscheck.noradius)
+		return 0;
 
 	// mid block
 	if(	touch &&
@@ -541,7 +547,8 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 
 		sec = map_sectors + sdx;
 
-		check_planes(sdx, nz);
+		if(!poscheck.noradius)
+			check_planes(sdx, nz);
 
 		if(!poscheck.islink)
 		{
@@ -630,8 +637,18 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 					goto do_next;
 				}
 
+				// render hack
+				if(poscheck.noradius)
+				{
+					if(inside)
+						goto do_next;
+					if(wall->backsector)
+						goto do_next;
+				}
+
 				// solid wall
 				poscheck.htype = sec->wall.bank | 0x10;
+				poscheck.hidx = wall - map_walls[sec->wall.bank];
 				poscheck.hitang = wall->angle >> 4;
 
 				return 0;
@@ -658,6 +675,9 @@ do_next:
 						(wall->blocking & poscheck.blockedby & 0x7F)
 					){
 pt_block:
+						if(poscheck.noradius)
+							goto radpass;
+
 						p2a_coord.x -= th->x / 256;
 						p2a_coord.y -= th->y / 256;
 						poscheck.hitang = point_to_angle() >> 4;
@@ -683,6 +703,7 @@ pt_block:
 				}
 			}
 
+radpass:
 			if(inside && !poscheck.sector)
 			{
 				poscheck.sector = sdx;
@@ -737,6 +758,9 @@ pt_block:
 		poscheck.htype = 0;
 		return 0;
 	}
+
+	if(poscheck.noradius)
+		check_planes(poscheck.sector, nz);
 
 	return poscheck.sector;
 }
@@ -938,8 +962,8 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 			th->next_state = thing_anim[th->ticker.type][ANIM_DEATH].state;
 			th->ticks = 1;
 
-			th->blocking = info->death_bling;
-			th->blockedby = info->death_blby;
+			th->blocking = info->alt_bling;
+			th->blockedby = info->alt_blby;
 
 			th->iflags |= THING_IFLAG_CORPSE;
 		} else

@@ -1367,7 +1367,7 @@ hitscan_attack:
 	sta	HITSCAN_RADIUS
 
 	; blocked by
-	lda	THTYPE_STRUCT_BLOCKEDBY,x
+	lda	THTYPE_STRUCT_ALT_BLBY,x
 	sta	HITSCAN_BLOCKBY
 
 	; damage

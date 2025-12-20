@@ -50,7 +50,7 @@ BANK_TEXTURES = 13
 ; second half of each bank is used for other stuff
 
 ; map walls
-BANK_MAPWALLS = 16	; [16 banks] must be divisible by 16
+BANK_MAPWALLS = 16	; [16 banks] must be divisible by 16; this is used as a bit in 'poscheck.htype'
 
 ; player starts
 BANK_PLAYER_START = BANK_MAPWALLS + 0	; loaded from map file

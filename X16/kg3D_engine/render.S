@@ -4555,6 +4555,28 @@ prepare_sprite:
 	lda	PROJECTION_X1D
 	sta	SPRITE_X1_L
 :
+	; tex_now = 0
+	stz	SPRITE_TEX_NOW_L
+	stz	SPRITE_TEX_NOW_H
+
+	; if(x1 == x0 + 1)
+	sec
+	lda	SPRITE_X1_L
+	sbc	SPRITE_X0_L
+	tax
+	lda	SPRITE_X1_H
+	sbc	SPRITE_X0_H
+	bne	:+
+	txa
+	cmp	#1
+	bne	:+
+
+	; tex_now = (spr_width << 6) & 0xFF00
+	lda	SPRITE_WIDTH
+	lsr
+	lsr
+	sta	SPRITE_TEX_NOW_H
+:
 	; xdiff = x0 - projection.x0d
 	sec
 	lda	SPRITE_X0_L
@@ -4563,10 +4585,6 @@ prepare_sprite:
 	lda	SPRITE_X0_H
 	sbc	#0
 	sta	SPRITE_XDIFF_H
-
-	; tex_now = 0
-	stz	SPRITE_TEX_NOW_L
-	stz	SPRITE_TEX_NOW_H
 
 	; if(xdiff < 0)
 	bpl	:+

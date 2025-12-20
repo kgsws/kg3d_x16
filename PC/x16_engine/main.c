@@ -2250,6 +2250,10 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	tex_step = (spr_width * (int32_t)inv_div[xdiff]) >> 8;
 	tex_now = 0;
 
+	// special centering
+	if(x1 == x0 + 1)
+		tex_now = (spr_width << 6) & 0xFF00;
+
 	// X limit
 	if(x1 > projection.x1d)
 		x1 = projection.x1d;

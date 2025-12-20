@@ -411,7 +411,7 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, 
 
 	hitscan.radius = info->alt_radius + 1;
 	hitscan.height = info->height;
-	hitscan.blockedby = info->blockedby;
+	hitscan.blockedby = info->alt_blby;
 	hitscan.damage = info->health;
 
 	hitscan.z = th->z >> 8;

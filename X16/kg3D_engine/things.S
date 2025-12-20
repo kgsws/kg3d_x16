@@ -667,6 +667,10 @@ thing_check_heights:
 	and	#$80
 	sta	THMOVE_MIDHIT
 
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
 	; floor and ceiling
 	phx
 	jsr	check_planes
@@ -752,6 +756,14 @@ thing_check_spawn:
 	; no-midhit
 	stz	THMOVE_MIDHIT
 
+	; if(!poscheck.noradius)
+	ldy	#$20	; JSR
+	lda	THMOVE_NORADIUS
+	beq	:+
+	ldy	#$AD	; LDA <abs>
+:
+	sty	@opcode_planes+0
+
 	; while(poscheck.portal_rd < poscheck.portal_wr)
 @loop_sec:
 	; inside = any non-zero number
@@ -761,8 +773,13 @@ thing_check_spawn:
 	; poscheck.pthit = 0
 	stz	THMOVE_PTHIT
 
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
 	; floor and ceiling
-	jsr	check_planes
+@opcode_planes:
+	jsr	check_planes	; modified opcode
 
 	; link check
 	lda	THMOVE_ISLINK
@@ -1047,7 +1064,20 @@ thing_check_spawn:
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
+	; if(poscheck.noradius)
+	lda	THMOVE_NORADIUS
+	beq	:+
+
+	; if(inside)
+	lda	THMOVE_INSIDE
+	bne	@next_wall
+
+	; if(wall->backsector)
+	lda	WALL_STRUCT_BACKSECTOR,y
+	bne	@next_wall
+:
 	; save
+	lda	WALL_BANK
 	sta	THMOVE_HTYPE
 	sty	THMOVE_HIDX
 
@@ -1124,6 +1154,10 @@ thing_check_spawn:
 	bne	@point_backsector
 
 @point_block:
+	; if(poscheck.noradius)
+	lda	THMOVE_NORADIUS
+	bne	@skip_point
+
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
@@ -1308,6 +1342,18 @@ thing_check_spawn:
 	lda	#0
 	sta	THMOVE_SECTOR
 	rts
+:
+	; if(poscheck.noradius)
+	lda	THMOVE_NORADIUS
+	beq	:+
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; check_planes
+	ldx	THMOVE_SECTOR
+	jsr	check_planes
 :
 	;; STOP - PASSED
 	; unset zero flag
@@ -1589,6 +1635,11 @@ prepare_pos_check:
 	lda	THING_STRUCT_BLOCKEDBY,x
 	sta	THMOVE_BLOCKEDBY
 
+	; poscheck.noradius = th->eflags & THING_EFLAG_NORADIUS
+	lda	THING_STRUCT_EFLAGS,x
+	and	#THING_EFLAG_NORADIUS
+	sta	THMOVE_NORADIUS
+
 	; origin
 	lda	THING_STRUCT_TH_ORIGIN,x
 	sta	THMOVE_ORIGIN
@@ -1774,10 +1825,6 @@ get_sector_ceilingz:
 ; X - the sector
 
 check_planes:
-	; sector bank
-	lda	#BANK_SECTORS
-	sta	REG_RAM_BANK
-
 	; check ceilingz
 	jsr	get_sector_ceilingz
 	sec
@@ -2059,6 +2106,13 @@ check_line_block:
 
 	; set negative flag
 	lda	#$FF
+	rts
+:
+	; if(poscheck.noradius)
+	lda	THMOVE_NORADIUS
+	beq	:+
+
+	; no negative flag
 	rts
 :
 	; touch
@@ -2503,7 +2557,7 @@ thing_tick:
 
 	; if(th->iflags & THING_IFLAG_HEIGHTCHECK)
 	lda	THING_STRUCT_IFLAGS,y
-;	bpl	@no_heights
+	bpl	@no_heights
 
 	; th->iflags &= ~THING_IFLAG_HEIGHTCHECK
 	and	#<~THING_IFLAG_HEIGHTCHECK

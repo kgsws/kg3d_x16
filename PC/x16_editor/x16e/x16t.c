@@ -196,9 +196,9 @@ static const export_type_t default_player_info =
 	.radius = 31,
 	.height = 144, // 0.5x for crouching / swimming
 	.blocking = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN) | BLOCK_FLAG(BLOCKING_CORPSE),
-	.death_bling = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN) | BLOCK_FLAG(BLOCKING_CORPSE),
+	.alt_bling = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN) | BLOCK_FLAG(BLOCKING_CORPSE),
 	.blockedby = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_SPECIAL),
-	.death_blby = BLOCK_FLAG(BLOCKING_CORPSE),
+	.alt_blby = BLOCK_FLAG(BLOCKING_CORPSE),
 	.imass = 64,
 	.gravity = 128,
 	.speed = 13, // 0.5x for crouching / swimming
@@ -229,9 +229,9 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("radius", radius), ATTR_TYPE_U8},
 	{THING_ATTR("alt radius", alt_radius), ATTR_TYPE_ARADIUS},
 	{THING_ATTR("blocking", blocking), ATTR_TYPE_BLOCK_FLAGS},
-	{THING_ATTR("blck (dead)", death_bling), ATTR_TYPE_BLOCK_FLAGS},
+	{THING_ATTR("blck (alt)", alt_bling), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("blocked by", blockedby), ATTR_TYPE_BLOCK_FLAGS},
-	{THING_ATTR("blby (dead)", death_blby), ATTR_TYPE_BLOCK_FLAGS},
+	{THING_ATTR("blby (alt)", alt_blby), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("invmass", imass), ATTR_TYPE_U8},
 	{THING_ATTR("gravity", gravity), ATTR_TYPE_U8},
 	{THING_ATTR("speed", speed), ATTR_TYPE_U8},
@@ -440,9 +440,9 @@ const state_action_def_t state_action_def[] =
 static const uint8_t *block_req_text[] =
 {
 	"Bits which this thing will block.",
-	"Bits which this thing will block after death.",
+	"Bits which this thing will block. (alt)",
 	"Bits by which this thing is blocked.",
-	"Bits by which this thing is blocked after death.",
+	"Bits by which this thing is blocked. (alt)",
 };
 
 // state argument type parsers

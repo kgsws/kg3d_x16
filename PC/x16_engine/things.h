@@ -60,9 +60,9 @@ typedef struct
 	uint8_t radius;
 	uint8_t height;
 	uint8_t blocking;
-	uint8_t death_bling;
+	uint8_t alt_bling;
 	uint8_t blockedby;
-	uint8_t death_blby;
+	uint8_t alt_blby;
 	uint8_t imass;
 	uint8_t gravity;
 	uint8_t speed;
