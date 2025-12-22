@@ -194,12 +194,20 @@ ex_precache:
 	sta	REG_RAM_BANK
 
 	; get thing sprite count
-	lda	THSTATE_STRUCT_ARG0
+	lda	THSTATE_STRUCT_THG_SPRLNK
 	sta	TAB_THG_SPRLNK
 
 	; get logo sprite
-	lda	THSTATE_STRUCT_ARG1
+	lda	THSTATE_STRUCT_MENU_LOGO
 	sta	TAB_MENU_LOGO
+
+	; get player types
+	lda	THSTATE_STRUCT_PLAYER_C
+	sta	TAB_PLAYER_C
+	lda	THSTATE_STRUCT_PLAYER_S
+	sta	TAB_PLAYER_S
+	lda	THSTATE_STRUCT_PLAYER_F
+	sta	TAB_PLAYER_F
 
 	; reset memory
 	lda	#$A0

@@ -51,9 +51,6 @@ uint32_t sprite_hash[128];
 uint8_t sprite_remap[128];
 thing_state_t thing_state[MAX_X16_STATES];
 
-uint32_t num_sprlnk_thg;
-uint32_t logo_spr_idx;
-
 // thing ZERO is not valid
 uint8_t thingsec[128][16];
 uint8_t thingces[128][16];
@@ -1065,10 +1062,6 @@ uint32_t thing_init(const char *file)
 			for(uint32_t y = 0; y < 256; y++)
 				thing_state[i * 256 + y].raw[x] = state_data[y + x * 256 + i * 2048];
 
-	// extra info
-	num_sprlnk_thg = thing_state->arg[0];
-	logo_spr_idx = thing_state->arg[1];
-
 	return 0;
 }
 
@@ -1370,10 +1363,10 @@ void thing_tick_plr()
 	uint8_t ntype = THING_TYPE_PLAYER_N;
 
 	if(!th->gravity)
-		ntype = THING_TYPE_PLAYER_F;
+		ntype = thing_state->plr_fly;
 
 	if(sec->flags & SECTOR_FLAG_WATER)
-		ntype = THING_TYPE_PLAYER_S;
+		ntype = thing_state->plr_swim;
 
 	if(th->counter)
 	{
@@ -1426,7 +1419,7 @@ void thing_tick_plr()
 			if(sec->flags & SECTOR_FLAG_WATER)
 				th->mz -= jump << 8;
 			else
-				ntype = THING_TYPE_PLAYER_C;
+				ntype = thing_state->plr_crouch;
 		}
 
 		if(ticcmd.bits_l & TCMD_MOVING)

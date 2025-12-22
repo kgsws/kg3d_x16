@@ -129,6 +129,18 @@ typedef union
 		uint8_t ticks;
 		uint8_t arg[3];
 	};
+	// state 0 contains extra game config
+	struct
+	{
+		uint8_t num_sprlnk; // number of thing sprite names
+		uint8_t menu_logo; // sprite for main menu logo
+		uint8_t _frm_nxt;
+		uint8_t _sprite;
+		uint8_t _ticks;
+		uint8_t plr_crouch; // player type change
+		uint8_t plr_swim; // player type change
+		uint8_t plr_fly; // player type change
+	};
 } thing_state_t;
 
 typedef struct
@@ -153,8 +165,6 @@ extern uint32_t thing_hash[MAX_X16_THING_TYPES];
 extern uint32_t sprite_hash[128];
 extern uint8_t sprite_remap[128];
 extern thing_state_t thing_state[MAX_X16_STATES];
-extern uint32_t num_sprlnk_thg;
-extern uint32_t logo_spr_idx;
 
 extern uint8_t thingsec[128][16]; // list of sectors which specific thing is in, slot 0 is main sector
 extern uint8_t thingces[128][16]; // slot (index) in sector this specific thing is at for sector given by 'thingsec'

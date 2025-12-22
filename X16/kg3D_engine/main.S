@@ -21,6 +21,7 @@
 .export load_mapfs
 .export load_render
 .export rng_get
+.export rng_val
 .export get_hex
 
 .segment "CODE"
@@ -265,12 +266,48 @@ rng_get:
 
 	inc	G_RNG_H
 	lda	G_RNG_H
-	cmp	#>TAB_RNG_END
+	cmp	#>TAB_RNG_MASK
 	bcc	:+
 
 	lda	#>TAB_RANDOM
 	sta	G_RNG_H
 :
+	pla
+	sta	REG_RAM_BANK
+	rts
+
+;;;
+; unbiased RNG
+;;;
+; result is in MATH_TEMP
+; X - max value
+
+rng_val:
+	lda	REG_RAM_BANK
+	pha
+
+	lda	#BANK_RANDOM
+	sta	REG_RAM_BANK
+
+@loop:
+	lda	(G_RNG_L)
+	and	TAB_RNG_MASK,x
+	sta	MATH_TEMP
+
+	inc	G_RNG_L
+	bne	:+
+
+	inc	G_RNG_H
+	lda	G_RNG_H
+	cmp	#>TAB_RNG_MASK
+	bcc	:+
+
+	lda	#>TAB_RANDOM
+	sta	G_RNG_H
+:
+	cpx	MATH_TEMP
+	bcc	@loop
+
 	pla
 	sta	REG_RAM_BANK
 	rts

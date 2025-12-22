@@ -118,6 +118,18 @@ typedef union
 		uint8_t ticks;
 		uint8_t arg[3];
 	};
+	// state 0 contains extra game config
+	struct
+	{
+		uint8_t num_sprlnk; // number of thing sprite names
+		uint8_t menu_logo; // sprite for main menu logo
+		uint8_t _frm_nxt;
+		uint8_t _sprite;
+		uint8_t _ticks;
+		uint8_t plr_crouch; // player type change
+		uint8_t plr_swim; // player type change
+		uint8_t plr_fly; // player type change
+	};
 } export_state_t;
 
 typedef struct
@@ -334,14 +346,7 @@ const state_action_def_t state_action_def[] =
 			.type = ARGT_XY_SPREAD,
 			.def = 0,
 			.lim = {0, 255}
-		},
-		.arg[2] =
-		{
-			.name = "angle",
-			.type = ARGT_S8,
-			.def = 0,
-			.lim = {-128, 127}
-		},
+		}
 	},
 	{
 		.name = "attack: hitscan",
@@ -365,7 +370,7 @@ const state_action_def_t state_action_def[] =
 			.name = "count",
 			.type = ARGT_U8,
 			.def = 1,
-			.lim = {1, 12}
+			.lim = {1, 8}
 		},
 	},
 ///
@@ -458,7 +463,7 @@ const arg_parse_t arg_parse[] =
 	[ARGT_S8 - 1] = {"Enter a value (%d to %d).", te_arg_us8},
 	[ARGT_CHANCE - 1] = {"Enter a value (%d to %d).", te_arg_us8},
 	[ARGT_SPAWN_SLOT - 1] = {"Enter spawn slot (A to D).", te_arg_spawn},
-	[ARGT_XY_SPREAD - 1] = {"Enter two values (0, 1, 2, 4, 8, 16, 32, 64).", te_arg_spread},
+	[ARGT_XY_SPREAD - 1] = {"Enter two values (0 to 15).", te_arg_spread},
 	[ARGT_BLOCK_FLAGS - 1] = {NULL, af_block_flags},
 };
 
@@ -1029,7 +1034,7 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 		break;
 		case ARGT_XY_SPREAD:
 			temp = val->u8;
-			sprintf(text, "X(%u) Y(%u)", (1 << (temp & 15)) >> 1, (1 << (temp >> 4)) >> 1);
+			sprintf(text, "X(%u) Y(%u)", temp & 15, temp >> 4);
 		break;
 		case ARGT_BLOCK_FLAGS:
 			edit_put_blockbits(text, val->u8)[0] = 0;
@@ -2902,6 +2907,18 @@ void x16t_export()
 	uint8_t fly_height = thing_info[THING_TYPE_PLAYER_F].info.height;
 	uint8_t st_next[MAX_X16_STATES];
 
+	// reset
+	memset(state_data, 0, sizeof(state_data));
+
+	// store extra info into dummy state zero
+	state_data->num_sprlnk = x16_num_sprlnk_thg;
+	state_data->menu_logo = 0xFF;
+	state_data->plr_crouch = THING_TYPE_PLAYER_C;
+	state_data->plr_swim = THING_TYPE_PLAYER_S;
+	state_data->plr_fly = THING_TYPE_PLAYER_F;
+
+	// checks
+
 	if(thing_info[THING_TYPE_PLAYER_N].anim[ANIM_SPAWN].count == 0)
 	{
 		edit_status_printf("Player has no spawn animation! Unable to export!");
@@ -2912,26 +2929,26 @@ void x16t_export()
 	{
 		edit_status_printf("Player crouching is disabled!");
 		thing_info[THING_TYPE_PLAYER_C].info.height = 0;
+		state_data->plr_crouch = THING_TYPE_PLAYER_N;
 	}
 
 	if(thing_info[THING_TYPE_PLAYER_S].anim[ANIM_SPAWN].count == 0)
 	{
 		edit_status_printf("Player swimming is not used!");
 		thing_info[THING_TYPE_PLAYER_S].info.height = 0;
+		state_data->plr_swim = THING_TYPE_PLAYER_N;
 	}
 
 	if(thing_info[THING_TYPE_PLAYER_F].anim[ANIM_SPAWN].count == 0)
 	{
 		edit_status_printf("Player flying is not used!");
 		thing_info[THING_TYPE_PLAYER_F].info.height = 0;
+		state_data->plr_fly = THING_TYPE_PLAYER_N;
 	}
 
 	edit_busy_window("Exporting things ...");
 
 	state_idx = 1; // state 0 is 'STOP'
-
-	// store extra info into dummy state zero
-	state_data->arg[1] = 0xFF;
 
 	memset(thing_data, 0, sizeof(thing_data));
 
@@ -2945,7 +2962,7 @@ void x16t_export()
 			hash == 0xF8845BD5
 		)
 			// logo sprite
-			state_data->arg[1] = i;
+			state_data->menu_logo = i;
 
 		*tdst = hash;
 		tdst += 256;
@@ -3112,9 +3129,6 @@ void x16t_export()
 			tan2[j * 256] = ta->count;
 		}
 	}
-
-	// store extra info into dummy state zero
-	state_data->arg[0] = x16_num_sprlnk_thg;
 
 	// convert states
 	for(uint32_t i = 0; i < MAX_X16_STATES / 256; i++)

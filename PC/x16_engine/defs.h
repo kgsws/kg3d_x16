@@ -145,4 +145,5 @@ uint16_t point_to_angle();
 uint16_t point_to_dist();
 
 uint8_t rng_get();
+uint8_t rng_val(uint8_t);
 

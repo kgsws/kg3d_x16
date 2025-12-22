@@ -6,6 +6,7 @@
 .import load_mapfs
 .import load_render
 .import rng_get
+.import rng_val
 .import get_hex
 
 FILE_LOAD_HANDLE = 1

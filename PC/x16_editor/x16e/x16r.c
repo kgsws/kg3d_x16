@@ -82,13 +82,14 @@ typedef union
 		uint8_t atan_h[4096];	// @ 0xB000 (bank 62)
 		uint8_t a2x_l[2048];	// @ 0xA000 (bank 63)
 		uint8_t a2x_h[2048];	// @ 0xA800 (bank 63)
-		uint8_t random[2048];	// @ 0xB000 (bank 63)
-		uint8_t planex_l[256];	// @ 0xB800 (bank 63) [plane texture stuff]
-		uint8_t planex_h[256];	// @ 0xB900 (bank 63) [plane texture stuff]
-		uint8_t pitch2yc[256];	// @ 0xBA00 (bank 63)
-		uint8_t vidoffs_x[128];	// @ 0xBB00 (bank 63)
-		uint8_t vidoffs_y[128];	// @ 0xBB80 (bank 63)
-		uint8_t printint[256];	// @ 0xBC00 (bank 63)
+		uint8_t random[2048];	// @ 0xB000 (bank 63) [rng stuff]
+		uint8_t rng_mask[256];	// @ 0xB800 (bank 63) [rng stuff]
+		uint8_t planex_l[256];	// @ 0xB900 (bank 63) [plane texture stuff]
+		uint8_t planex_h[256];	// @ 0xBA00 (bank 63) [plane texture stuff]
+		uint8_t pitch2yc[256];	// @ 0xBB00 (bank 63)
+		uint8_t vidoffs_x[128];	// @ 0xBC00 (bank 63)
+		uint8_t vidoffs_y[128];	// @ 0xBC80 (bank 63)
+		uint8_t printint[256];	// @ 0xBD00 (bank 63)
 		// 0xBEC0 contains portals
 	};
 } tables_A000_t;
@@ -1988,6 +1989,14 @@ uint32_t x16r_init()
 	// random
 	for(uint32_t i = 0; i < 2048; i++)
 		tables_A000.random[i] = rand(); // TODO: check quality
+
+	for(uint32_t i = 0; i < 256; i++)
+	{
+		uint32_t ii = (i - 1) & 255;
+		uint32_t j;
+		for(j = 1; j < i; j <<= 1);
+		tables_A000.rng_mask[ii] = j - 1;
+	}
 
 	return 0;
 }

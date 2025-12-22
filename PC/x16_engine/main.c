@@ -114,12 +114,15 @@ typedef union
 		uint8_t atan_h[4096];	// @ 0xB000 (bank 62)
 		uint8_t a2x_l[2048];	// @ 0xA000 (bank 63)
 		uint8_t a2x_h[2048];	// @ 0xA800 (bank 63)
-		uint8_t random[2048];	// @ 0xB000 (bank 63)
-		uint8_t planex_l[256];	// @ 0xB800 (bank 63) [plane texture stuff]
-		uint8_t planex_h[256];	// @ 0xB900 (bank 63) [plane texture stuff]
-		uint8_t pitch2yc[256];	// @ 0xBA00 (bank 63)
-		// 0xBD00 contains portals (512 bytes)
-		// 0xBF00 contains keyboard input table (256 bytes)
+		uint8_t random[2048];	// @ 0xB000 (bank 63) [rng stuff]
+		uint8_t rng_mask[256];	// @ 0xB800 (bank 63) [rng stuff]
+		uint8_t planex_l[256];	// @ 0xB900 (bank 63) [plane texture stuff]
+		uint8_t planex_h[256];	// @ 0xBA00 (bank 63) [plane texture stuff]
+		uint8_t pitch2yc[256];	// @ 0xBB00 (bank 63)
+		uint8_t vidoffs_x[128];	// @ 0xBC00 (bank 63)
+		uint8_t vidoffs_y[128];	// @ 0xBC80 (bank 63)
+		uint8_t printint[256];	// @ 0xBD00 (bank 63)
+		// 0xBEC0 contains portals
 	};
 } tables_A000_t;
 
@@ -404,8 +407,9 @@ static const uint8_t move_angle[16] =
 };
 
 // random
-uint8_t tab_rng[2048];
 static uint32_t rng_idx;
+static uint8_t rng_tab[2048];
+static uint8_t rng_mask[256];
 
 // sin / cos
 int16_t tab_sin[256];
@@ -2376,11 +2380,11 @@ static uint8_t handle_plane_effect(texture_info_t *ti, uint8_t ang)
 	{
 		case 1: // random
 			if(!(effect[2] & 0x80))
-				projection.ox += tab_rng[etime + 0];
+				projection.ox += rng_tab[etime + 0];
 			if(!(effect[2] & 0x40))
-				projection.oy += tab_rng[etime + 256];
+				projection.oy += rng_tab[etime + 256];
 			if(!(effect[2] & 0x01))
-				ang += tab_rng[etime + 512];
+				ang += rng_tab[etime + 512];
 		break;
 		case 2: // circle
 		case 3: // eight
@@ -3120,9 +3124,6 @@ static uint32_t load_tables()
 	for(uint32_t i = 0; i < 2048; i++)
 		angle2x[i] = (tables_A000.a2x_h[i] << 8) | tables_A000.a2x_l[i];
 
-	// random
-	memcpy(tab_rng, tables_A000.random, sizeof(tab_rng));
-
 	// plane X
 	for(uint32_t i = 0; i < 256; i++)
 		tab_planex[i] = (tables_A000.planex_h[i] << 8) | tables_A000.planex_l[i];
@@ -3130,6 +3131,10 @@ static uint32_t load_tables()
 	// pitch to Y center
 	for(uint32_t i = 0; i < 256; i++)
 		pitch2yc[i] = tables_A000.pitch2yc[i];
+
+	// random
+	memcpy(rng_tab, tables_A000.random, sizeof(rng_tab));
+	memcpy(rng_mask, tables_A000.rng_mask, sizeof(rng_mask));
 
 	/// finishing touch
 
@@ -3669,7 +3674,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 			if(!(sprite_remap[st->sprite] & 0x80))
 				continue;
 
-			if(st->sprite >= num_sprlnk_thg)
+			if(st->sprite >= thing_state->num_sprlnk)
 			{
 				sprite_remap[st->sprite] = num_wframes;
 				sprintf(text, "DATA/%08X.WPS", sprite_hash[st->sprite]);
@@ -3911,7 +3916,7 @@ static uint32_t precache()
 
 	memset(sprite_remap, 0xFF, sizeof(sprite_remap));
 
-	if(	!(logo_spr_idx & 0x80) &&
+	if(	!(thing_state->menu_logo & 0x80) &&
 		load_wspr("DATA/F8845BD5.WPS")
 	)
 		return 1;
@@ -3942,7 +3947,18 @@ uint8_t rng_get()
 	uint32_t ret = rng_idx;
 	rng_idx++;
 	rng_idx &= 2047;
-	return tab_rng[ret];
+	return rng_tab[ret];
+}
+
+uint8_t rng_val(uint8_t val)
+{
+	uint8_t mask = rng_mask[val];
+	while(1)
+	{
+		uint8_t rng = rng_get() & mask;
+		if(rng <= val)
+			return rng;
+	}
 }
 
 //

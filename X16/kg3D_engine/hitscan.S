@@ -1250,9 +1250,8 @@ hitscan_cb_wall:
 ;;;
 ; bullet attack
 ;;;
-; uses ARG_HITSCAN_ANGLE, ARG_HITSCAN_HALF_PITCH, ARG_THING_TYPE
+; uses ARG_HITSCAN_ANGLE, ARG_HITSCAN_HALF_PITCH, ARG_THING_TYPE, ARG_HITSCAN_ATK_Z
 ; Y is thing IDX
-; X is view height
 
 hitscan_attack:
 	phy
@@ -1264,7 +1263,7 @@ hitscan_attack:
 
 	; get Z
 	clc
-	txa
+	lda	ARG_HITSCAN_ATK_Z
 	adc	THING_STRUCT_Z_L,y
 	sta	ARG_THING_Z_L
 	lda	THING_STRUCT_Z_H,y

@@ -16,8 +16,8 @@
 ; NOTES: action callback
 ;;;
 ; X Y and BANK can be trashed
-; Y - the thing; 0 = player weapon; (also stored in THTICK_STATE_TDX)
-; THTICK_STATE_IDX : THTICK_STATE_BANK - current state (also current bank)
+; Y - the thing; 0 = player weapon; (also stored in THTICK_ACTION_TDX)
+; THTICK_ACTION_ST_IDX : THTICK_ACTION_ST_BNK - current state (also current bank)
 ; jump to 'thing_actdone' to continue
 ; jump to 'thing_actnext'; TODO: more info
 
@@ -52,6 +52,101 @@ action_xy:
 	sta	ARG_THING_Y_L
 	lda	THING_STRUCT_Y_H,y
 	sta	ARG_THING_Y_H
+
+	rts
+
+;;;
+; prepare angles
+;;;
+; Y - the thing
+; uses THTICK_ACTION_SPREAD_*
+; stores THTICK_ACTION_ANGLE and THTICK_ACTION_HALF_PITCH
+; destroys X
+
+prepare_spread:
+	; X (angle)
+	lda	THING_STRUCT_ANGLE,y
+	ldx	THTICK_ACTION_SPREAD_X
+	beq	@set_x
+
+	sec
+	sbc	THTICK_ACTION_SPREAD_X
+
+	asl	THTICK_ACTION_SPREAD_X
+
+@set_x:
+	sta	THTICK_ACTION_ANGLE
+
+	; Y (pitch)
+	lda	THING_STRUCT_PITCH,y
+	lsr
+	ldx	THTICK_ACTION_SPREAD_Y
+	beq	@set_y
+
+	sec
+	sbc	THTICK_ACTION_SPREAD_Y
+
+	asl	THTICK_ACTION_SPREAD_Y
+
+@set_y:
+	sta	THTICK_ACTION_HALF_PITCH
+
+	rts
+
+;;;
+; apply RNG spread
+;;;
+; uses THTICK_ACTION_SPREAD_* and THTICK_ACTION_ANGLE and THTICK_ACTION_HALF_PITCH
+; stores ARG_HITSCAN_ANGLE and ARG_HITSCAN_HALF_PITCH
+; destroys X
+
+apply_spread:
+	; X (angle)
+	lda	THTICK_ACTION_ANGLE
+	ldx	THTICK_ACTION_SPREAD_X
+	beq	@set_x
+
+	jsr	rng_val
+
+	clc
+	lda	MATH_TEMP
+	adc	THTICK_ACTION_ANGLE
+@set_x:
+	sta	ARG_HITSCAN_ANGLE
+
+	; Y (pitch)
+	lda	THTICK_ACTION_HALF_PITCH
+	ldx	THTICK_ACTION_SPREAD_Y
+	beq	@set_y
+
+	jsr	rng_val
+
+	clc
+	lda	MATH_TEMP
+	adc	THTICK_ACTION_HALF_PITCH
+@set_y:
+	sta	ARG_HITSCAN_HALF_PITCH
+
+	rts
+
+;;;
+; get spread from ARG1
+;;;
+; X - the state
+; destroys X
+
+get_spread_arg:
+	lda	THSTATE_STRUCT_ARG1,x
+	tax
+
+	; spread X
+	and	#$0F
+	sta	THTICK_ACTION_SPREAD_X
+
+	; spread Y
+	lda	TAB_SWAP,x
+	and	#$0F
+	sta	THTICK_ACTION_SPREAD_Y
 
 	rts
 
@@ -249,11 +344,14 @@ act_wpn_lower:
 ;;;
 
 act_atk_projectile:
-	; st->arg[0]
-	ldx	THTICK_STATE_IDX
+	; type
+	ldx	THTICK_ACTION_ST_IDX
 	lda	THSTATE_STRUCT_ARG0,x
 	ora	#>THTYPE_STRUCT_SPAWN_A
 	sta	@opcode_spawn+2
+
+	; spread
+	jsr	get_spread_arg
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
@@ -267,7 +365,7 @@ act_atk_projectile:
 	bne	:+
 	ldy	G_PLAYER_THING
 :
-	sty	THTICK_ACT_TDX
+	sty	THTICK_ACTION_ORIGIN
 
 	; th->ticker.type
 	lda	TICKER_STRUCT_TYPE,y
@@ -285,7 +383,7 @@ act_atk_projectile:
 
 	; speed
 	lda	THTYPE_STRUCT_SPEED,x
-	sta	THTICK_ACT_SPEED
+	sta	PROJECTILE_SPEED
 
 	; diff = thing_type[th->ticker.type].atk_height - thing_type[type].height / 2
 	lda	THTYPE_STRUCT_HEIGHT,x
@@ -320,24 +418,35 @@ act_atk_projectile:
 
 	; spawn
 	jsr	thing_spawn_org
-	beq	:+
+	beq	@no_spawn
 
 	; restore
-	ldy	THTICK_ACT_TDX
+	ldy	THTICK_ACTION_ORIGIN
+
+	; angles
+	jsr	prepare_spread
+
+	; spread
+	jsr	apply_spread
+
+	; restore
+	ldx	RET_THING_IDX
 
 	; angle
-	lda	THING_STRUCT_ANGLE,y
+	lda	ARG_HITSCAN_ANGLE
 	sta	THING_STRUCT_ANGLE,x
 
 	; pitch
-	lda	THING_STRUCT_PITCH,y
+	lda	ARG_HITSCAN_HALF_PITCH
+	asl
 	sta	THING_STRUCT_PITCH,x
 
 	; go
-	ldx	THTICK_ACT_SPEED
+	ldx	PROJECTILE_SPEED
 	ldy	RET_THING_IDX
 	jsr	thing_launch
-:
+
+@no_spawn:
 	; done
 	jmp	thing_actdone
 
@@ -346,39 +455,71 @@ act_atk_projectile:
 ;;;
 
 act_atk_hitscan:
-	; arguments
-	ldx	THTICK_STATE_IDX
-	lda	THSTATE_STRUCT_ARG1,x
-	sta	THTICK_STATE_SPREAD
+	ldx	THTICK_ACTION_ST_IDX
+
+	; type
+	lda	THSTATE_STRUCT_ARG0,x
+	ora	#>THTYPE_STRUCT_SPAWN_A
+	sta	@opcode_spawn+2
+
+	; count
 	lda	THSTATE_STRUCT_ARG2,x
-	sta	THTICK_STATE_COUNT
+	sta	THTICK_ACTION_COUNT
+
+	; spread
+	jsr	get_spread_arg
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
+
+	; th->ticker.type
+	lda	TICKER_STRUCT_TYPE,y
+	sta	@opcode_spawn+1
 
 	; check_weapon_th
 	tya
 	bne	:+
 	ldy	G_PLAYER_THING
 :
-	; TEMP
-	lda	THING_STRUCT_ANGLE,y
-	sta	ARG_HITSCAN_ANGLE
-	lda	THING_STRUCT_PITCH,y
-	lsr
-	sta	ARG_HITSCAN_HALF_PITCH
-	lda	#110
-	sta	ARG_THING_TYPE
+	sty	THTICK_ACTION_ORIGIN
+
+	; th->ticker.type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; type = thing_type[th->ticker.type].spawn[st->arg[0]]
+@opcode_spawn:
+	lda	THTYPE_STRUCT_SPAWN_A	; modified address
+	sta	THTICK_ACTION_TEMP
+
+	; attack Z
+	lda	THTYPE_STRUCT_ATK_HEIGHT,x
+	sta	ARG_HITSCAN_ATK_Z
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; angles
+	jsr	prepare_spread
 
 @loop:
+	; spread
+	jsr	apply_spread
 
 	; attack
+	lda	THTICK_ACTION_TEMP
+	sta	ARG_THING_TYPE
+	ldy	THTICK_ACTION_ORIGIN
 	jsr	hitscan_attack
 
 	; next
-;	dec	
-;	bne	@loop
+	dec	THTICK_ACTION_COUNT
+	bne	@loop
 
 	; done
 	jmp	thing_actdone

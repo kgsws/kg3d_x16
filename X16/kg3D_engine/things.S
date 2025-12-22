@@ -2548,6 +2548,27 @@ thing_tick:
 	and	#<~THING_IFLAG_BLOCKED
 	sta	THING_STRUCT_IFLAGS,y
 
+	; projectile repeat check
+	stz	THTICK_REPEAT
+	lda	THING_STRUCT_EFLAGS,y
+	bpl	@repeat
+
+	; get type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; repeat count
+	lda	THTYPE_STRUCT_JUMPZ,x
+	sta	THTICK_REPEAT
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+@repeat:
 	;; XY movement
 	lda	THING_STRUCT_MX_S,y
 	ora	THING_STRUCT_MX_L,y
@@ -2869,10 +2890,9 @@ thing_tick:
 
 	;; XY friction
 
-	; check flag
+	; check projectile flag
 	lda	THING_STRUCT_EFLAGS,x
-	and	#THING_EFLAG_PROJECTILE
-	bne	@no_xy_friction
+	bmi	@no_xy_friction
 
 	; MX
 	lda	THING_STRUCT_MX_L,x
@@ -3190,8 +3210,7 @@ thing_tick:
 
 	; if(th->eflags & THING_EFLAG_PROJECTILE)
 	lda	THING_STRUCT_EFLAGS,x
-	and	#THING_EFLAG_PROJECTILE
-	bne	@no_z_friction
+	bmi	@no_z_friction
 
 	; MZ
 	lda	THING_STRUCT_MZ_L,x
@@ -3209,13 +3228,21 @@ thing_tick:
 :
 @no_z_friction:
 
+	; repeat
+	lda	THTICK_REPEAT
+	beq	:+
+
+	dec	THTICK_REPEAT
+	jmp	@repeat
+:
+
 ;;;
 ; thing animation
 ;;;
 
 thing_anim:
 	; backup
-	sty	THTICK_STATE_TDX
+	sty	THTICK_ACTION_TDX
 
 	; if(!th->ticks)
 	lda	THING_STRUCT_TICKS,y
@@ -3236,7 +3263,7 @@ thing_anim:
 
 thing_actnext:
 	; restore
-	ldy	THTICK_STATE_TDX
+	ldy	THTICK_ACTION_TDX
 
 	; check for STOP
 	and	#$07
@@ -3252,7 +3279,7 @@ thing_actnext:
 	; thing states bank
 	ora	#BANK_THING_STATES
 	sta	REG_RAM_BANK
-	sta	THTICK_STATE_BANK
+	sta	THTICK_ACTION_ST_BNK
 
 	; action
 	lda	THSTATE_STRUCT_ACTION,x
@@ -3260,7 +3287,7 @@ thing_actnext:
 	beq	:+
 
 	; backup
-	stx	THTICK_STATE_IDX
+	stx	THTICK_ACTION_ST_IDX
 
 	; run action
 	tax
@@ -3268,12 +3295,12 @@ thing_actnext:
 
 thing_actdone:
 	; restore
-	ldx	THTICK_STATE_IDX
-	ldy	THTICK_STATE_TDX
+	ldx	THTICK_ACTION_ST_IDX
+	ldy	THTICK_ACTION_TDX
 	sty	RET_THING_IDX
 
 	; thing states bank
-	lda	THTICK_STATE_BANK
+	lda	THTICK_ACTION_ST_BNK
 	sta	REG_RAM_BANK
 :
 	; fullbright
@@ -3344,8 +3371,8 @@ thing_plyr:
 	lda	THING_STRUCT_GRAVITY,y
 	bne	:+
 
-	; ntype = THING_TYPE_PLAYER_F
-	lda	#THING_TYPE_PLAYER_F
+	; ntype = thing_state->plr_fly
+	lda	TAB_PLAYER_F
 	sta	PLTICK_NTYPE
 :
 	; thing sectors bank
@@ -3371,8 +3398,8 @@ thing_plyr:
 	; if(sec->flags & SECTOR_FLAG_WATER)
 	bpl	:+
 
-	; ntype = THING_TYPE_PLAYER_S
-	lda	#THING_TYPE_PLAYER_S
+	; ntype = thing_state->plr_swim
+	lda	TAB_PLAYER_S
 	sta	PLTICK_NTYPE
 :
 	; ticker structure bank
@@ -3504,8 +3531,8 @@ thing_plyr:
 
 	bra	@skip_down
 :
-	; ntype = THING_TYPE_PLAYER_C
-	lda	#THING_TYPE_PLAYER_C
+	; ntype = thing_state->plr_crouch
+	lda	TAB_PLAYER_C
 	sta	PLTICK_NTYPE
 
 @skip_down:

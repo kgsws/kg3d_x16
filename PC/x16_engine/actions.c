@@ -8,29 +8,27 @@
 #include "hitscan.h"
 #include "actions.h"
 
-static const uint8_t rng_mask[] = {0, 0, 1, 3, 7, 15, 31, 63};
-
 //
 // stuff
 
-static uint8_t randomize(uint32_t mdx)
+static uint8_t spread(uint8_t val, uint8_t rng)
 {
-	uint8_t rng = rng_get();
-	uint8_t val = (rng & rng_mask[mdx]) + 1;
-	if(rng & 0x80)
-		return -val;
+	val -= rng;
+	val += rng_val(rng * 2);
 	return val;
 }
 
 static void aim_rng(thing_t *th, uint8_t *res, uint32_t arg)
 {
+	uint8_t tmp;
+
 	res[0] = th->angle;
-	if(arg & 0x07)
-		res[0] += randomize(arg & 7);
+	if(arg & 15)
+		res[0] = spread(res[0], arg & 15);
 
 	res[1] = th->pitch >> 1;
-	if(arg & 0x70)
-		res[1] += randomize((arg & 0x70) >> 4);
+	if(arg >> 4)
+		res[1] = spread(res[1], arg >> 4);
 }
 
 void check_weapon_th(thing_t **ptr)
@@ -131,7 +129,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 
 				aim_rng(th, aim, st->arg[1]);
 
-				ph->angle = aim[0] + st->arg[2];
+				ph->angle = aim[0];
 				ph->pitch = aim[1] << 1;
 
 				thing_launch(pdx, thing_type[ph->ticker.type].speed);
