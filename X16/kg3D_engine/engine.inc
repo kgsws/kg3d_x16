@@ -68,6 +68,9 @@ ARG_HITSCAN_ANGLE = $0E
 ARG_HITSCAN_HALF_PITCH = $0F
 ARG_HITSCAN_ATK_Z = $10
 
+ARG_THING_DAMAGE_L = $11
+ARG_THING_DAMAGE_H = $12
+
 ;;;
 ; function arguments for 'text'
 ;;;

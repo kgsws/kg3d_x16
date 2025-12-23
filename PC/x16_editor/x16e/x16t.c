@@ -2070,21 +2070,7 @@ static void te_arg_spawn(uint8_t *text)
 
 static uint32_t check_spread(uint32_t *val)
 {
-	uint32_t vv = *val;
-
-	if(!vv)
-		return 0;
-
-	for(uint32_t i = 0; i < 7; i++)
-	{
-		if(vv == (1 << i))
-		{
-			*val = i + 1;
-			return 0;
-		}
-	}
-
-	return 1;
+	return *val > 15;
 }
 
 static void te_arg_spread(uint8_t *text)

@@ -785,9 +785,7 @@ cb_attack:
 	; do damage
 	lda	ARG_HITSCAN_ANGLE
 	ldx	HITSCAN_ORIGIN
-;	jsr	thing_damage
-	stx	DBG_BYTE0
-	sty	DBG_BYTE1
+	jsr	thing_damage
 
 	bra	@do_spawn
 
@@ -1370,10 +1368,10 @@ hitscan_attack:
 	sta	HITSCAN_BLOCKBY
 
 	; damage
-;	lda	THTYPE_STRUCT_HEALTH_L,x
-;	sta	ARG_THING_DAMAGE_L
-;	lda	THTYPE_STRUCT_HEALTH_H,x
-;	sta	ARG_THING_DAMAGE_H
+	lda	THTYPE_STRUCT_HEALTH_L,x
+	sta	ARG_THING_DAMAGE_L
+	lda	THTYPE_STRUCT_HEALTH_H,x
+	sta	ARG_THING_DAMAGE_H
 
 	; run
 	ply

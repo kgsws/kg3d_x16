@@ -7,6 +7,7 @@
 .import thing_check_pos
 .import thing_check_heights
 .import thing_apply_pos
+.import thing_damage
 .import thing_actdone
 .import thing_actnext
 

@@ -146,7 +146,7 @@ static int32_t mlimit(int32_t val)
 	return val;
 }
 
-static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz)
+static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz, uint32_t sflags)
 {
 	thing_t *th = thing_ptr(tdx);
 
@@ -164,7 +164,9 @@ static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz)
 	)
 		poscheck.th_sh += thing_type[th->ticker.type].step_height;
 
-	if(th->mz / 256 > -32)
+	if(	!(sflags & SECTOR_FLAG_WATER) &&
+		th->mz / 256 > -32
+	)
 		poscheck.water_height = thing_type[th->ticker.type].water_height;
 	else
 		poscheck.water_height = 0xFF;
@@ -447,7 +449,7 @@ static void add_sector(uint8_t sdx, uint8_t touch)
 //
 // position
 
-static void apply_heights(thing_t *th)
+void thing_apply_heights(thing_t *th)
 {
 	// save heights
 	th->floorz = poscheck.floorz;
@@ -480,15 +482,16 @@ void thing_apply_pos()
 	}
 
 	// plane info
-	apply_heights(th);
+	thing_apply_heights(th);
 }
 
-void thing_height_check(uint8_t tdx)
+void thing_check_heights(uint8_t tdx)
 {
 	thing_t *th = thing_ptr(tdx);
 	int32_t nz = th->z / 256;
+	uint8_t sdx = thingsec[tdx][0];
 
-	prepare_pos_check(tick_idx, nz, th->floorz, th->mz);
+	prepare_pos_check(tick_idx, nz, th->floorz, th->mz, map_sectors[sdx].flags);
 
 	// hack for things
 	poscheck.th_sh = nz + 256;
@@ -496,7 +499,7 @@ void thing_height_check(uint8_t tdx)
 	// go trough sectors
 	for(uint32_t i = 0; i < 16; i++)
 	{
-		uint8_t sdx = thingsec[tdx][i];
+		sdx = thingsec[tdx][i];
 
 		if(!sdx)
 			break;
@@ -507,6 +510,10 @@ void thing_height_check(uint8_t tdx)
 
 		// go trough things
 		check_things(tdx, sdx, th->x / 256, th->y / 256);
+
+		// special
+		if(poscheck.noradius)
+			break;
 	}
 }
 
@@ -516,12 +523,12 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	int32_t zz = th->z / 256;
 	sector_t *sec;
 
-	// prepare
-	prepare_pos_check(tdx, nz, th->floorz, th->mz);
-
 	// target sector
 	if(!sdx)
 		sdx = thingsec[tdx][0];
+
+	// prepare
+	prepare_pos_check(tdx, nz, th->floorz, th->mz, map_sectors[sdx].flags);
 
 	poscheck.htype = 0;
 
@@ -955,13 +962,8 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 		if(hp <= 0)
 		{
 			th->health = 0;
-
 			th->next_state = thing_anim[th->ticker.type][ANIM_DEATH].state;
 			th->ticks = 1;
-
-			th->blocking = info->alt_bling;
-			th->blockedby = info->alt_blby;
-
 			th->iflags |= THING_IFLAG_CORPSE;
 		} else
 			th->health = hp;
@@ -994,6 +996,41 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 		damage = (damage * info->imass) >> 5;
 		thing_launch_ang(tdx, angle, damage);
 	}
+}
+
+//
+// projectile
+
+static void projectile_death(uint8_t tdx)
+{
+	thing_t *th = thing_ptr(tdx);
+	uint8_t type = th->ticker.type;
+	int32_t nx, ny;
+
+	th->mx = 0;
+	th->my = 0;
+	th->mz = 0;
+
+	th->blocking = 0;
+	th->blockedby = 0;
+
+	th->radius = thing_type[type].alt_radius;
+	th->eflags &= ~THING_EFLAG_PROJECTILE;
+	th->eflags |= THING_EFLAG_NORADIUS;
+
+	th->ticks = 1;
+	th->next_state = thing_anim[type][ANIM_DEATH].state;
+
+	nx = th->x;
+	ny = th->y;
+	if(thing_check_pos(tdx, nx / 256, ny / 256, th->z / 256, 0))
+	{
+		th->x = nx;
+		th->y = ny;
+		thing_apply_pos();
+		printf("PASS\n");
+	} else
+		printf("FAIL\n");
 }
 
 //
@@ -1112,6 +1149,7 @@ repeat:
 void thing_tick()
 {
 	thing_t *th = thing_ptr(tick_idx);
+	uint32_t repeat = 0;
 	sector_t *sec;
 	int32_t zz;
 
@@ -1132,9 +1170,14 @@ void thing_tick()
 	}
 #endif
 
+	// projectile repeat
+	if(th->eflags & THING_EFLAG_PROJECTILE)
+		repeat = thing_type[th->ticker.type].jump_pwr;
+
+do_repeat:
 	//
 	// XY movement
-	th->iflags &= ~THING_IFLAG_BLOCKED;
+	th->iflags &= ~(THING_IFLAG_BLOCKED | THING_IFLAG_GOTHIT);
 	if(th->mx || th->my)
 	{
 		int32_t nx, ny;
@@ -1154,8 +1197,8 @@ apply_pos:
 
 			if(th->eflags & THING_EFLAG_PROJECTILE)
 			{
-				th->mx = 0;
-				th->my = 0;
+				projectile_death(tick_idx);
+				goto do_animation;
 			} else
 			if(!poscheck.htype)
 			{
@@ -1234,10 +1277,10 @@ apply_pos:
 		th->iflags &= ~THING_IFLAG_HEIGHTCHECK;
 
 		// new heights
-		thing_height_check(tick_idx);
+		thing_check_heights(tick_idx);
 
 		// plane info
-		apply_heights(th);
+		thing_apply_heights(th);
 	}
 
 	//
@@ -1248,6 +1291,13 @@ apply_pos:
 	// ceiling check
 	if(zz > th->ceilingz)
 	{
+		if(th->eflags & THING_EFLAG_PROJECTILE)
+		{
+			poscheck.htype = 0x01;
+			projectile_death(tick_idx);
+			goto do_animation;
+		}
+
 		th->z = th->ceilingz << 8;
 		th->mz = 0;
 	}
@@ -1255,6 +1305,13 @@ apply_pos:
 	// floor check
 	if(zz < th->floorz)
 	{
+		if(th->eflags & THING_EFLAG_PROJECTILE)
+		{
+			poscheck.htype = 0x41;
+			projectile_death(tick_idx);
+			goto do_animation;
+		}
+
 #ifndef DBG_NO_CAMERA_DIP
 		// camera stuff
 		if(tick_idx == camera_thing)
@@ -1295,6 +1352,7 @@ apply_pos:
 		tmp += th->z / 256;
 		if(tmp < sec->floor.height)
 		{
+			th->iflags |= THING_IFLAG_HEIGHTCHECK;
 			swap_thing_sector(tick_idx, sec->floor.link);
 			goto did_swap;
 		}
@@ -1305,7 +1363,10 @@ apply_pos:
 
 		tmp += th->z / 256;
 		if(tmp > sec->ceiling.height)
+		{
+			th->iflags |= THING_IFLAG_HEIGHTCHECK;
 			swap_thing_sector(tick_idx, sec->ceiling.link);
+		}
 	}
 
 did_swap:
@@ -1317,12 +1378,15 @@ did_swap:
 		// under water
 		if(th->eflags & THING_EFLAG_WATERSPEC)
 		{
-			if(thing_type[th->ticker.type].view_height >= thing_type[th->ticker.type].water_height)
+			if(thing_type[th->ticker.type].view_height < thing_type[th->ticker.type].water_height)
+			{
+				// sinks
+				if(zz > th->floorz)
+					th->mz -= th->gravity;
+			} else
 				// floats
 				th->mz += th->gravity;
-			else
-				// sinks
-				th->mz -= th->gravity;
+
 			goto skip_z_friction;
 		}
 	} else
@@ -1349,6 +1413,14 @@ did_swap:
 	}
 
 skip_z_friction:
+	// projectile repeat
+	if(repeat)
+	{
+		repeat--;
+		goto do_repeat;
+	}
+
+do_animation:
 
 	//
 	// animation

@@ -200,6 +200,9 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage);
 uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx);
 void thing_apply_pos();
 
+void thing_check_heights(uint8_t tdx);
+void thing_apply_heights(thing_t *th);
+
 //
 
 static inline thing_t *thing_ptr(uint32_t idx)

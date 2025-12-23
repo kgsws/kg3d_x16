@@ -442,7 +442,8 @@ act_atk_projectile:
 	sta	THING_STRUCT_PITCH,x
 
 	; go
-	ldx	PROJECTILE_SPEED
+	lda	PROJECTILE_SPEED
+	sta	MATH_TEMP_A
 	ldy	RET_THING_IDX
 	jsr	thing_launch
 
