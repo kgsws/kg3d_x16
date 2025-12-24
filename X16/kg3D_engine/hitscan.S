@@ -10,6 +10,10 @@
 
 .export hitscan_func
 .export hitscan_attack
+.export hitscan_angles
+.export hitscan_wall_pos
+.export hitscan_thing_dd
+.export hitscan_thing_dt
 
 ;;;
 ; NOTES: hitscan callback
@@ -117,188 +121,8 @@ cb_attack_thing:
 	rts
 
 cb_attack:
-	;; dist = (d0.x * wall->solid.dist.y - d0.y * wall->solid.dist.x) >> 8
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; the wall
-	ldy	WALL_NOW
-
-	; d0.x = vtx->x - hitscan.x
-	sec
-	lda	WALL_STRUCT_VTX_X_L,y
-	sbc	ARG_THING_X_L
-	sta	VERA_FX_CACHE_L
-	lda	WALL_STRUCT_VTX_X_H,y
-	sbc	ARG_THING_X_H
-	sta	VERA_FX_CACHE_M
-
-	; wall->solid.dist.y
-	lda	WALL_STRUCT_DIST_Y_L,y
-	sta	VERA_FX_CACHE_H
-	lda	WALL_STRUCT_DIST_Y_H,y
-	sta	VERA_FX_CACHE_U
-
-	; accumulate
-	lda	VERA_FX_ACCUM
-
-	; d0.y = hitscan.y - vtx->y
-	sec
-	lda	ARG_THING_Y_L
-	sbc	WALL_STRUCT_VTX_Y_L,y
-	sta	VERA_FX_CACHE_L
-	lda	ARG_THING_Y_H
-	sbc	WALL_STRUCT_VTX_Y_H,y
-	sta	VERA_FX_CACHE_M
-
-	; wall->solid.dist.x
-	lda	WALL_STRUCT_DIST_X_L,y
-	sta	VERA_FX_CACHE_H
-	lda	WALL_STRUCT_DIST_X_H,y
-	sta	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	lda	VERA_DATA0
-	sta	VERA_FX_CACHE_L
-	lda	VERA_DATA0
-	sta	VERA_FX_CACHE_M
-
-	; angle = wall->solid.angle >> 4
-	lda	WALL_STRUCT_ANGLE_L,y
-	tax
-	lda	TAB_SWAP,x
-	and	#$0F
-	sta	HITSCAN_HIT_ANGLE
-	lda	WALL_STRUCT_ANGLE_H,y
-	tax
-	lda	TAB_SWAP,x
-	and	#$F0
-	tsb	HITSCAN_HIT_ANGLE
-
-	; angle -= hitscan.angle
-	sec
-	lda	HITSCAN_HIT_ANGLE
-	sbc	ARG_HITSCAN_ANGLE
-	sta	HITSCAN_HIT_ANGLE
-	tax
-
-	; d0.y = hitscan.y
-	; d0.y -= (wall->solid.dist.x * dist) >> 8
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; dist is already set
-
-	; wall->solid.dist.x is already set
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	sec
-	lda	ARG_THING_Y_L
-	sbc	VERA_DATA0
-	sta	HITSCAN_D0_Y_L
-	lda	ARG_THING_Y_H
-	sbc	VERA_DATA0
-	sta	HITSCAN_D0_Y_H
-
-	; d0.x = hitscan.x
-	; d0.x += (wall->solid.dist.y * dist) >> 8
-
-	; dist is already set
-
-	; wall->solid.dist.y
-	lda	WALL_STRUCT_DIST_Y_L,y
-	sta	VERA_FX_CACHE_H
-	lda	WALL_STRUCT_DIST_Y_H,y
-	sta	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	clc
-	lda	ARG_THING_X_L
-	adc	VERA_DATA0
-	sta	HITSCAN_D0_X_L
-	lda	ARG_THING_X_H
-	adc	VERA_DATA0
-	sta	HITSCAN_D0_X_H
-
-	;; dist *= tab_tan_hs[angle]
-
-	; dist is already set
-
-	; tan
-	lda	TAB_HTAN_L,x
-	sta	VERA_FX_CACHE_H
-	lda	TAB_HTAN_H,x
-	sta	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	lda	VERA_DATA0
-	sta	VERA_FX_CACHE_L
-	lda	VERA_DATA0
-	sta	VERA_FX_CACHE_M
-
-	;; d0.x += (wall->solid.dist.x * dist) >> 8
-
-	; dist is already set
-
-	; wall->solid.dist.x
-	lda	WALL_STRUCT_DIST_X_L,y
-	sta	VERA_FX_CACHE_H
-	lda	WALL_STRUCT_DIST_X_H,y
-	sta	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	clc
-	lda	HITSCAN_D0_X_L
-	adc	VERA_DATA0
-	sta	HITSCAN_D0_X_L
-	lda	HITSCAN_D0_X_H
-	adc	VERA_DATA0
-	sta	HITSCAN_D0_X_H
-
-	;; d0.y += (wall->solid.dist.y * dist) >> 8
-
-	; dist is already set
-
-	; wall->solid.dist.y
-	lda	WALL_STRUCT_DIST_Y_L,y
-	sta	VERA_FX_CACHE_H
-	lda	WALL_STRUCT_DIST_Y_H,y
-	sta	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	clc
-	lda	HITSCAN_D0_Y_L
-	adc	VERA_DATA0
-	sta	HITSCAN_D0_Y_L
-	lda	HITSCAN_D0_Y_H
-	adc	VERA_DATA0
-	sta	HITSCAN_D0_Y_H
+	; get wall hit
+	jsr	hitscan_wall_pos
 
 	; if(hitscan.axis & 0x80)
 	lda	HITSCAN_AXIS
@@ -937,74 +761,8 @@ scan_things:
 	rts
 
 @calc_dist:
-	;; dd = (d1.x * hitscan.cos - d1.y * hitscan.sin) >> 8
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; d1.y = (th->y >> 8) - hitscan.y	; INVERTED
-	sec
-	lda	ARG_THING_Y_L
-	sbc	THING_STRUCT_Y_L,y
-	sta	VERA_FX_CACHE_L
-	lda	ARG_THING_Y_H
-	sbc	THING_STRUCT_Y_H,y
-	sta	VERA_FX_CACHE_M
-
-	; hitscan.sin
-	lda	HITSCAN_SIN_L
-	sta	VERA_FX_CACHE_H
-	lda	HITSCAN_SIN_H
-	sta	VERA_FX_CACHE_U
-
-	; accumulate
-	lda	VERA_FX_ACCUM
-
-	; d1.x = (th->x >> 8) - hitscan.x
-	sec
-	lda	THING_STRUCT_X_L,y
-	sbc	ARG_THING_X_L
-	sta	VERA_FX_CACHE_L
-	lda	THING_STRUCT_X_H,y
-	sbc	ARG_THING_X_H
-	sta	VERA_FX_CACHE_M
-
-	; hitscan.cos
-	lda	HITSCAN_COS_L
-	sta	VERA_FX_CACHE_H
-	lda	HITSCAN_COS_H
-	sta	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	lda	VERA_DATA0
-	sta	HITSCAN_TSID_L
-	lda	VERA_DATA0
-	sta	HITSCAN_TSID_H
-
-	; if(dd < 0)
-	bpl	:+
-
-	; dd = -dd
-	sec
-	lda	#0
-	sbc	HITSCAN_TSID_L
-	sta	HITSCAN_TSID_L
-	lda	#0
-	sbc	HITSCAN_TSID_H
-	sta	HITSCAN_TSID_H
-:
-	; dd -= th->radius
-	sec
-	lda	HITSCAN_TSID_L
-	sbc	THING_STRUCT_RADIUS,y
-	sta	HITSCAN_TSID_L
-	lda	HITSCAN_TSID_H
-	sbc	#0
-	sta	HITSCAN_TSID_H
+	; calc 'angle distance'
+	jsr	hitscan_thing_dd
 
 	; if(dd <= 0)
 	bmi	:+
@@ -1012,40 +770,8 @@ scan_things:
 	beq	:+
 	jmp	@skip_thing_add
 :
-	;; dt = (d1.y * hitscan.cos + d1.x * hitscan.sin) >> 8
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; d1.x is already set
-
-	; hitscan.sin
-	lda	HITSCAN_SIN_L
-	sta	VERA_FX_CACHE_H
-	lda	HITSCAN_SIN_H
-	sta	VERA_FX_CACHE_U
-
-	; accumulate
-	lda	VERA_FX_ACCUM
-
-	; d1.y = (th->y >> 8) - hitscan.y
-	sec
-	lda	THING_STRUCT_Y_L,y
-	sbc	ARG_THING_Y_L
-	sta	VERA_FX_CACHE_L
-	lda	THING_STRUCT_Y_H,y
-	sbc	ARG_THING_Y_H
-	sta	VERA_FX_CACHE_M
-
-	; hitscan.cos
-	lda	HITSCAN_COS_L
-	sta	VERA_FX_CACHE_H
-	lda	HITSCAN_COS_H
-	sta	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
+	; calc 'actual distance'
+	jsr	hitscan_thing_dt
 
 	; get result (>> 8)
 	; if(dt >= 0)
@@ -1274,6 +1000,64 @@ hitscan_attack:
 	lda	#>cb_attack
 	sta	hitscan_cb_wall+2
 
+	; axis
+	jsr	hitscan_angles
+
+	; if(halfpitch & 0x40)
+	txa
+	bit	ARG_HITSCAN_HALF_PITCH
+	bvs	@up
+
+	; halfpitch += 0x40
+	clc
+	adc	#$40
+
+	bra	@skip
+@up:
+	; halfpitch -= 0x40
+	sec
+	sbc	#$40
+
+@skip:
+	; hitscan.ptan = tab_tan_hs[halfpitch]
+	tax
+	math_read_htan	HITSCAN_PTAN_L, HITSCAN_PTAN_H
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; type
+	ldx	ARG_THING_TYPE
+
+	; height
+	lda	THTYPE_STRUCT_HEIGHT,x
+	sta	HITSCAN_HEIGHT
+
+	; radius + 1
+	lda	THTYPE_STRUCT_ALT_RADIUS,x
+	ina
+	sta	HITSCAN_RADIUS
+
+	; blocked by
+	lda	THTYPE_STRUCT_ALT_BLOCK,x
+	sta	HITSCAN_BLOCKBY
+
+	; damage
+	lda	THTYPE_STRUCT_HEALTH_L,x
+	sta	ARG_THING_DAMAGE_L
+	lda	THTYPE_STRUCT_HEALTH_H,x
+	sta	ARG_THING_DAMAGE_H
+
+	; run
+	ply
+	jmp	hitscan_func
+
+;;;
+; wall hit prepare
+;;;
+
+hitscan_angles:
 	; angle
 	ldx	ARG_HITSCAN_ANGLE
 
@@ -1327,53 +1111,312 @@ hitscan_attack:
 	; wtan
 	math_read_htan	HITSCAN_WTAN_L, HITSCAN_WTAN_H
 
-	; if(halfpitch & 0x40)
-	txa
-	bit	ARG_HITSCAN_HALF_PITCH
-	bvs	@up
+	rts
 
-	; halfpitch += 0x40
-	clc
-	adc	#$40
+;;;
+; wall hit XY
+;;;
 
-	bra	@skip
-@up:
-	; halfpitch -= 0x40
+hitscan_wall_pos:
+	;; dist = (d0->x * wall->solid.dist.y - d0->y * wall->solid.dist.x) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; the wall
+	ldy	WALL_NOW
+
+	; d0->x = vtx->x - hitscan.x
 	sec
-	sbc	#$40
+	lda	WALL_STRUCT_VTX_X_L,y
+	sbc	ARG_THING_X_L
+	sta	VERA_FX_CACHE_L
+	lda	WALL_STRUCT_VTX_X_H,y
+	sbc	ARG_THING_X_H
+	sta	VERA_FX_CACHE_M
 
-@skip:
-	; hitscan.ptan = tab_tan_hs[halfpitch]
+	; wall->solid.dist.y
+	lda	WALL_STRUCT_DIST_Y_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_Y_H,y
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; d0->y = hitscan.y - vtx->y
+	sec
+	lda	ARG_THING_Y_L
+	sbc	WALL_STRUCT_VTX_Y_L,y
+	sta	VERA_FX_CACHE_L
+	lda	ARG_THING_Y_H
+	sbc	WALL_STRUCT_VTX_Y_H,y
+	sta	VERA_FX_CACHE_M
+
+	; wall->solid.dist.x
+	lda	WALL_STRUCT_DIST_X_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_X_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_M
+
+	; angle = wall->solid.angle >> 4
+	lda	WALL_STRUCT_ANGLE_L,y
 	tax
-	math_read_htan	HITSCAN_PTAN_L, HITSCAN_PTAN_H
+	lda	TAB_SWAP,x
+	and	#$0F
+	sta	HITSCAN_HIT_ANGLE
+	lda	WALL_STRUCT_ANGLE_H,y
+	tax
+	lda	TAB_SWAP,x
+	and	#$F0
+	tsb	HITSCAN_HIT_ANGLE
 
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
+	; angle -= hitscan.angle
+	sec
+	lda	HITSCAN_HIT_ANGLE
+	sbc	ARG_HITSCAN_ANGLE
+	sta	HITSCAN_HIT_ANGLE
+	tax
 
-	; type
-	ldx	ARG_THING_TYPE
+	; d0->y = hitscan.y
+	; d0->y -= (wall->solid.dist.x * dist) >> 8
 
-	; height
-	lda	THTYPE_STRUCT_HEIGHT,x
-	sta	HITSCAN_HEIGHT
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
 
-	; radius + 1
-	lda	THTYPE_STRUCT_ALT_RADIUS,x
-	ina
-	sta	HITSCAN_RADIUS
+	; dist is already set
 
-	; blocked by
-	lda	THTYPE_STRUCT_ALT_BLBY,x
-	sta	HITSCAN_BLOCKBY
+	; wall->solid.dist.x is already set
 
-	; damage
-	lda	THTYPE_STRUCT_HEALTH_L,x
-	sta	ARG_THING_DAMAGE_L
-	lda	THTYPE_STRUCT_HEALTH_H,x
-	sta	ARG_THING_DAMAGE_H
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
 
-	; run
-	ply
-	jmp	hitscan_func
+	; get result (>> 8)
+	sec
+	lda	ARG_THING_Y_L
+	sbc	VERA_DATA0
+	sta	HITSCAN_D0_Y_L
+	lda	ARG_THING_Y_H
+	sbc	VERA_DATA0
+	sta	HITSCAN_D0_Y_H
 
+	; d0->x = hitscan.x
+	; d0->x += (wall->solid.dist.y * dist) >> 8
+
+	; dist is already set
+
+	; wall->solid.dist.y
+	lda	WALL_STRUCT_DIST_Y_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_Y_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	clc
+	lda	ARG_THING_X_L
+	adc	VERA_DATA0
+	sta	HITSCAN_D0_X_L
+	lda	ARG_THING_X_H
+	adc	VERA_DATA0
+	sta	HITSCAN_D0_X_H
+
+	;; dist *= tab_tan_hs[angle]
+
+	; dist is already set
+
+	; tan
+	lda	TAB_HTAN_L,x
+	sta	VERA_FX_CACHE_H
+	lda	TAB_HTAN_H,x
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_M
+
+	;; d0->x += (wall->solid.dist.x * dist) >> 8
+
+	; dist is already set
+
+	; wall->solid.dist.x
+	lda	WALL_STRUCT_DIST_X_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_X_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	clc
+	lda	HITSCAN_D0_X_L
+	adc	VERA_DATA0
+	sta	HITSCAN_D0_X_L
+	lda	HITSCAN_D0_X_H
+	adc	VERA_DATA0
+	sta	HITSCAN_D0_X_H
+
+	;; d0->y += (wall->solid.dist.y * dist) >> 8
+
+	; dist is already set
+
+	; wall->solid.dist.y
+	lda	WALL_STRUCT_DIST_Y_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_Y_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	clc
+	lda	HITSCAN_D0_Y_L
+	adc	VERA_DATA0
+	sta	HITSCAN_D0_Y_L
+	lda	HITSCAN_D0_Y_H
+	adc	VERA_DATA0
+	sta	HITSCAN_D0_Y_H
+
+	rts
+
+;;;
+; thing hit prepare and 'dd'
+;;;
+
+hitscan_thing_dd:
+	;; dd = (d1->x * hitscan.cos - d1->y * hitscan.sin) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; d1->y = (th->y >> 8) - hitscan.y	; INVERTED
+	sec
+	lda	ARG_THING_Y_L
+	sbc	THING_STRUCT_Y_L,y
+	sta	VERA_FX_CACHE_L
+	lda	ARG_THING_Y_H
+	sbc	THING_STRUCT_Y_H,y
+	sta	VERA_FX_CACHE_M
+
+	; hitscan.sin
+	lda	HITSCAN_SIN_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_SIN_H
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; d1->d1->x = (th->x >> 8) - hitscan.x
+	sec
+	lda	THING_STRUCT_X_L,y
+	sbc	ARG_THING_X_L
+	sta	VERA_FX_CACHE_L
+	lda	THING_STRUCT_X_H,y
+	sbc	ARG_THING_X_H
+	sta	VERA_FX_CACHE_M
+
+	; hitscan.cos
+	lda	HITSCAN_COS_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_COS_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	HITSCAN_TSID_L
+	lda	VERA_DATA0
+	sta	HITSCAN_TSID_H
+
+	; if(dd < 0)
+	bpl	:+
+
+	; dd = -dd
+	sec
+	lda	#0
+	sbc	HITSCAN_TSID_L
+	sta	HITSCAN_TSID_L
+	lda	#0
+	sbc	HITSCAN_TSID_H
+	sta	HITSCAN_TSID_H
+:
+	; dd -= th->radius
+	sec
+	lda	HITSCAN_TSID_L
+	sbc	THING_STRUCT_RADIUS,y
+	sta	HITSCAN_TSID_L
+	lda	HITSCAN_TSID_H
+	sbc	#0
+	sta	HITSCAN_TSID_H
+
+	rts
+
+;;;
+; thing hit 'dt'
+;;;
+
+hitscan_thing_dt:
+	;; dt = (d1->y * hitscan.cos + d1->x * hitscan.sin) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; d1->x is already set
+
+	; hitscan.sin
+	lda	HITSCAN_SIN_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_SIN_H
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; d1->y = (th->y >> 8) - hitscan.y
+	sec
+	lda	THING_STRUCT_Y_L,y
+	sbc	ARG_THING_Y_L
+	sta	VERA_FX_CACHE_L
+	lda	THING_STRUCT_Y_H,y
+	sbc	ARG_THING_Y_H
+	sta	VERA_FX_CACHE_M
+
+	; hitscan.cos
+	lda	HITSCAN_COS_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_COS_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	rts

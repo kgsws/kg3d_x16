@@ -3354,15 +3354,6 @@ thing_tick:
 	sbc	ARG_THING_Z_H
 	bpl	@under_ceiling
 
-	; check projectile flag
-	lda	THING_STRUCT_EFLAGS,y
-	bpl	:+
-
-	; projectile death
-	lda	#$01
-	sta	THMOVE_HTYPE
-	jmp	projectile_death
-:
 	; over ceiling
 	lda	#0
 	sta	THING_STRUCT_MZ_S,y
@@ -3373,6 +3364,15 @@ thing_tick:
 	lda	THING_STRUCT_CEILZ_H,y
 	sta	ARG_THING_Z_H
 
+	; check projectile flag
+	lda	THING_STRUCT_EFLAGS,y
+	bpl	:+
+
+	; projectile death
+	lda	#$01
+	sta	THMOVE_HTYPE
+	jmp	projectile_death
+:
 @under_ceiling:
 	; floor check
 	sec
@@ -3383,15 +3383,6 @@ thing_tick:
 	sbc	THING_STRUCT_FLOORZ_H,y
 	bpl	@not_in_floor
 
-	; check projectile flag
-	lda	THING_STRUCT_EFLAGS,y
-	bpl	:+
-
-	; projectile death
-	lda	#$41
-	sta	THMOVE_HTYPE
-	jmp	projectile_death
-:
 	; camera check
 	cpy	G_CAMERA_THING
 	bne	@no_floor_cam
@@ -3450,6 +3441,15 @@ thing_tick:
 	lda	THING_STRUCT_FLOORZ_H,y
 	sta	ARG_THING_Z_H
 
+	; check projectile flag
+	lda	THING_STRUCT_EFLAGS,y
+	bpl	:+
+
+	; projectile death
+	lda	#$41
+	sta	THMOVE_HTYPE
+	jmp	projectile_death
+:
 @not_in_floor:
 	; apply Z
 	lda	ARG_THING_Z_S

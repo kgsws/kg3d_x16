@@ -7,6 +7,7 @@
 #include "tick.h"
 #include "things.h"
 #include "actions.h"
+#include "hitscan.h"
 
 //#define DBG_NO_CAMERA_DIP
 
@@ -1005,7 +1006,9 @@ static void projectile_death(uint8_t tdx)
 {
 	thing_t *th = thing_ptr(tdx);
 	uint8_t type = th->ticker.type;
-	int32_t nx, ny;
+	int32_t nx, ny, nz;
+
+	hitscan.radius = th->radius;
 
 	th->mx = 0;
 	th->my = 0;
@@ -1023,10 +1026,79 @@ static void projectile_death(uint8_t tdx)
 
 	nx = th->x;
 	ny = th->y;
-	if(thing_check_pos(tdx, nx / 256, ny / 256, th->z / 256, 0))
+	nz = th->z;
+
+	if(poscheck.htype & 0x80)
+	{
+		// hit a thing
+		thing_t *ht = thing_ptr(poscheck.hidx);
+		uint8_t angle = th->angle;
+		int32_t dist;
+		vertex_t d1;
+
+		hitscan.x = th->x / 256;
+		hitscan.y = th->y / 256;
+		hitscan.z = th->z / 256;
+
+		hitscan_angles(angle, th->pitch / 2);
+
+		dist = hitscan_thing_dd(ht, &d1);
+		dist += hitscan_thing_dt(th, &d1);
+		dist -= hitscan.radius;
+
+		d1.x = (tab_sin[angle] * dist) >> 8;
+		d1.y = (tab_cos[angle] * dist) >> 8;
+		dist = (dist * hitscan.wtan) >> 8;
+
+		nx = (hitscan.x + d1.x) << 8;
+		ny = (hitscan.y + d1.y) << 8;
+		nz = (hitscan.z + dist) << 8;
+	} else
+	if(poscheck.htype & 0x10)
+	{
+		// hit a wall
+		wall_t *wsrc = map_walls[poscheck.htype & 15] + poscheck.hidx;
+		uint8_t angle = wsrc->angle >> 4;
+		int32_t zz, ws, wc;
+		wall_t wall;
+		vertex_t d0;
+
+		wall.angle = wsrc->angle;
+		wall.dist = wsrc->dist;
+
+		ws = (tab_sin[angle] * hitscan.radius) >> 8;
+		wc = (tab_cos[angle] * hitscan.radius) >> 8;
+
+		wall.vtx.x = wsrc->vtx.x + wc;
+		wall.vtx.y = wsrc->vtx.y - ws;
+
+		hitscan.x = th->x / 256;
+		hitscan.y = th->y / 256;
+		hitscan.z = th->z / 256;
+		hitscan.angle = th->angle;
+
+		hitscan_angles(hitscan.angle, th->pitch / 2);
+		zz = hitscan_wall_pos(&wall, &d0, NULL);
+
+		nx = d0.x << 8;
+		ny = d0.y << 8;
+		nz = zz << 8;
+	} else
+	if(!poscheck.htype)
+	{
+		// hit nothing
+		return;
+	} else
+	{
+		// hit a plane
+		printf("plane %u\n", poscheck.htype & 0x40);
+	}
+
+	if(thing_check_pos(tdx, nx / 256, ny / 256, nz / 256, 0))
 	{
 		th->x = nx;
 		th->y = ny;
+		th->z = nz;
 		thing_apply_pos();
 		printf("PASS\n");
 	} else
@@ -1291,27 +1363,20 @@ apply_pos:
 	// ceiling check
 	if(zz > th->ceilingz)
 	{
+		th->z = th->ceilingz << 8;
+		th->mz = 0;
+
 		if(th->eflags & THING_EFLAG_PROJECTILE)
 		{
 			poscheck.htype = 0x01;
 			projectile_death(tick_idx);
 			goto do_animation;
 		}
-
-		th->z = th->ceilingz << 8;
-		th->mz = 0;
 	}
 
 	// floor check
 	if(zz < th->floorz)
 	{
-		if(th->eflags & THING_EFLAG_PROJECTILE)
-		{
-			poscheck.htype = 0x41;
-			projectile_death(tick_idx);
-			goto do_animation;
-		}
-
 #ifndef DBG_NO_CAMERA_DIP
 		// camera stuff
 		if(tick_idx == camera_thing)
@@ -1339,6 +1404,13 @@ apply_pos:
 		th->z = th->floorz << 8;
 		th->mz = 0;
 		zz = th->floorz;
+
+		if(th->eflags & THING_EFLAG_PROJECTILE)
+		{
+			poscheck.htype = 0x41;
+			projectile_death(tick_idx);
+			goto do_animation;
+		}
 	}
 
 	// sector

@@ -47,10 +47,10 @@ typedef struct
 	//
 	uint8_t radius;
 	uint8_t height;
+	uint8_t alt_radius;
 	uint8_t blocking;
-	uint8_t alt_bling;
 	uint8_t blockedby;
-	uint8_t alt_blby;
+	uint8_t alt_block;
 	uint8_t imass;
 	uint8_t gravity;
 	uint8_t speed;
@@ -61,7 +61,6 @@ typedef struct
 	uint8_t water_height;
 	uint8_t view_height;
 	uint8_t atk_height;
-	uint8_t alt_radius;
 	uint8_t pain_chance;
 	//
 	uint8_t jump_pwr;
