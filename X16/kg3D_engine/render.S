@@ -4543,18 +4543,6 @@ prepare_sprite:
 	lda	VERA_DATA0
 	sta	SPRITE_TEX_STEP_H
 
-	; if(x1 > projection.x1d)
-	sec
-	lda	PROJECTION_X1D
-	sbc	SPRITE_X1_L
-	lda	#0
-	sbc	SPRITE_X1_H
-	bpl	:+
-
-	; x1 = projection.x1d
-	lda	PROJECTION_X1D
-	sta	SPRITE_X1_L
-:
 	; tex_now = 0
 	stz	SPRITE_TEX_NOW_L
 	stz	SPRITE_TEX_NOW_H
@@ -4576,6 +4564,18 @@ prepare_sprite:
 	lsr
 	lsr
 	sta	SPRITE_TEX_NOW_H
+:
+	; if(x1 > projection.x1d)
+	sec
+	lda	PROJECTION_X1D
+	sbc	SPRITE_X1_L
+	lda	#0
+	sbc	SPRITE_X1_H
+	bpl	:+
+
+	; x1 = projection.x1d
+	lda	PROJECTION_X1D
+	sta	SPRITE_X1_L
 :
 	; xdiff = x0 - projection.x0d
 	sec

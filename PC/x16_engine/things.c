@@ -518,16 +518,24 @@ void thing_check_heights(uint8_t tdx)
 	}
 }
 
+static uint32_t cb_hitfix(wall_t *wall)
+{
+	poscheck.sector = wall->backsector;
+	return 1;
+}
+
 uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx)
 {
 	thing_t *th = thing_ptr(tdx);
 	int32_t zz = th->z / 256;
+	uint32_t hitfix = 0;
 	sector_t *sec;
 
 	// target sector
 	if(!sdx)
 		sdx = thingsec[tdx][0];
 
+failsafe:
 	// prepare
 	prepare_pos_check(tdx, nz, th->floorz, th->mz, map_sectors[sdx].flags);
 
@@ -758,14 +766,33 @@ radpass:
 		}
 	}
 
+	if(	!poscheck.sector &&
+		!hitfix &&
+		(
+			th->mx ||
+			th->my
+		)
+	){
+		p2a_coord.x = th->mx;
+		p2a_coord.y = th->my;
+		hitscan_func(tdx, point_to_angle() >> 4, cb_hitfix);
+
+		if(poscheck.sector)
+		{
+			sdx = poscheck.sector;
+			hitfix = 0xFF;
+			goto failsafe;
+		}
+	}
+
+	if(poscheck.noradius)
+		check_planes(poscheck.sector, nz);
+
 	if(poscheck.ceilingz - poscheck.floorz < poscheck.height)
 	{
 		poscheck.htype = 0;
 		return 0;
 	}
-
-	if(poscheck.noradius)
-		check_planes(poscheck.sector, nz);
 
 	return poscheck.sector;
 }
@@ -1020,6 +1047,8 @@ static void projectile_death(uint8_t tdx)
 	th->radius = thing_type[type].alt_radius;
 	th->eflags &= ~THING_EFLAG_PROJECTILE;
 	th->eflags |= THING_EFLAG_NORADIUS;
+
+	th->iflags &= ~THING_IFLAG_HEIGHTCHECK;
 
 	th->ticks = 1;
 	th->next_state = thing_anim[type][ANIM_DEATH].state;

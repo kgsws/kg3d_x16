@@ -8,6 +8,7 @@
 .include "things.inc"
 .include "actions.inc"
 
+.export hitscan_cb_wall
 .export hitscan_func
 .export hitscan_attack
 .export hitscan_angles

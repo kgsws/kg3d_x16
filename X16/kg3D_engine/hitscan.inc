@@ -1,4 +1,5 @@
 
+.import hitscan_cb_wall
 .import hitscan_func
 .import hitscan_attack
 .import hitscan_angles

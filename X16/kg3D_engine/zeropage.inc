@@ -27,6 +27,9 @@ TMP_REND_WPN_OFFS_H = $1F
 TMP_REND_WPN_LIGHT = $20
 TMP_REND_WPN_IDX = $21
 
+; pos check temp storage
+TMP_THMOVE_HITFIX = $21
+
 ; pointers
 COLORMAP_L = $22	; forced by tables, do not change address
 COLORMAP_H = $23	; forced by tables, do not change address
@@ -82,14 +85,6 @@ PCONV_PTR_L = THCES_PTR_L
 PCONV_PTR_H = THCES_PTR_H
 THSEC_PTR_L = HI_PTR_L
 THSEC_PTR_H = HI_PTR_H
-
-; special state action temp storage
-TMP_STACT_TICK_ADD = $1B
-TMP_STACT_FRM_L = $1C
-TMP_STACT_FRM_H = $1D
-TMP_STACT_ARG_0 = $1E
-TMP_STACT_ARG_1 = $1F
-TMP_STACT_ARG_2 = $20
 
 ; math
 MATH_VAR_L = $40

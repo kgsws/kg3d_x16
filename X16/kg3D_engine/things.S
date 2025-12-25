@@ -10,6 +10,7 @@
 .include "zeropage.inc"
 .include "engine.inc"
 .include "actions.inc"
+.include "hitscan.inc"
 
 .export thing_spawn
 .export thing_spawn_org
@@ -898,14 +899,14 @@ thing_check_heights:
 	sta	REG_RAM_BANK
 
 	; restore opcode
-	lda	#$80	; BRA
+	lda	#$20	; JSR
 
 	; check blocking
 	ldy	THING_STRUCT_BLOCKEDBY,x
 	beq	:+
 
 	; modify opcode
-	lda	#$A9	; LDA <imm>
+	lda	#$AD	; LDA <abs>
 :
 	sta	@opcode_things
 
@@ -938,11 +939,10 @@ thing_check_heights:
 	jsr	check_planes
 
 	; go trough things
-@opcode_things:
-	bra	:+
 	ply
+@opcode_things:
 	jsr	check_things
-:
+
 	; next
 	inc	TMP_PTR_H
 	lda	TMP_PTR_H
@@ -958,7 +958,7 @@ thing_check_heights:
 ;;;
 ; ARG_THING_X_*, ARG_THING_Y_*, ARG_THING_Z_* (only L and H) - desired position
 ; ARG_THING_SECTOR - target sector (zero = from thing)
-; RET_THING_IDX - thing index
+; RET_THING_IDX - thing index (INPUT)
 ; zero flag set = fail
 ; A = new thing sector
 ; THMOVE_SECTOR = new thing sector
@@ -979,6 +979,10 @@ thing_check_pos:
 	sta	ARG_THING_SECTOR
 :
 thing_check_spawn:
+	; reset
+	stz	TMP_THMOVE_HITFIX
+
+@failsafe:
 	; prepare
 	ldy	ARG_THING_SECTOR
 	jsr	prepare_pos_check
@@ -1578,7 +1582,8 @@ thing_check_spawn:
 	lda	THMOVE_BLOCKEDBY
 	beq	:+
 	jsr	check_things
-	bmi	@do_thing_block
+	bpl	:+
+	jmp	@do_thing_block
 :
 	; next
 	inc	THMOVE_PORTAL_RD
@@ -1586,6 +1591,18 @@ thing_check_spawn:
 	cmp	THMOVE_PORTAL_WR
 	bcs	:+
 	jmp	@loop_thsec
+:
+	; if(poscheck.noradius)
+	lda	THMOVE_NORADIUS
+	beq	:+
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; check_planes
+	ldx	THMOVE_SECTOR
+	jsr	check_planes
 :
 	; check heights
 	sec
@@ -1611,21 +1628,100 @@ thing_check_spawn:
 	sta	THMOVE_SECTOR
 	rts
 :
-	; if(poscheck.noradius)
-	lda	THMOVE_NORADIUS
-	beq	:+
+	; !poscheck.sector
+	lda	THMOVE_SECTOR
+	bne	@pass_ex
 
-	; sector bank
-	lda	#BANK_SECTORS
+	; hitfix
+	lda	TMP_THMOVE_HITFIX
+	bne	@pass
+
+	; the thing
+	ldy	RET_THING_IDX
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	; check_planes
-	ldx	THMOVE_SECTOR
-	jsr	check_planes
-:
+	; fill p2a_coord
+	lda	THING_STRUCT_MX_S,y
+	sta	MATH_P2A_X_L
+	lda	THING_STRUCT_MX_L,y
+	sta	MATH_P2A_X_H
+	lda	THING_STRUCT_MY_S,y
+	sta	MATH_P2A_Y_L
+	lda	THING_STRUCT_MY_L,y
+	sta	MATH_P2A_Y_H
+
+	; th->mx || th->my
+	ora	MATH_P2A_Y_L
+	ora	MATH_P2A_X_H
+	ora	MATH_P2A_X_L
+	beq	@pass
+
+	; point_to_angle
+	jsr	math_p2a
+	jsr	math_ang8
+
+	; backup
+	lda	ARG_THING_X_S
+	pha
+	lda	ARG_THING_X_L
+	pha
+	lda	ARG_THING_X_H
+	pha
+	lda	ARG_THING_Y_S
+	pha
+	lda	ARG_THING_Y_L
+	pha
+	lda	ARG_THING_Y_H
+	pha
+
+	; hitscan_func
+	lda	MATH_VAR_U
+	sta	ARG_HITSCAN_ANGLE
+	ldy	RET_THING_IDX
+	lda	#<cb_hitfix
+	sta	hitscan_cb_wall+1
+	lda	#>cb_hitfix
+	sta	hitscan_cb_wall+2
+	jsr	hitscan_func
+
+	; restore
+	pla
+	sta	ARG_THING_Y_H
+	pla
+	sta	ARG_THING_Y_L
+	pla
+	sta	ARG_THING_Y_S
+	pla
+	sta	ARG_THING_X_H
+	pla
+	sta	ARG_THING_X_L
+	pla
+	sta	ARG_THING_X_S
+
+	; if(poscheck.sector)
+	lda	TMP_THMOVE_HITFIX
+	beq	@pass_bad
+
+	; sdx = poscheck.sector
+	sta	ARG_THING_SECTOR
+
+	; hitfix = anything non-zero
+	sta	TMP_THMOVE_HITFIX
+
+	jmp	@failsafe
+
+@pass_bad:
+	stz	THMOVE_SECTOR
+	stz	THMOVE_HTYPE
+
+@pass:
 	;; STOP - PASSED
 	; unset zero flag
 	lda	THMOVE_SECTOR
+@pass_ex:
 	rts
 
 @do_thing_block:
@@ -2571,6 +2667,17 @@ check_radist:
 	rts
 
 ;;;
+; failsafe hitscan
+;;;
+
+cb_hitfix:
+	ldy	WALL_NOW
+	lda	WALL_STRUCT_BACKSECTOR,y
+	sta	TMP_THMOVE_HITFIX
+	sec
+	rts
+
+;;;
 ; add sector(s) to portals
 ;;;
 ; X - the sector
@@ -2822,6 +2929,11 @@ projectile_death:
 	and	#<~THING_EFLAG_PROJECTILE
 	ora	#THING_EFLAG_NORADIUS
 	sta	THING_STRUCT_EFLAGS,x
+
+	; iflags
+	lda	THING_STRUCT_IFLAGS,x
+	and	#<~THING_IFLAG_HEIGHTCHECK
+	sta	THING_STRUCT_IFLAGS,x
 
 	; thing type
 	ldy	TICKER_STRUCT_TYPE,x
