@@ -294,6 +294,11 @@ THMOVE_RADIUS_H = THMOVE_TCZ_H
 THTICK_REPEAT = $DE
 THTICK_RETRY = $DF
 
+; projectile death (overlaps movement)
+PRJDTH_RADIUS = $DD
+PRJDTH_THING = $DE
+PRJDTH_TEXTURE = $DF
+
 ; animation tick (overlaps actions)
 THTICK_ACTION_TEMP = $D6
 THTICK_ACTION_ANGLE = $D7

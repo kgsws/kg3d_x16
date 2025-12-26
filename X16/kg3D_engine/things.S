@@ -417,7 +417,7 @@ thing_clear:
 ;;;
 ; damage thing
 ;;;
-; Y - thing index
+; Y - thing to damage
 ; X - damage origin thing
 ; A - thrust angle
 ; ARG_THING_DAMAGE_*
@@ -586,7 +586,7 @@ thing_damage:
 	lda	ARG_THING_DAMAGE_H
 	bne	@limit_damage
 
-	; check damage (pre-multiply)
+	; check damage
 	lda	ARG_THING_DAMAGE_L
 	cmp	#$7F
 	bcc	@do_thrust
@@ -621,9 +621,12 @@ thing_damage:
 	sta	MATH_TEMP_A
 	ldx	VERA_DATA0
 	lda	TAB_SWAP,x
+	tax
 	and	#$F0
 	tsb	MATH_TEMP_A
-	lsr	MATH_TEMP_A
+	txa
+	lsr
+	ror	MATH_TEMP_A
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
@@ -903,7 +906,7 @@ thing_check_heights:
 
 	; check blocking
 	ldy	THING_STRUCT_BLOCKEDBY,x
-	beq	:+
+	bne	:+
 
 	; modify opcode
 	lda	#$AD	; LDA <abs>
@@ -1336,16 +1339,8 @@ thing_check_spawn:
 
 	; if(poscheck.noradius)
 	lda	THMOVE_NORADIUS
-	beq	:+
-
-	; if(inside)
-	lda	THMOVE_INSIDE
 	bne	@next_wall
 
-	; if(wall->backsector)
-	lda	WALL_STRUCT_BACKSECTOR,y
-	bne	@next_wall
-:
 	; save
 	lda	WALL_BANK
 	sta	THMOVE_HTYPE
@@ -1426,7 +1421,7 @@ thing_check_spawn:
 @point_block:
 	; if(poscheck.noradius)
 	lda	THMOVE_NORADIUS
-	bne	@skip_point
+	bne	@next_point
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
@@ -1491,6 +1486,7 @@ thing_check_spawn:
 	stx	THMOVE_TOUCH
 	jsr	add_sector
 
+@next_point:
 	; handle next
 	lda	THMOVE_PTHIT
 	beq	@skip_point
@@ -2909,7 +2905,33 @@ swap_thing_sector:
 ;;;
 
 projectile_death:
-	ldx	RET_THING_IDX
+	; reset
+	stz	PRJDTH_THING
+	stz	PRJDTH_TEXTURE
+
+	; get position
+	lda	RET_THING_IDX
+	tax
+	tay
+	jsr	action_xy
+	lda	THING_STRUCT_Z_L,x
+	sta	ARG_THING_Z_L
+	lda	THING_STRUCT_Z_H,x
+	sta	ARG_THING_Z_H
+
+	; angle
+	lda	THING_STRUCT_ANGLE,x
+	sta	ARG_HITSCAN_ANGLE
+
+	; half pitch
+	lda	THING_STRUCT_PITCH,x
+	lsr
+	sta	ARG_HITSCAN_HALF_PITCH
+
+	; hitscan.radius = th->radius
+	lda	THING_STRUCT_RADIUS,x
+	sta	PRJDTH_RADIUS
+	sta	VERA_FX_CACHE_H
 
 	; stop
 	lda	#0
@@ -2972,24 +2994,415 @@ projectile_death:
 	lda	#1
 	sta	THING_STRUCT_TICKS,x
 
-	; new X
-	lda	THING_STRUCT_X_L,x
+	; check hit type
+	lda	THMOVE_HTYPE
+	bne	:+
+
+	; hit nothing
+	ldy	RET_THING_IDX
+	jmp	thing_anim
+:
+	bmi	:+
+	jmp	@not_thing
+:
+	; thing = poscheck.hidx
+	lda	THMOVE_HIDX
+	sta	PRJDTH_THING
+
+	; prepare
+	jsr	hitscan_angles
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; calculate
+	ldy	THMOVE_HIDX
+	jsr	hitscan_thing_dd
+	jsr	hitscan_thing_dt
+
+	; get result (>> 8)
+	; dd += dt
+	clc
+	lda	VERA_DATA0
+	adc	HITSCAN_TSID_L
+	sta	HITSCAN_TSID_L
+	lda	VERA_DATA0
+	adc	HITSCAN_TSID_H
+	sta	HITSCAN_TSID_H
+
+	; dist -= hitscan.radius
+	sec
+	lda	HITSCAN_TSID_L
+	sbc	PRJDTH_RADIUS
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_TSID_H
+	sbc	#0
+	sta	VERA_FX_CACHE_U
+
+	;; d1.x = (tab_sin[angle] * dist) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; tab_sin
+	ldx	ARG_HITSCAN_ANGLE
+	math_read_sin	VERA_FX_CACHE_L, VERA_FX_CACHE_M
+
+	; dist is already set
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	; hitscan.x + d1.x
+	clc
+	lda	VERA_DATA0
+	adc	ARG_THING_X_L
 	sta	ARG_THING_X_L
-	lda	THING_STRUCT_X_H,x
+	lda	VERA_DATA0
+	adc	ARG_THING_X_H
 	sta	ARG_THING_X_H
 
-	; new Y
-	lda	THING_STRUCT_Y_L,x
+	;; d1.y = (tab_cos[angle] * dist) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; tab_cos
+	ldx	ARG_HITSCAN_ANGLE
+	math_read_cos	VERA_FX_CACHE_L, VERA_FX_CACHE_M
+
+	; dist is already set
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	; hitscan.y + d1.y
+	clc
+	lda	VERA_DATA0
+	adc	ARG_THING_Y_L
 	sta	ARG_THING_Y_L
-	lda	THING_STRUCT_Y_H,x
+	lda	VERA_DATA0
+	adc	ARG_THING_Y_H
 	sta	ARG_THING_Y_H
 
-	; new Z
-	lda	THING_STRUCT_Z_L,x
+	;; dist = (dist * hitscan.wtan) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; hitscan.wtan
+	lda	HITSCAN_WTAN_L
+	sta	VERA_FX_CACHE_L
+	lda	HITSCAN_WTAN_H
+	sta	VERA_FX_CACHE_M
+
+	; dist is already set
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	; hitscan.z + dist
+	clc
+	lda	VERA_DATA0
+	adc	ARG_THING_Z_L
 	sta	ARG_THING_Z_L
-	lda	THING_STRUCT_Z_H,x
+	lda	VERA_DATA0
+	adc	ARG_THING_Z_H
 	sta	ARG_THING_Z_H
 
+@fail_thing:
+	jmp	@handled
+
+@not_thing:
+	and	#$10
+	bne	:+
+	jmp	@not_wall
+:
+	; wall bank
+	lda	THMOVE_HTYPE
+	sta	REG_RAM_BANK
+
+	; the wall
+	ldy	THMOVE_HIDX
+
+	; wsrc->vtx.y
+	lda	WALL_STRUCT_VTX_Y_H,y
+	pha	; <vtx.x HI>
+	lda	WALL_STRUCT_VTX_Y_L,y
+	pha	; <vtx.x LO>
+
+	; wall.dist.x = wsrc->dist.x
+	lda	WALL_STRUCT_DIST_X_H,y
+	pha	; <dist.x HI>
+	lda	WALL_STRUCT_DIST_X_L,y
+	pha	; <dist.x LO>
+
+	; wsrc->vtx.x
+	lda	WALL_STRUCT_VTX_X_H,y
+	pha	; <vtx.x HI>
+	lda	WALL_STRUCT_VTX_X_L,y
+	pha	; <vtx.x LO>
+
+	; wall.dist.y = wsrc->dist.y
+	lda	WALL_STRUCT_DIST_Y_H,y
+	pha	; <dist.y HI>
+	lda	WALL_STRUCT_DIST_Y_L,y
+	pha	; <dist.y LO>
+
+	; wall.angle = wsrc->angle
+	lda	WALL_STRUCT_ANGLE_H,y
+	pha	; <angle HI>
+	lda	WALL_STRUCT_ANGLE_L,y
+	pha	; <angle LO>
+
+	; wall bank (hack)
+	lda	#BANK_MAPWALLS
+	sta	REG_RAM_BANK
+
+	; wall.angle = wsrc->angle
+	pla	; <angle LO>
+	sta	WALL_STRUCT_ANGLE_L
+	pla	; <angle HI>
+	sta	WALL_STRUCT_ANGLE_H
+
+	;; wc = (wall.dist.y * hitscan.radius) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; wall.dist.y
+	pla	; <dist.y LO>
+	sta	WALL_STRUCT_DIST_Y_L
+	sta	VERA_FX_CACHE_L
+	pla	; <dist.y HI>
+	sta	WALL_STRUCT_DIST_Y_H
+	sta	VERA_FX_CACHE_M
+
+	; hitscan.radius is partially set
+	stz	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	; wall.vtx.x = wsrc->vtx.x - wc
+	sec
+	pla	; <vtx.x LO>
+	sbc	VERA_DATA0
+	sta	WALL_STRUCT_VTX_X_L
+	pla	; <vtx.x HI>
+	sbc	VERA_DATA0
+	sta	WALL_STRUCT_VTX_X_H
+
+	;; ws = (wall.dist.x * hitscan.radius) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; wall.dist.x
+	pla	; <dist.x LO>
+	sta	WALL_STRUCT_DIST_X_L
+	sta	VERA_FX_CACHE_L
+	pla	; <dist.x HI>
+	sta	WALL_STRUCT_DIST_X_H
+	sta	VERA_FX_CACHE_M
+
+	; hitscan.radius is already set
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	; wall.vtx.y = wsrc->vtx.y + ws
+	clc
+	pla	; <vtx.y LO>
+	adc	VERA_DATA0
+	sta	WALL_STRUCT_VTX_Y_L
+	pla	; <vtx.y HI>
+	adc	VERA_DATA0
+	sta	WALL_STRUCT_VTX_Y_H
+
+	; prepare
+	jsr	hitscan_angles
+
+	; wall bank (hack)
+	lda	#BANK_MAPWALLS
+	sta	REG_RAM_BANK
+
+	; calculate
+	stz	WALL_NOW
+	jsr	hitscan_wall_pos
+
+	; new position
+	lda	HITSCAN_D0_X_L
+	sta	ARG_THING_X_L
+	lda	HITSCAN_D0_X_H
+	sta	ARG_THING_X_H
+	lda	HITSCAN_D0_Y_L
+	sta	ARG_THING_Y_L
+	lda	HITSCAN_D0_Y_H
+	sta	ARG_THING_Y_H
+	lda	HITSCAN_ZZ_L
+	sta	ARG_THING_Z_L
+	lda	HITSCAN_ZZ_H
+	sta	ARG_THING_Z_H
+
+	; wall bank
+	lda	THMOVE_HTYPE
+	sta	REG_RAM_BANK
+
+	; the wall
+	ldy	THMOVE_HIDX
+
+	; texture = wsrc->top.texture
+	lda	WALL_STRUCT_TOP_TEX,y
+	sta	PRJDTH_TEXTURE
+
+	; if(wsrc->backsector)
+	lda	WALL_STRUCT_BACKSECTOR,y
+	beq	@no_back
+
+	; the sector
+	tay
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; if(zz <= sec->floor.height)
+	sec
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,y
+	sbc	ARG_THING_Z_L
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,y
+	sbc	ARG_THING_Z_H
+	bmi	@no_bot
+
+	; wall bank
+	lda	THMOVE_HTYPE
+	sta	REG_RAM_BANK
+
+@set_wall_bot:
+	; texture = wsrc->bot.texture
+	ldy	THMOVE_HIDX
+	lda	WALL_STRUCT_BOT_TEX,y
+	sta	PRJDTH_TEXTURE
+
+	bra	@handled
+
+@no_bot:
+	; if(zz <= sec->ceiling.height)
+	sec
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,y
+	sbc	ARG_THING_Z_L
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,y
+	sbc	ARG_THING_Z_H
+	bmi	@handled
+
+	; texture = 0
+	stz	PRJDTH_TEXTURE
+
+	bra	@handled
+
+@no_back:
+	; wsrc->angle & WALL_MARK_EXTENDED
+	lda	WALL_STRUCT_ANGLE_H,y
+	and	#WALL_MARK_EXTENDED
+	beq	@handled
+
+	; wsrc->split != -32768
+	lda	WALL_STRUCT_SPLIT_H,y
+	cmp	$80	; lazy check
+	beq	@handled
+
+	; zz <= wsrc->split
+	sec
+	lda	WALL_STRUCT_SPLIT_L,y
+	sbc	ARG_THING_Z_L
+	lda	WALL_STRUCT_SPLIT_H,y
+	sbc	ARG_THING_Z_H
+	bpl	@set_wall_bot
+
+	bra	@handled
+
+@not_wall:
+	bit	THMOVE_HTYPE
+	bvs	@hit_floor
+
+	; check ceiling thing
+	lda	THING_STRUCT_CEILT,x
+	beq	@no_ceilingt
+
+	; thing = th->ceilingt
+	sta	PRJDTH_THING
+
+	bra	@handled
+
+@no_ceilingt:
+	; the sector
+	ldy	THING_STRUCT_CEILS,x
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; ceiling
+	lda	SECTOR_STRUCT_CEILING_TEXTURE,y
+	sta	PRJDTH_TEXTURE
+
+	bra	@handled
+
+@hit_floor:
+	; check floor thing
+	lda	THING_STRUCT_FLOORT,x
+	beq	@no_floort
+
+	; thing = th->floort
+	sta	PRJDTH_THING
+
+	bra	@handled
+
+@no_floort:
+	; the sector
+	ldy	THING_STRUCT_FLOORS,x
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; floor
+	lda	SECTOR_STRUCT_FLOOR_TEXTURE,y
+	sta	PRJDTH_TEXTURE
+
+@handled:
+	; restore
+	ldx	RET_THING_IDX
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; if(texture == 0xFF)
+	lda	PRJDTH_TEXTURE
+	ina
+	bne	:+
+
+	; th->next_state = 0
+	stz	THING_STRUCT_NXTFRM_L,x
+	stz	THING_STRUCT_NXTFRM_H,x
+
+	; hit sky
+	ldy	RET_THING_IDX
+	jmp	thing_anim
+:
 	; check new position
 	stz	ARG_THING_SECTOR
 	jsr	thing_check_pos
@@ -3021,6 +3434,20 @@ projectile_death:
 	lda	ARG_THING_Z_H
 	sta	THING_STRUCT_Z_H,x
 :
+	; if(thing)
+	ldy	PRJDTH_THING
+	beq	@no_damage
+
+	; do damage
+	ldx	RET_THING_IDX
+	lda	THING_STRUCT_HEALTH_L,x
+	sta	ARG_THING_DAMAGE_L
+	lda	THING_STRUCT_HEALTH_H,x
+	sta	ARG_THING_DAMAGE_H
+	lda	THING_STRUCT_ANGLE,x
+	jsr	thing_damage
+
+@no_damage:
 	; animate
 	ldy	RET_THING_IDX
 	jmp	thing_anim

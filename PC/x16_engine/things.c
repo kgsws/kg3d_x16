@@ -510,7 +510,8 @@ void thing_check_heights(uint8_t tdx)
 		check_planes(sdx, nz);
 
 		// go trough things
-		check_things(tdx, sdx, th->x / 256, th->y / 256);
+		if(th->blockedby)
+			check_things(tdx, sdx, th->x / 256, th->y / 256);
 
 		// special
 		if(poscheck.noradius)
@@ -652,12 +653,7 @@ failsafe:
 
 				// render hack
 				if(poscheck.noradius)
-				{
-					if(inside)
-						goto do_next;
-					if(wall->backsector)
-						goto do_next;
-				}
+					goto do_next;
 
 				// solid wall
 				poscheck.htype = sec->wall.bank | 0x10;
@@ -708,7 +704,7 @@ pt_block:
 							goto pt_block;
 						else
 							add_sector(wall->backsector, 1);
-
+radpass:
 						poscheck.pthit--;
 						poscheck.ptwall = wall->next;
 						wall = map_walls[sec->wall.bank] + poscheck.ptwall;
@@ -716,7 +712,6 @@ pt_block:
 				}
 			}
 
-radpass:
 			if(inside && !poscheck.sector)
 			{
 				poscheck.sector = sdx;
@@ -1034,6 +1029,8 @@ static void projectile_death(uint8_t tdx)
 	thing_t *th = thing_ptr(tdx);
 	uint8_t type = th->ticker.type;
 	int32_t nx, ny, nz;
+	uint8_t texture = 0;
+	uint8_t thing = 0;
 
 	hitscan.radius = th->radius;
 
@@ -1065,6 +1062,8 @@ static void projectile_death(uint8_t tdx)
 		int32_t dist;
 		vertex_t d1;
 
+		thing = poscheck.hidx;
+
 		hitscan.x = th->x / 256;
 		hitscan.y = th->y / 256;
 		hitscan.z = th->z / 256;
@@ -1087,7 +1086,6 @@ static void projectile_death(uint8_t tdx)
 	{
 		// hit a wall
 		wall_t *wsrc = map_walls[poscheck.htype & 15] + poscheck.hidx;
-		uint8_t angle = wsrc->angle >> 4;
 		int32_t zz, ws, wc;
 		wall_t wall;
 		vertex_t d0;
@@ -1095,11 +1093,11 @@ static void projectile_death(uint8_t tdx)
 		wall.angle = wsrc->angle;
 		wall.dist = wsrc->dist;
 
-		ws = (tab_sin[angle] * hitscan.radius) >> 8;
-		wc = (tab_cos[angle] * hitscan.radius) >> 8;
+		wc = (wall.dist.y * hitscan.radius) >> 8;
+		ws = (wall.dist.x * hitscan.radius) >> 8;
 
-		wall.vtx.x = wsrc->vtx.x + wc;
-		wall.vtx.y = wsrc->vtx.y - ws;
+		wall.vtx.x = wsrc->vtx.x - wc;
+		wall.vtx.y = wsrc->vtx.y + ws;
 
 		hitscan.x = th->x / 256;
 		hitscan.y = th->y / 256;
@@ -1112,6 +1110,25 @@ static void projectile_death(uint8_t tdx)
 		nx = d0.x << 8;
 		ny = d0.y << 8;
 		nz = zz << 8;
+
+		///
+
+		texture = wsrc->top.texture;
+
+		if(wsrc->backsector)
+		{
+			sector_t *sec = map_sectors + wsrc->backsector;
+			if(zz <= sec->floor.height)
+				texture = wsrc->bot.texture;
+			else
+			if(zz <= sec->ceiling.height)
+				texture = 0;
+		} else
+		if(	wsrc->angle & WALL_MARK_EXTENDED &&
+			wsrc->split != -32768 &&
+			zz <= wsrc->split
+		)
+			texture = wsrc->bot.texture;
 	} else
 	if(!poscheck.htype)
 	{
@@ -1120,7 +1137,27 @@ static void projectile_death(uint8_t tdx)
 	} else
 	{
 		// hit a plane
-		printf("plane %u\n", poscheck.htype & 0x40);
+		if(poscheck.htype & 0x40)
+		{
+			thing = th->floort;
+			if(	!thing &&
+				th->floors
+			)
+				texture = map_sectors[th->floors].floor.texture;
+		} else
+		{
+			thing = th->ceilingt;
+			if(	!thing &&
+				th->ceilings
+			)
+				texture = map_sectors[th->ceilings].ceiling.texture;
+		}
+	}
+
+	if(texture == 0xFF)
+	{
+		th->next_state = 0;
+		return;
 	}
 
 	if(thing_check_pos(tdx, nx / 256, ny / 256, nz / 256, 0))
@@ -1129,9 +1166,12 @@ static void projectile_death(uint8_t tdx)
 		th->y = ny;
 		th->z = nz;
 		thing_apply_pos();
-		printf("PASS\n");
-	} else
-		printf("FAIL\n");
+	}
+
+	if(	thing &&
+		th->health
+	)
+		thing_damage(thing, th->origin, th->angle, th->health);
 }
 
 //

@@ -18,6 +18,8 @@
 #include "x16r.h"
 #include "x16t.h"
 
+#define MAP_AREA_LIMIT	16384
+
 enum
 {
 	EDIT_MODE_LINE,
@@ -1026,20 +1028,20 @@ static void draw_origin()
 	shader_changed = 1;
 	shader_update();
 
-	gl_vertex_buf[0].x = -16384.0f;
+	gl_vertex_buf[0].x = -MAP_AREA_LIMIT;
 	gl_vertex_buf[0].y = 0;
 	gl_vertex_buf[0].z = DEPTH_GRID;
 
-	gl_vertex_buf[1].x = 16384.0f;
+	gl_vertex_buf[1].x = MAP_AREA_LIMIT;
 	gl_vertex_buf[1].y = 0;
 	gl_vertex_buf[1].z = DEPTH_GRID;
 
 	gl_vertex_buf[2].x = 0;
-	gl_vertex_buf[2].y = -16384.0f;
+	gl_vertex_buf[2].y = -MAP_AREA_LIMIT;
 	gl_vertex_buf[2].z = DEPTH_GRID;
 
 	gl_vertex_buf[3].x = 0;
-	gl_vertex_buf[3].y = 16384.0f;
+	gl_vertex_buf[3].y = MAP_AREA_LIMIT;
 	gl_vertex_buf[3].z = DEPTH_GRID;
 
 	glDrawArrays(GL_LINES, 0, 4);
@@ -1947,10 +1949,17 @@ static int32_t in2d_draw_start()
 		return 1;
 	}
 
+	location_from_mouse(&mx, &my, 1);
+
+	if(	mx < -MAP_AREA_LIMIT || mx > MAP_AREA_LIMIT ||
+		my < -MAP_AREA_LIMIT || my > MAP_AREA_LIMIT
+	){
+		edit_status_printf("Point is outside of allowed area!");
+		return 1;
+	}
+
 	if(edit_grp_show)
 		edit_status_printf("Drawing sector to group \"%s / %s\".", edit_group[edit_grp_show].name, edit_group[edit_grp_show].sub[edit_subgrp_show].name);
-
-	location_from_mouse(&mx, &my, 1);
 
 	if(!edit_list_draw_new.cur)
 	{
@@ -2195,6 +2204,13 @@ static int32_t in2d_draw_insert()
 	float mx, my;
 
 	location_from_mouse(&mx, &my, 1);
+
+	if(	mx < -MAP_AREA_LIMIT || mx > MAP_AREA_LIMIT ||
+		my < -MAP_AREA_LIMIT || my > MAP_AREA_LIMIT
+	){
+		edit_status_printf("Point is outside of allowed area!");
+		return 1;
+	}
 
 	vtx = (kge_vertex_t*)(edit_list_draw_new.cur + 1);
 

@@ -10,7 +10,7 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	24
+#define MAP_VERSION	25
 #define MAP_MAGIC	0x36315870614D676B
 
 #define WALL_BANK_COUNT	16
@@ -428,8 +428,10 @@ void x16_export_map()
 	memset(marked_planes, 0, sizeof(marked_planes));
 	memset(marked_walls, 0, sizeof(marked_walls));
 
-	memset(wall_block, 0, sizeof(wall_block));
 	memset(map_sectors, 0, sizeof(map_sectors));
+
+	memset(wall_block, 0, sizeof(wall_block));
+	wall_block[0].used = 1; // very fist wall is used for hacks
 
 	memset(map_block_data, 0, sizeof(map_block_data));
 

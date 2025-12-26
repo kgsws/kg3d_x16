@@ -125,83 +125,6 @@ cb_attack:
 	; get wall hit
 	jsr	hitscan_wall_pos
 
-	; if(hitscan.axis & 0x80)
-	lda	HITSCAN_AXIS
-	bpl	@aY
-
-	; dist = d0.x - hitscan.x
-	sec
-	lda	HITSCAN_D0_X_L
-	sbc	ARG_THING_X_L
-	sta	VERA_FX_CACHE_L
-	lda	HITSCAN_D0_X_H
-	sbc	ARG_THING_X_H
-	sta	VERA_FX_CACHE_M
-
-	bra	@askip
-@aY:
-	; dist = d0.y - hitscan.y
-	sec
-	lda	HITSCAN_D0_Y_L
-	sbc	ARG_THING_Y_L
-	sta	VERA_FX_CACHE_L
-	lda	HITSCAN_D0_Y_H
-	sbc	ARG_THING_Y_H
-	sta	VERA_FX_CACHE_M
-
-@askip:
-	;; dist *= hitscan.idiv * 2
-
-	; dist is already set
-
-	; hitscan.idiv
-	lda	HITSCAN_IDIV_L
-	sta	VERA_FX_CACHE_H
-	lda	HITSCAN_IDIV_H
-	sta	VERA_FX_CACHE_U
-
-	; accumulate
-	lda	VERA_FX_ACCUM
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	lda	VERA_DATA0
-	sta	VERA_FX_CACHE_L
-	sta	HITSCAN_DIST_L
-	lda	VERA_DATA0
-	sta	VERA_FX_CACHE_M
-	sta	HITSCAN_DIST_H
-
-	;; dd = (dist * hitscan.wtan) >> 8
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; dist is already set
-
-	; hitscan.wtan
-	lda	HITSCAN_WTAN_L
-	sta	VERA_FX_CACHE_H
-	lda	HITSCAN_WTAN_H
-	sta	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	; zz = hitscan.z + dd
-	clc
-	lda	VERA_DATA0
-	adc	ARG_THING_Z_L
-	sta	HITSCAN_ZZ_L
-	lda	VERA_DATA0
-	adc	ARG_THING_Z_H
-	sta	HITSCAN_ZZ_H
-
 	; sector bank
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
@@ -1301,6 +1224,83 @@ hitscan_wall_pos:
 	lda	HITSCAN_D0_Y_H
 	adc	VERA_DATA0
 	sta	HITSCAN_D0_Y_H
+
+	; if(hitscan.axis & 0x80)
+	lda	HITSCAN_AXIS
+	bpl	@aY
+
+	; dist = d0.x - hitscan.x
+	sec
+	lda	HITSCAN_D0_X_L
+	sbc	ARG_THING_X_L
+	sta	VERA_FX_CACHE_L
+	lda	HITSCAN_D0_X_H
+	sbc	ARG_THING_X_H
+	sta	VERA_FX_CACHE_M
+
+	bra	@askip
+@aY:
+	; dist = d0.y - hitscan.y
+	sec
+	lda	HITSCAN_D0_Y_L
+	sbc	ARG_THING_Y_L
+	sta	VERA_FX_CACHE_L
+	lda	HITSCAN_D0_Y_H
+	sbc	ARG_THING_Y_H
+	sta	VERA_FX_CACHE_M
+
+@askip:
+	;; dist *= hitscan.idiv * 2
+
+	; dist is already set
+
+	; hitscan.idiv
+	lda	HITSCAN_IDIV_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_IDIV_H
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	sta	HITSCAN_DIST_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_M
+	sta	HITSCAN_DIST_H
+
+	;; dd = (dist * hitscan.wtan) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; hitscan.wtan
+	lda	HITSCAN_WTAN_L
+	sta	VERA_FX_CACHE_H
+	lda	HITSCAN_WTAN_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	; zz = hitscan.z + dd
+	clc
+	lda	VERA_DATA0
+	adc	ARG_THING_Z_L
+	sta	HITSCAN_ZZ_L
+	lda	VERA_DATA0
+	adc	ARG_THING_Z_H
+	sta	HITSCAN_ZZ_H
 
 	rts
 
