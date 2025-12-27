@@ -130,7 +130,12 @@ static uint32_t process_back_sector(kge_thing_t *thing, kge_line_t *line, float 
 		return 1;
 
 	floorz = bs->plane[PLANE_BOT].height;
+	if(bs->plane[PLANE_BOT].link)
+		floorz -= xymove.th.height;
+
 	ceilingz = bs->plane[PLANE_TOP].height;
+	if(bs->plane[PLANE_TOP].link)
+		ceilingz += xymove.th.height;
 
 	if(ceilingz - floorz < xymove.th.height)
 		return 1;
@@ -551,7 +556,12 @@ do_check:
 			float floorz, ceilingz;
 
 			floorz = bs->plane[PLANE_BOT].height;
+			if(bs->plane[PLANE_BOT].link)
+				floorz -= xymove.th.height;
+
 			ceilingz = bs->plane[PLANE_TOP].height;
+			if(bs->plane[PLANE_TOP].link)
+				ceilingz += xymove.th.height;
 
 			if(!forced)
 			{
@@ -666,6 +676,8 @@ uint32_t thing_ticker(kge_thing_t *thing)
 
 		if(thing->pos.z < thing->prop.floorz)
 			thing->pos.z = thing->prop.floorz;
+
+		moved |= thing_check_links(thing);
 	}
 
 	// update sector links
@@ -728,6 +740,8 @@ kge_thing_t *thing_spawn(float x, float y, float z, kge_sector_t *sec)
 	th->prop.radius = 16;
 	th->prop.height = 32;
 
+	th->prop.viewheight = 16;
+
 	return th;
 }
 
@@ -769,7 +783,12 @@ void thing_update_sector(kge_thing_t *thing, uint32_t forced)
 		return;
 
 	thing->prop.floorz = thing->pos.sector->plane[PLANE_BOT].height;
+	if(thing->pos.sector->plane[PLANE_BOT].link)
+		thing->prop.floorz -= thing->prop.height;
+
 	thing->prop.ceilingz = thing->pos.sector->plane[PLANE_TOP].height;
+	if(thing->pos.sector->plane[PLANE_TOP].link)
+		thing->prop.ceilingz += thing->prop.height;
 
 	xymove.th.botz = thing->pos.z;
 	xymove.th.topz = thing->pos.z + thing->prop.height;
@@ -781,6 +800,25 @@ void thing_update_sector(kge_thing_t *thing, uint32_t forced)
 	recursive_update_sector(thing, thing->pos.sector, forced, 0);
 
 	engine_link_ptr = NULL;
+}
+
+uint32_t thing_check_links(kge_thing_t *thing)
+{
+	if(	thing->pos.sector->plane[PLANE_TOP].link &&
+		thing->pos.z + thing->prop.viewheight > thing->pos.sector->plane[PLANE_TOP].height
+	){
+		thing->pos.sector = thing->pos.sector->plane[PLANE_TOP].link;
+		return 1;
+	}
+
+	if(	thing->pos.sector->plane[PLANE_BOT].link &&
+		thing->pos.z + thing->prop.viewheight < thing->pos.sector->plane[PLANE_BOT].height
+	){
+		thing->pos.sector = thing->pos.sector->plane[PLANE_BOT].link;
+		return 1;
+	}
+
+	return 0;
 }
 
 void thing_thrust(kge_thing_t *th, float speed, uint32_t angle, int32_t pitch)

@@ -46,6 +46,7 @@ enum
 	ATTR_TYPE_TT,
 	ATTR_TYPE_BLOCK_FLAGS,
 	ATTR_TYPE_SCALE,
+	ATTR_TYPE_IMASS,
 	ATTR_TYPE_U7F,
 	ATTR_TYPE_VIEW_HEIGHT,
 	ATTR_TYPE_ATK_HEIGHT,
@@ -212,6 +213,7 @@ static const export_type_t default_player_info =
 	.imass = 64,
 	.gravity = 128,
 	.speed = 13, // 0.5x for crouching / swimming
+	.eflags = THING_EFLAG_CANPUSH,
 	.scale = 96,
 	.step_height = 48, // 0.75x for crouching / swimming
 	.view_height = 0,
@@ -241,7 +243,7 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("blocking", blocking), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("blocked by", blockedby), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("alt block", alt_block), ATTR_TYPE_BLOCK_FLAGS},
-	{THING_ATTR("invmass", imass), ATTR_TYPE_U8},
+	{THING_ATTR("imass", imass), ATTR_TYPE_IMASS},
 	{THING_ATTR("gravity", gravity), ATTR_TYPE_U8},
 	{THING_ATTR("speed", speed), ATTR_TYPE_U8},
 	{THING_ATTR("scale", scale), ATTR_TYPE_SCALE},
@@ -266,7 +268,7 @@ static const thing_edit_flag_t thing_flag[] =
 	{FLAG_STR("spriteclip"), THING_EFLAG_SPRCLIP},
 	{FLAG_STR("noradius"), THING_EFLAG_NORADIUS},
 	{FLAG_STR("waterspec"), THING_EFLAG_WATERSPEC},
-	{FLAG_STR("no push"), THING_EFLAG_NOPUSH},
+	{FLAG_STR("canpush"), THING_EFLAG_CANPUSH},
 	{FLAG_STR("pushable"), THING_EFLAG_PUSHABLE},
 };
 
@@ -402,7 +404,7 @@ const state_action_def_t state_action_def[] =
 		.flags = AFLG_THING | AFLG_WEAPON,
 		.arg[0] =
 		{
-			.name = "rng mask",
+			.name = "rng",
 			.type = ARGT_U8,
 			.def = 1,
 			.lim = {1, 255}
@@ -411,6 +413,31 @@ const state_action_def_t state_action_def[] =
 ///
 	{
 		.name = "death: simple",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "gravity",
+			.type = ARGT_U8,
+			.def = 128,
+			.lim = {0, 255}
+		},
+		.arg[1] =
+		{
+			.name = "blocking",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 0,
+			.lim = {0, 255}
+		},
+		.arg[2] =
+		{
+			.name = "blocked by",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 0,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "death: radius",
 		.flags = AFLG_THING,
 		.arg[0] =
 		{
@@ -1127,6 +1154,9 @@ void x16t_update_thing_view(uint32_t force_show_state)
 			case ATTR_TYPE_SCALE:
 				sprintf(text, "%.3f", ((float)src->u8 * 2.0f + 64.0f) / 256.0f);
 			break;
+			case ATTR_TYPE_IMASS:
+				sprintf(text, "%.3f", (float)src->u8 / 64.0f);
+			break;
 			case ATTR_TYPE_U7F:
 				// special flag MSB
 				if(!(src->u8 & 0x80))
@@ -1517,6 +1547,19 @@ static void te_set_attr(uint8_t *text)
 		falue *= 256.0f;
 		falue -= 64.0f;
 		falue /= 2.0f;
+		if(falue < 0)
+			value = 0;
+		else
+		if(falue > 255.9f)
+			value = 255;
+		else
+			value = falue;
+	} else
+	if(type == ATTR_TYPE_IMASS)
+	{
+		if(sscanf(text, "%f", &falue) != 1)
+			goto invalid;
+		falue *= 64.0f;
 		if(falue < 0)
 			value = 0;
 		else
@@ -2110,7 +2153,7 @@ static uint32_t select_state(uint32_t idx)
 
 static int32_t uin_state_idx(glui_element_t *elm, int32_t x, int32_t y)
 {
-	select_state(elm->base.custom);
+	select_state(elm->base.custom & 0xFF);
 	return 1;
 }
 
@@ -3048,7 +3091,7 @@ void x16t_export()
 		}
 
 		if(!info.view_height)
-			info.view_height = ti->info.height * 3 / 4;
+			info.view_height = ti->info.height * 3 / 4; // this is also used in editor.c
 
 		if(!info.atk_height)
 			info.atk_height = ti->info.height * 8 / 12;

@@ -3668,6 +3668,9 @@ void edit_fix_thing_z(kge_thing_t *thing, uint32_t eflags)
 
 	if(eflags & 1 || thing->pos.z < thing->prop.floorz)
 		thing->pos.z = thing->prop.floorz;
+
+	if(thing_check_links(thing))
+		thing_update_sector(thing, 0);
 }
 
 void edit_fix_marked_things_z(uint32_t keep_on_planes)

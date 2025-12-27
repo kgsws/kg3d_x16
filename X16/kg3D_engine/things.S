@@ -423,8 +423,8 @@ thing_clear:
 ; ARG_THING_DAMAGE_*
 
 thing_damage:
-	pha
-	phx
+	pha	; <angle>
+	phx	; <origin>
 
 	; check for camera damage
 	cpy	G_CAMERA_THING
@@ -568,7 +568,7 @@ thing_damage:
 	sta	THING_STRUCT_IFLAGS,y
 
 	; check for thrust
-	pla
+	pla	; <origin>
 	beq	@no_thrust
 
 	; get thing type
@@ -582,24 +582,13 @@ thing_damage:
 	lda	THTYPE_STRUCT_IMASS,x
 	beq	@no_thrust
 
-	; check damage HI
-	lda	ARG_THING_DAMAGE_H
-	bne	@limit_damage
+	;; damage = (damage * info->imass) >> 6
 
-	; check damage
+	; damage
 	lda	ARG_THING_DAMAGE_L
-	cmp	#$7F
-	bcc	@do_thrust
-
-@limit_damage:
-	lda	#$FE
-
-@do_thrust:
-	;; damage = (damage * info->imass) >> 5
-
-	; speed
 	sta	VERA_FX_CACHE_L
-	stz	VERA_FX_CACHE_M
+	lda	ARG_THING_DAMAGE_H
+	sta	VERA_FX_CACHE_M
 
 	; info->imass
 	lda	THTYPE_STRUCT_IMASS,x
@@ -609,33 +598,34 @@ thing_damage:
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
+	; accumulate
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+
 	; save result
 	stz	VERA_ADDRx_L
 	stz	VERA_DATA0
 
-	; get result (>> 5)
-	stz	VERA_ADDRx_L
+	; get result (>> 8)
+	lda	VERA_DATA0
+
+	; if(damage > 127)
+	bmi	@do_limit
 	ldx	VERA_DATA0
-	lda	TAB_SWAP,x
-	and	#$0F
+	beq	@skip_limit
+
+@do_limit:
+	lda	#$7F
+@skip_limit:
 	sta	MATH_TEMP_A
-	ldx	VERA_DATA0
-	lda	TAB_SWAP,x
-	tax
-	and	#$F0
-	tsb	MATH_TEMP_A
-	txa
-	lsr
-	ror	MATH_TEMP_A
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	; angle
-	pla
-
 	; thrust
+	pla	; <angle>
 	jsr	thing_launch_ang
 
 	; done
@@ -646,7 +636,79 @@ thing_damage:
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	pla
+	pla	; <angle>
+	rts
+
+;;;
+; momentnum with limit
+;;;
+
+get_mlimit_x:
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result
+	stz	VERA_ADDRx_L
+	lda	VERA_DATA0
+	sta	THING_STRUCT_MX_S,y
+	lda	VERA_DATA0
+	sta	THING_STRUCT_MX_L,y
+
+	; overflow check
+	eor	VERA_DATA0
+	bpl	:+
+
+	; max
+	lda	#$FF
+	sta	THING_STRUCT_MX_S,y
+	lsr
+	sta	THING_STRUCT_MX_L,y
+
+	; check sign bit
+	lda	VERA_DATA0
+	bpl	:+
+
+	; min
+	lda	#$80
+	sta	THING_STRUCT_MX_L,y
+	asl
+	sta	THING_STRUCT_MX_S,y
+:
+	rts
+
+get_mlimit_y:
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result
+	stz	VERA_ADDRx_L
+	lda	VERA_DATA0
+	sta	THING_STRUCT_MY_S,y
+	lda	VERA_DATA0
+	sta	THING_STRUCT_MY_L,y
+
+	; overflow check
+	eor	VERA_DATA0
+	bpl	:+
+
+	; max
+	lda	#$FF
+	sta	THING_STRUCT_MY_S,y
+	lsr
+	sta	THING_STRUCT_MY_L,y
+
+	; check sign bit
+	lda	VERA_DATA0
+	bpl	:+
+
+	; min
+	lda	#$80
+	sta	THING_STRUCT_MY_L,y
+	asl
+	sta	THING_STRUCT_MY_S,y
+:
 	rts
 
 ;;;
@@ -654,8 +716,8 @@ thing_damage:
 ;;;
 ; assuming 'BANK_TICKER_STRUCT' is selected
 ; Y - thing index
-; X - MATH_TEMP_A
 ; A - angle (for 'ang' variant)
+; MATH_TEMP_A - speed
 
 thing_launch_ang:
 	; angle
@@ -769,37 +831,9 @@ skip_pitch:
 	sta	VERA_FX_CACHE_H
 	stz	VERA_FX_CACHE_U
 
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
+	; get mlimit X result
+	jsr	get_mlimit_x
 
-	; get result
-	stz	VERA_ADDRx_L
-	lda	VERA_DATA0
-	sta	THING_STRUCT_MX_S,y
-	lda	VERA_DATA0
-	sta	THING_STRUCT_MX_L,y
-
-	; overflow check
-	eor	VERA_DATA0
-	bpl	:+
-
-	; max
-	lda	#$FF
-	sta	THING_STRUCT_MX_S,y
-	lsr
-	sta	THING_STRUCT_MX_L,y
-
-	; check sign bit
-	lda	VERA_DATA0
-	bpl	:+
-
-	; min
-	lda	#$80
-	sta	THING_STRUCT_MX_L,y
-	asl
-	sta	THING_STRUCT_MX_S,y
-:
 	;; th->my = mlimit(th->my + tab_cos[angle] * speed)
 
 	; reset accumulator
@@ -825,39 +859,8 @@ skip_pitch:
 	sta	VERA_FX_CACHE_H
 	stz	VERA_FX_CACHE_U
 
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result
-	stz	VERA_ADDRx_L
-	lda	VERA_DATA0
-	sta	THING_STRUCT_MY_S,y
-	lda	VERA_DATA0
-	sta	THING_STRUCT_MY_L,y
-
-	; overflow check
-	eor	VERA_DATA0
-	bpl	:+
-
-	; max
-	lda	#$FF
-	sta	THING_STRUCT_MY_S,y
-	lsr
-	sta	THING_STRUCT_MY_L,y
-
-	; check sign bit
-	lda	VERA_DATA0
-	bpl	:+
-
-	; min
-	lda	#$80
-	sta	THING_STRUCT_MY_L,y
-	asl
-	sta	THING_STRUCT_MY_S,y
-:
-	; done
-	rts
+	; get mlimit Y result
+	jmp	get_mlimit_y
 
 ;;;
 ; thing height check
@@ -983,7 +986,7 @@ thing_check_pos:
 :
 thing_check_spawn:
 	; reset
-	stz	TMP_THMOVE_HITFIX
+	stz	THMOVE_HITFIX
 
 @failsafe:
 	; prepare
@@ -1629,7 +1632,7 @@ thing_check_spawn:
 	bne	@pass_ex
 
 	; hitfix
-	lda	TMP_THMOVE_HITFIX
+	lda	THMOVE_HITFIX
 	bne	@pass
 
 	; the thing
@@ -1698,14 +1701,11 @@ thing_check_spawn:
 	sta	ARG_THING_X_S
 
 	; if(poscheck.sector)
-	lda	TMP_THMOVE_HITFIX
+	lda	THMOVE_HITFIX
 	beq	@pass_bad
 
 	; sdx = poscheck.sector
 	sta	ARG_THING_SECTOR
-
-	; hitfix = anything non-zero
-	sta	TMP_THMOVE_HITFIX
 
 	jmp	@failsafe
 
@@ -1721,6 +1721,35 @@ thing_check_spawn:
 	rts
 
 @do_thing_block:
+	; ht->eflags & THING_EFLAG_PUSHABLE
+	lda	THING_STRUCT_EFLAGS,y
+	lsr
+	bcc	@no_push
+
+	; th->eflags & THING_EFLAG_CANPUSH
+	lda	THING_STRUCT_EFLAGS,x
+	and	#THING_EFLAG_CANPUSH
+	beq	@no_push
+
+	; ht->mx += th->mx
+	clc
+	lda	THING_STRUCT_MX_S,y
+	adc	THING_STRUCT_MX_S,x
+	sta	THING_STRUCT_MX_S,y
+	lda	THING_STRUCT_MX_L,y
+	adc	THING_STRUCT_MX_L,x
+	sta	THING_STRUCT_MX_L,y
+
+	; ht->my += th->my
+	clc
+	lda	THING_STRUCT_MY_S,y
+	adc	THING_STRUCT_MY_S,x
+	sta	THING_STRUCT_MY_S,y
+	lda	THING_STRUCT_MY_L,y
+	adc	THING_STRUCT_MY_L,x
+	sta	THING_STRUCT_MY_L,y
+
+@no_push:
 	; p2a_coord.x = ht->x / 256 - th->x / 256
 	sec
 	lda	THING_STRUCT_X_L,y
@@ -2669,7 +2698,7 @@ check_radist:
 cb_hitfix:
 	ldy	WALL_NOW
 	lda	WALL_STRUCT_BACKSECTOR,y
-	sta	TMP_THMOVE_HITFIX
+	sta	THMOVE_HITFIX
 	sec
 	rts
 
@@ -3486,32 +3515,21 @@ thing_tick:
 	and	#<~(THING_IFLAG_BLOCKED | THING_IFLAG_GOTHIT)
 	sta	THING_STRUCT_IFLAGS,y
 
-	; projectile repeat check
+	; reset repeat
 	stz	THTICK_REPEAT
-	lda	THING_STRUCT_EFLAGS,y
-	bpl	@do_repeat
 
-	; get type
-	ldx	TICKER_STRUCT_TYPE,y
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
-	; repeat count
-	lda	THTYPE_STRUCT_JUMPZ,x
-	sta	THTICK_REPEAT
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-@do_repeat:
-	;; XY movement
+	; XY momentnum
 	lda	THING_STRUCT_MX_S,y
-	ora	THING_STRUCT_MX_L,y
-	ora	THING_STRUCT_MY_S,y
-	ora	THING_STRUCT_MY_L,y
+	sta	THTICK_MX_S
+	lda	THING_STRUCT_MX_L,y
+	sta	THTICK_MX_L
+	lda	THING_STRUCT_MY_S,y
+	sta	THTICK_MY_S
+	lda	THING_STRUCT_MY_L,y
+	sta	THTICK_MY_L
+	ora	THTICK_MX_S
+	ora	THTICK_MX_L
+	ora	THTICK_MY_S
 	bne	@do_xy_move
 
 	; if(th->iflags & THING_IFLAG_HEIGHTCHECK)
@@ -3550,33 +3568,137 @@ thing_tick:
 	jmp	@no_xy_move
 
 @do_xy_move:
+	; if(th->eflags & THING_EFLAG_PROJECTILE)
+	lda	THING_STRUCT_EFLAGS,y
+	bpl	@check_limit
+
+	; get type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; repeat count
+	lda	THTYPE_STRUCT_JUMPZ,x
+	sta	THTICK_REPEAT
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	bra	@try_xy_move
+
+@check_limit:
+	; rad = 0x7F00
+	lda	#$7F
+	sta	MATH_TEMP_A
+
+	; !(th->radius & 0x80)
+	lda	THING_STRUCT_RADIUS,y
+	bmi	@try_xy_move
+
+	; rad = th->radius << 9
+	; if(th->radius > 0x7F00)
+	asl
+	bmi	:+
+	sta	MATH_TEMP_A
+:
+	; if(th->mx < 0)
+	lda	THTICK_MX_L
+	bpl	@mx_pos
+
+	; if(th->mx + rad < 0)
+	clc
+	adc	MATH_TEMP_A
+	bpl	@check_my
+
+	; tmx = -rad
+	stz	THTICK_MX_S
+	lda	MATH_TEMP_A
+	eor	#$FF
+	ina
+	sta	THTICK_MX_L
+
+	bra	@check_my
+
+@mx_pos:
+	; if(rad - th->mx < 0)
+	sec
+	lda	#0
+	sbc	THTICK_MX_S
+	lda	MATH_TEMP_A
+	sbc	THTICK_MX_L
+	bpl	@check_my
+
+	; tmx = rad
+	stz	THTICK_MX_S
+	lda	MATH_TEMP_A
+	sta	THTICK_MX_L
+
+@check_my:
+	; if(th->my < 0)
+	lda	THTICK_MY_L
+	bpl	@my_pos
+
+	; if(th->my + rad < 0)
+	clc
+	adc	MATH_TEMP_A
+	bpl	@try_xy_move
+
+	; tmy = -rad
+	stz	THTICK_MY_S
+	lda	MATH_TEMP_A
+	eor	#$FF
+	ina
+	sta	THTICK_MY_L
+
+	bra	@try_xy_move
+
+@my_pos:
+	; if(rad - th->my < 0)
+	sec
+	lda	#0
+	sbc	THTICK_MY_S
+	lda	MATH_TEMP_A
+	sbc	THTICK_MY_L
+	bpl	@try_xy_move
+
+	; tmy = rad
+	stz	THTICK_MY_S
+	lda	MATH_TEMP_A
+	sta	THTICK_MY_L
+
+@try_xy_move:
+	; try to move
 	stz	THTICK_RETRY
+
 @xy_retry:
 	; new X
-	ldx	THING_STRUCT_MX_L,y
+	ldx	THTICK_MX_L
 	lda	TAB_SIGN_EXT,x
 	sta	MATH_TEMP_A
 	clc
 	lda	THING_STRUCT_X_S,y
-	adc	THING_STRUCT_MX_S,y
+	adc	THTICK_MX_S
 	sta	ARG_THING_X_S
 	lda	THING_STRUCT_X_L,y
-	adc	THING_STRUCT_MX_L,y
+	adc	THTICK_MX_L
 	sta	ARG_THING_X_L
 	lda	THING_STRUCT_X_H,y
 	adc	MATH_TEMP_A
 	sta	ARG_THING_X_H
 
 	; new Y
-	ldx	THING_STRUCT_MY_L,y
+	ldx	THTICK_MY_L
 	lda	TAB_SIGN_EXT,x
 	sta	MATH_TEMP_A
 	clc
 	lda	THING_STRUCT_Y_S,y
-	adc	THING_STRUCT_MY_S,y
+	adc	THTICK_MY_S
 	sta	ARG_THING_Y_S
 	lda	THING_STRUCT_Y_L,y
-	adc	THING_STRUCT_MY_L,y
+	adc	THTICK_MY_L
 	sta	ARG_THING_Y_L
 	lda	THING_STRUCT_Y_H,y
 	adc	MATH_TEMP_A
@@ -3686,6 +3808,10 @@ thing_tick:
 
 	; projectile death
 	jmp	projectile_death
+:
+	; check fail hit
+	lda	THMOVE_HTYPE
+	bne	@try_slide
 
 @just_stop:
 	; stop
@@ -3695,11 +3821,8 @@ thing_tick:
 	stz	THING_STRUCT_MY_L,x
 
 	jmp	@no_xy_friction
-:
-	; check fail hit
-	lda	THMOVE_HTYPE
-	beq	@just_stop
 
+@try_slide:
 	; get speed and angle
 	lda	THING_STRUCT_MX_S,x
 	sta	MATH_P2A_X_L
@@ -3780,9 +3903,9 @@ thing_tick:
 
 	; get result (>> 8)
 	lda	VERA_DATA0
-	sta	THING_STRUCT_MX_S,x
+	sta	THTICK_MX_S
 	lda	VERA_DATA0
-	sta	THING_STRUCT_MX_L,x
+	sta	THTICK_MX_L
 
 	;; vect.y = (tab_cos[poscheck.hitang] * dist) >> 8
 
@@ -3804,13 +3927,99 @@ thing_tick:
 
 	; get result (>> 8)
 	lda	VERA_DATA0
-	sta	THING_STRUCT_MY_S,x
+	sta	THTICK_MY_S
 	lda	VERA_DATA0
-	sta	THING_STRUCT_MY_L,x
+	sta	THTICK_MY_L
 
-	; retry
+	; check
+	ora	THTICK_MX_S
+	ora	THTICK_MX_L
+	ora	THTICK_MY_S
+	bne	:+
+	jmp	@just_stop
+:
+	; retry counter
 	inc	THTICK_RETRY
 	ldy	RET_THING_IDX
+
+	; if(th->ticker.func == TFUNC_PLAYER)
+	lda	TICKER_STRUCT_FUNC,y
+	cmp	#TICKER_FUNC_PLAYER
+	beq	:+
+
+	;; th->mx = mlimit((th->mx >> 1) + vect.x)
+
+	; * 1
+	lda	#1
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; th->mx >> 1
+	lda	THING_STRUCT_MX_L,y
+	asl
+	lda	THING_STRUCT_MX_L,y
+	ror
+	sta	VERA_FX_CACHE_U
+	lda	THING_STRUCT_MX_S,y
+	ror
+	sta	VERA_FX_CACHE_H
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; vect.x
+	lda	THTICK_MX_S
+	sta	VERA_FX_CACHE_H
+	lda	THTICK_MX_L
+	sta	VERA_FX_CACHE_U
+
+	; get mlimit X result
+	jsr	get_mlimit_x
+
+	;; th->my = mlimit((th->my >> 1) + vect.y)
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; th->my >> 1
+	lda	THING_STRUCT_MY_L,y
+	asl
+	lda	THING_STRUCT_MY_L,y
+	ror
+	sta	VERA_FX_CACHE_U
+	lda	THING_STRUCT_MY_S,y
+	ror
+	sta	VERA_FX_CACHE_H
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; vect.x
+	lda	THTICK_MY_S
+	sta	VERA_FX_CACHE_H
+	lda	THTICK_MY_L
+	sta	VERA_FX_CACHE_U
+
+	; get mlimit Y result
+	jsr	get_mlimit_y
+
+	; retry
+	jmp	@xy_retry
+:
+	; appply (player)
+	lda	THTICK_MX_S
+	sta	THING_STRUCT_MX_S,y
+	lda	THTICK_MX_L
+	sta	THING_STRUCT_MX_L,y
+	lda	THTICK_MY_S
+	sta	THING_STRUCT_MY_S,y
+	lda	THTICK_MY_L
+	sta	THING_STRUCT_MY_L,y
+
+	; retry
 	jmp	@xy_retry
 
 @xy_pass:
@@ -4106,12 +4315,17 @@ thing_tick:
 	; if(th->eflags & THING_EFLAG_WATERSPEC)
 	lda	THING_STRUCT_EFLAGS,y
 	and	#THING_EFLAG_WATERSPEC
-	beq	@do_z_friction
-
-	; gravity
-	lda	THING_STRUCT_GRAVITY,y
+	bne	:+
+	jmp	@do_z_friction
+:
+	; gravity << 4
+	ldx	THING_STRUCT_GRAVITY,y
+	lda	TAB_SWAP,x
+	and	#$F0
 	sta	MATH_VAR_L
-	stz	MATH_VAR_H
+	lda	TAB_SWAP,x
+	and	#$0F
+	sta	MATH_VAR_H
 
 	; get type
 	ldx	TICKER_STRUCT_TYPE,y
@@ -4123,7 +4337,7 @@ thing_tick:
 	; direction check
 	lda	THTYPE_STRUCT_WATER_HEIGHT,x
 	cmp	THTYPE_STRUCT_VIEW_HEIGHT,x
-	bcc	:+
+	bcc	@float
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
@@ -4138,12 +4352,14 @@ thing_tick:
 	bpl	@no_z_friction
 
 	; flip direction
+	sec
 	lda	#$00
 	sbc	MATH_VAR_L
 	sta	MATH_VAR_L
-	bcs	:+
-	dec	MATH_VAR_H
-:
+	lda	#$00
+	sbc	MATH_VAR_H
+	sta	MATH_VAR_H
+@float:
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
@@ -4157,7 +4373,7 @@ thing_tick:
 	adc	MATH_VAR_H
 	sta	THING_STRUCT_MZ_L,y
 
-	bra	@no_z_friction
+	bra	@do_z_friction
 
 @skip_water:
 	;; gravity
@@ -4224,7 +4440,7 @@ thing_tick:
 	beq	:+
 
 	dec	THTICK_REPEAT
-	jmp	@do_repeat
+	jmp	@try_xy_move
 :
 
 ;;;
@@ -4253,6 +4469,9 @@ thing_anim:
 	lda	THING_STRUCT_NXTFRM_H,y
 
 thing_actnext:
+	; reset
+	stz	TMP_ACTION_TICKADD
+
 	; restore
 	ldy	THTICK_ACTION_TDX
 
@@ -4321,7 +4540,9 @@ thing_actdone:
 	pha	; <sprite>
 
 	; ticks
+	clc
 	lda	THSTATE_STRUCT_TICKS,x
+	adc	TMP_ACTION_TICKADD
 	pha	; <ticks>
 
 	; ticker structure bank

@@ -750,6 +750,13 @@ radpass:
 		{
 			thing_t *ht = thing_ptr(odx);
 
+			if(	ht->eflags & THING_EFLAG_PUSHABLE &&
+				th->eflags & THING_EFLAG_CANPUSH
+			){
+				ht->mx += th->mx;
+				ht->my += th->my;
+			}
+
 			p2a_coord.x = ht->x / 256 - th->x / 256;
 			p2a_coord.y = ht->y / 256 - th->y / 256;
 			poscheck.hitang = point_to_angle() >> 4;
@@ -1014,9 +1021,9 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 	if(	odx &&
 		info->imass
 	){
+		damage = (damage * info->imass) >> 6;
 		if(damage > 127)
 			damage = 127;
-		damage = (damage * info->imass) >> 5;
 		thing_launch_ang(tdx, angle, damage);
 	}
 }
@@ -1293,6 +1300,7 @@ void thing_tick()
 	uint32_t repeat = 0;
 	sector_t *sec;
 	int32_t zz;
+	int32_t tmx, tmy;
 
 	//
 	// camera stuff
@@ -1310,21 +1318,56 @@ void thing_tick()
 		}
 	}
 #endif
+	// XY move vector
+	tmx = th->mx;
+	tmy = th->my;
 
-	// projectile repeat
+	// reset hit flag
+	th->iflags &= ~(THING_IFLAG_BLOCKED | THING_IFLAG_GOTHIT);
+
+	// projectile
 	if(th->eflags & THING_EFLAG_PROJECTILE)
 		repeat = thing_type[th->ticker.type].jump_pwr;
 
 do_repeat:
 	//
 	// XY movement
-	th->iflags &= ~(THING_IFLAG_BLOCKED | THING_IFLAG_GOTHIT);
-	if(th->mx || th->my)
+
+	if(	!(th->eflags & THING_EFLAG_PROJECTILE) &&
+		!(th->radius & 0x80)
+	){
+		int32_t rad = th->radius << 9;
+
+		if(th->radius > 0x7F00)
+			rad = 0x7F00;
+
+		if(th->mx < 0)
+		{
+			if(th->mx + rad < 0)
+				tmx = -rad;
+		} else
+		{
+			if(rad - th->mx < 0)
+				tmx = rad;
+		}
+
+		if(th->my < 0)
+		{
+			if(th->my + rad < 0)
+				tmy = -rad;
+		} else
+		{
+			if(rad - th->my < 0)
+				tmy = rad;
+		}
+	}
+
+	if(tmx || tmy)
 	{
 		int32_t nx, ny;
 
-		nx = th->x + th->mx;
-		ny = th->y + th->my;
+		nx = th->x + tmx;
+		ny = th->y + tmy;
 
 		if(thing_check_pos(tick_idx, nx / 256, ny / 256, th->z / 256, 0))
 		{
@@ -1368,8 +1411,15 @@ apply_pos:
 
 				if(thing_check_pos(tick_idx, nx / 256, ny / 256, th->z / 256, 0))
 				{
-					th->mx = vect.x;
-					th->my = vect.y;
+					if(th->ticker.func == TFUNC_PLAYER)
+					{
+						th->mx = vect.x;
+						th->my = vect.y;
+					} else
+					{
+						th->mx = mlimit((th->mx >> 1) + vect.x);
+						th->my = mlimit((th->my >> 1) + vect.y);
+					}
 					goto apply_pos;
 				} else
 				{
@@ -1523,12 +1573,10 @@ did_swap:
 			{
 				// sinks
 				if(zz > th->floorz)
-					th->mz -= th->gravity;
+					th->mz -= th->gravity << 4;
 			} else
 				// floats
-				th->mz += th->gravity;
-
-			goto skip_z_friction;
+				th->mz += th->gravity << 4;
 		}
 	} else
 	if(th->gravity)

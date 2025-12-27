@@ -162,7 +162,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 			{
 				th->angle += 0x40;
 				th->angle ^= tmp & 0x80;
-				thing_launch(tdx, st->arg[0]);
+				thing_launch_ang(tdx, th->angle, st->arg[0]);
 
 				th->mz = st->arg[0] << 8;
 			}
@@ -172,13 +172,25 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		}
 		break;
 		case 7: // ticks: add
-			th->ticks += rng_get() & st->arg[0];
+			th->ticks += rng_val(st->arg[0]);
 		break;
 		case 8: // death: simple
+		case 9: // death: radius
 		{
 			th->gravity = st->arg[0];
 			th->blocking = st->arg[1];
 			th->blockedby = st->arg[2];
+
+			if(act != 9)
+				break;
+
+			th->eflags |= THING_EFLAG_NORADIUS;
+			th->iflags &= ~THING_IFLAG_HEIGHTCHECK;
+
+			th->radius = thing_type[th->ticker.type].alt_radius;
+
+			if(thing_check_pos(tdx, th->x / 256, th->y / 256, th->z / 256, 0))
+				thing_apply_pos();
 		}
 		break;
 	}

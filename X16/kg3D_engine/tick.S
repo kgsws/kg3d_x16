@@ -49,6 +49,16 @@ tick_clear:
 ;;;
 
 tick_run:
+	; palette flash
+	sec
+	lda	G_DAMAGE_LEVEL
+	sbc	#3
+	bcs	:+
+	lda	#0
+:
+	sta	G_DAMAGE_LEVEL
+
+	; run all tickers
 	lda	G_TICKER_TOP
 	sta	G_TICKER_IDX
 @loop:

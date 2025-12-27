@@ -2716,12 +2716,6 @@ static void render()
 	if(!(frame_counter % 32))
 #endif
 	{
-		if(camera_damage <= 3)
-			camera_damage = 0;
-		else
-		if(camera_damage)
-			camera_damage -= 3;
-
 		level_tick++;
 		tick_run(); // 15 TPS
 		input_action = 0;

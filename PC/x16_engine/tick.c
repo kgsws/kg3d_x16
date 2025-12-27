@@ -28,6 +28,17 @@ void tick_clear()
 
 void tick_run()
 {
+	// camera stuff
+
+	if(camera_damage <= 3)
+		camera_damage = 0;
+	else
+	if(camera_damage)
+		camera_damage -= 3;
+
+
+	// run tickers
+
 	tick_idx = top;
 	while(tick_idx)
 	{

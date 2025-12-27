@@ -151,6 +151,35 @@ get_spread_arg:
 	rts
 
 ;;;
+; death action base
+;;;
+
+normal_death:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; arguments
+	lda	THSTATE_STRUCT_ARG0,x
+	pha
+	lda	THSTATE_STRUCT_ARG1,x
+	pha
+	lda	THSTATE_STRUCT_ARG2,x
+	pha
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; arguments
+	pla
+	sta	THING_STRUCT_BLOCKEDBY,y
+	pla
+	sta	THING_STRUCT_BLOCKING,y
+	pla
+	sta	THING_STRUCT_GRAVITY,y
+
+	rts
+
+;;;
 ; weapon: ready
 ;;;
 ; can be run only from local weapon
@@ -526,14 +555,152 @@ act_atk_hitscan:
 	jmp	thing_actdone
 
 ;;;
-; TODO
+; effect: blood splat
 ;;;
 
 act_eff_blood:
-act_tick_add:
-act_die_simple:
-;	stx	DBG_BYTE0
+	ldx	THTICK_ACTION_ST_IDX
 
+	; arguments
+	lda	THSTATE_STRUCT_ARG0,x
+	sta	MATH_TEMP_A
+	lda	THSTATE_STRUCT_ARG1,x
+	sta	BLOODFX_BOOST
+	lda	THSTATE_STRUCT_ARG2,x
+	sta	BLOODFX_CHANCE
+
+	; tmp = rng_get()
+	jsr	rng_get
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; th->mz = 0
+	lda	#0
+	sta	THING_STRUCT_MZ_S,y
+	sta	THING_STRUCT_MZ_L,y
+
+	; if(st->arg[0])
+	ldx	MATH_TEMP_A
+	beq	@no_power
+
+	; tmp & 0x80
+	lda	MATH_TEMP
+	and	#$80
+	sta	MATH_TEMP_B
+
+	; th->angle += 0x40
+	clc
+	lda	THING_STRUCT_ANGLE,y
+	adc	#$40
+
+	; th->angle ^= tmp & 0x80
+	eor	MATH_TEMP_B
+	sta	THING_STRUCT_ANGLE,y
+
+	; thing_launch_ang(tdx, th->angle, st->arg[0])
+	jsr	thing_launch_ang
+
+	; th->mz = st->arg[0] << 8
+	lda	MATH_TEMP_A
+	sta	THING_STRUCT_MZ_L,y
+
+@no_power:
+	; tmp & 0x7F
+	lda	MATH_TEMP
+	and	#$7F
+
+	; if(st->arg[2] > (tmp & 0x7F))
+	cmp	BLOODFX_CHANCE
+	bcs	@no_boost
+
+	; th->mz = st->arg[1] << 8
+	lda	BLOODFX_BOOST
+	sta	THING_STRUCT_MZ_L,y
+
+@no_boost:
+	; done
+	jmp	thing_actdone
+
+
+;;;
+; ticks: add
+;;;
+
+act_tick_add:
+	;; th->ticks += rng_val(st->arg[0])
+
+	ldy	THTICK_ACTION_ST_IDX
+	ldx	THSTATE_STRUCT_ARG0,y
+	jsr	rng_val
+	lda	MATH_TEMP
+	sta	TMP_ACTION_TICKADD
+
+	; done
+	jmp	thing_actdone
+
+;;;
+; death: simple
+;;;
+
+act_die_simple:
+	jsr	normal_death
+	jmp	thing_actdone
+
+;;;
+; death: radius
+;;;
+
+act_die_radius:
+	jsr	normal_death
+
+	; th->eflags |= THING_EFLAG_NORADIUS
+	lda	THING_STRUCT_EFLAGS,y
+	ora	#THING_EFLAG_NORADIUS
+	sta	THING_STRUCT_EFLAGS,y
+
+	; th->iflags &= ~THING_IFLAG_HEIGHTCHECK
+	lda	THING_STRUCT_IFLAGS,y
+	and	#<~THING_IFLAG_HEIGHTCHECK
+	sta	THING_STRUCT_IFLAGS,y
+
+	; th->ticker.type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; <alt_radius>
+	lda	THTYPE_STRUCT_ALT_RADIUS,x
+	pha
+
+	; XY
+	jsr	action_xy
+
+	; Z
+	lda	THING_STRUCT_Z_L,y
+	sta	ARG_THING_Z_L
+	lda	THING_STRUCT_Z_H,y
+	sta	ARG_THING_Z_H
+
+	; th->radius = thing_type[th->ticker.type].alt_radius
+	pla	; <alt_radius>
+	sta	THING_STRUCT_RADIUS,y
+
+	; check new position
+	stz	ARG_THING_SECTOR
+	jsr	thing_check_pos
+
+	; check result
+	lda	THMOVE_SECTOR
+	beq	:+
+
+	; apply
+	jsr	thing_apply_pos
+:
+	; done
 	jmp	thing_actdone
 
 ;;;
@@ -549,6 +716,7 @@ action_table:
 	.word	act_eff_blood
 	.word	act_tick_add
 	.word	act_die_simple
+	.word	act_die_radius
 
 ;;;
 ; extra tables

@@ -27,8 +27,8 @@ TMP_REND_WPN_OFFS_H = $1F
 TMP_REND_WPN_LIGHT = $20
 TMP_REND_WPN_IDX = $21
 
-; pos check temp storage
-TMP_THMOVE_HITFIX = $21
+; state action temp storage
+TMP_ACTION_TICKADD = $21
 
 ; pointers
 COLORMAP_L = $22	; forced by tables, do not change address
@@ -283,6 +283,7 @@ THMOVE_ISLINK = $D0
 THMOVE_MIDHIT = $D1
 THMOVE_MIDSEC = $D2
 THMOVE_MZ_L = $D3
+THMOVE_HITFIX = $D4
 
 ; thing movement (overlap)
 THMOVE_DIFF_L = THMOVE_TFZ_L
@@ -291,6 +292,10 @@ THMOVE_RADIUS_L = THMOVE_TCZ_L
 THMOVE_RADIUS_H = THMOVE_TCZ_H
 
 ; thing ticker (overlaps movement)
+THTICK_MX_S = $DA
+THTICK_MX_L = $DB
+THTICK_MY_S = $DC
+THTICK_MY_L = $DD
 THTICK_REPEAT = $DE
 THTICK_RETRY = $DF
 
@@ -313,6 +318,10 @@ THTICK_ACTION_ST_BNK = $DF
 
 ; projectile (overlaps actions)
 PROJECTILE_SPEED = THTICK_ACTION_COUNT
+
+; blood splat
+BLOODFX_BOOST = THTICK_ACTION_SPREAD_Y
+BLOODFX_CHANCE = THTICK_ACTION_HALF_PITCH
 
 ; player ticker
 PLTICK_SECTOR = $B0

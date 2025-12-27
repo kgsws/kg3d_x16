@@ -219,9 +219,7 @@ load_render:
 	jsr	copy_code
 
 	; init rendering
-	jsr	render_init
-
-	rts
+	jmp	render_init
 
 copy_code:
 	lda	#>LDR_CODE_DEST
