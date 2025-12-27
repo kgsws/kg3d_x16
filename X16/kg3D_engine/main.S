@@ -10,16 +10,18 @@
 .include "menu.inc"
 .include "video.inc"
 .include "render.inc"
-.include "things.inc"
+.include "tick.inc"
 .include "input.inc"
 .include "sound.inc"
 
 .export clear_bank
+.export clear_bank_bot
 .export time_update
 .export func_jsr
 .export load_mapfs
 .export load_render
 .export rng_get
+.export rng_val
 .export get_hex
 
 .segment "CODE"
@@ -79,8 +81,12 @@ start:
 	jsr	time_update
 	lda	G_NEW_TICS
 	beq	@wait_loop
-	sta	TICK_COUNT
+	sta	G_TICK_COUNT
 	stz	G_NEW_TICS
+
+	; DEBUG - force single tick
+;	lda	#1
+;	sta	G_TICK_COUNT
 
 	; enable math
 	jsr	math_setup_vera
@@ -99,11 +105,11 @@ start:
 	bne	:+
 	inc	G_LEVEL_TICK_H
 :
-	; things
-	jsr	thing_tick
+	; tickers
+	jsr	tick_run
 
 	; next tick
-	dec	TICK_COUNT
+	dec	G_TICK_COUNT
 	bne	@tick_loop
 
 	; debugger framerate
@@ -117,11 +123,16 @@ start:
 ;;;
 
 clear_bank:
+	ldx	#32
 	lda	#$A0
+	bra	clear_bank_ex
+clear_bank_bot:
+	ldx	#16
+	lda	#$B0
+clear_bank_ex:
 	sta	@loop+2
 	lda	#0
-	ldy	#0
-	ldx	#32
+	tay
 @loop:
 	sta	$A000,y	; modified address
 	dey
@@ -208,9 +219,7 @@ load_render:
 	jsr	copy_code
 
 	; init rendering
-	jsr	render_init
-
-	rts
+	jmp	render_init
 
 copy_code:
 	lda	#>LDR_CODE_DEST
@@ -255,7 +264,7 @@ rng_get:
 
 	inc	G_RNG_H
 	lda	G_RNG_H
-	cmp	#>TAB_RNG_END
+	cmp	#>TAB_RNG_MASK
 	bcc	:+
 
 	lda	#>TAB_RANDOM
@@ -264,3 +273,40 @@ rng_get:
 	pla
 	sta	REG_RAM_BANK
 	rts
+
+;;;
+; unbiased RNG
+;;;
+; result is in MATH_TEMP
+; X - max value
+
+rng_val:
+	lda	REG_RAM_BANK
+	pha
+
+	lda	#BANK_RANDOM
+	sta	REG_RAM_BANK
+
+@loop:
+	lda	(G_RNG_L)
+	and	TAB_RNG_MASK,x
+	sta	MATH_TEMP
+
+	inc	G_RNG_L
+	bne	:+
+
+	inc	G_RNG_H
+	lda	G_RNG_H
+	cmp	#>TAB_RNG_MASK
+	bcc	:+
+
+	lda	#>TAB_RANDOM
+	sta	G_RNG_H
+:
+	cpx	MATH_TEMP
+	bcc	@loop
+
+	pla
+	sta	REG_RAM_BANK
+	rts
+

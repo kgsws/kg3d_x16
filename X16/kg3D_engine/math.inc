@@ -6,6 +6,8 @@
 .import	math_idiv_ns
 .import	math_atan
 .import math_p2a
+.import math_p2d
+.import math_ang8
 .import math_u16
 .import math_intclip
 .import math_txtint

@@ -3,38 +3,12 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "defs.h"
+#include "tick.h"
 #include "things.h"
 #include "hitscan.h"
 
-typedef struct
-{
-	int16_t x, y, z;
-	uint8_t origin;
-	uint8_t sector;
-	uint8_t angle;
-	uint8_t type;
-	uint8_t axis;
-	uint8_t link;
-	uint8_t radius;
-	uint8_t height;
-	uint8_t blockedby;
-	uint16_t damage;
-	int16_t sin;
-	int16_t cos;
-	int16_t idiv;
-	int16_t wtan;
-	int16_t ptan;
-	//
-	int16_t dist;
-	int16_t ztmp;
-	//
-	uint8_t thing_pick;
-	uint8_t thing_sdx;
-	int16_t thing_zz;
-} hitscan_t;
-
 //
-static hitscan_t hitscan;
+hitscan_t hitscan;
 
 static uint8_t sector_list[256];
 static uint8_t sector_idx;
@@ -71,7 +45,7 @@ static void scan_things(uint32_t (*cb)(thing_t*,int16_t))
 		for(uint32_t i = 0; i < 31; i++)
 		{
 			uint8_t tdx = sectorth[sdx][i];
-			thing_t *th = things + tdx;
+			thing_t *th = thing_ptr(tdx);
 
 			if(	tdx &&
 				tdx != hitscan.origin &&
@@ -80,17 +54,10 @@ static void scan_things(uint32_t (*cb)(thing_t*,int16_t))
 			){
 				thing_list[thing_idx] = tdx;
 
-				d1.x = (th->x >> 8) - hitscan.x;
-				d1.y = (th->y >> 8) - hitscan.y;
-
-				dd = (d1.x * hitscan.cos - d1.y * hitscan.sin) >> 8;
-				if(dd < 0)
-					dd = -dd;
-
-				dd -= th->radius;
+				dd = hitscan_thing_dd(th, &d1);
 				if(dd <= 0)
 				{
-					dt = (d1.y * hitscan.cos + d1.x * hitscan.sin) >> 8;
+					dt = hitscan_thing_dt(th, &d1);
 					if(dt >= 0)
 					{
 						dd += dt;
@@ -131,51 +98,15 @@ static uint32_t cb_attack_thing(thing_t *th, int16_t dd)
 	return 1;
 }
 
-static uint32_t cb_attack(wall_combo_t *wall)
+static uint32_t cb_attack(wall_t *wall)
 {
 	vertex_t d0;
-	vertex_t *vtx;
 	thing_t *th;
 	int32_t dist, dd, zz;
-	uint8_t angle, texture, tdx;
+	uint8_t texture, tdx;
 	sector_t *sec = map_sectors + hitscan.sector;
 
-	// V0 diff
-	vtx = &wall->solid.vtx;
-	d0.x = vtx->x - hitscan.x;
-	d0.y = vtx->y - hitscan.y;
-
-	// get distance
-	dist = (d0.x * wall->solid.dist.y - d0.y * wall->solid.dist.x) >> 8;
-
-	// get angle
-	angle = wall->solid.angle >> 4;
-	angle -= hitscan.angle;
-
-	// get location A
-	d0.x = hitscan.x;
-	d0.x += (wall->solid.dist.y * dist) >> 8;
-	d0.y = hitscan.y;
-	d0.y -= (wall->solid.dist.x * dist) >> 8;
-
-	// get location B
-	dist *= tab_tan_hs[angle];
-	dist >>= 8;
-	d0.x += (wall->solid.dist.x * dist) >> 8;
-	d0.y += (wall->solid.dist.y * dist) >> 8;
-
-	// get range
-	if(hitscan.axis & 0x80)
-		dist = d0.x - hitscan.x;
-	else
-		dist = d0.y - hitscan.y;
-
-	dist *= hitscan.idiv * 2;
-	dist >>= 8;
-
-	// get Z
-	dd = (dist * hitscan.wtan) >> 8;
-	zz = hitscan.z + dd;
+	zz = hitscan_wall_pos(wall, &d0, &dist);
 
 	// check floor
 	if(zz < sec->floor.height)
@@ -217,20 +148,20 @@ hit_plane:
 	}
 
 	// default texture
-	texture = wall->portal.texture_top;
+	texture = wall->top.texture;
 
 	// check wall type
-	if(wall->solid.angle & MARK_PORTAL)
+	if(wall->angle & WALL_MARK_EXTENDED)
 	{
 		// check backsector
-		if(wall->portal.backsector)
+		if(wall->backsector)
 		{
-			sector_t *bs = map_sectors + wall->portal.backsector;
+			sector_t *bs = map_sectors + wall->backsector;
 
 			// bottom
 			if(zz < bs->floor.height)
 			{
-				texture = wall->portal.texture_bot;
+				texture = wall->bot.texture;
 				goto do_wall;
 			}
 
@@ -239,16 +170,16 @@ hit_plane:
 				goto do_wall;
 
 			// blocking
-			if(!(wall->portal.blocking & hitscan.blockedby))
+			if(!(wall->blocking & hitscan.blockedby))
 				return 0;
 
 			texture = 0x80;
+		} else
+		if(wall->split != 0x8000)
+		{
+			if(zz <= wall->split)
+				texture = wall->bot.texture;
 		}
-	} else
-	if((wall->solid.angle & MARK_MID_BITS) == MARK_SPLIT)
-	{
-		if(zz <= wall->split.height_split)
-			texture = wall->split.texture_bot;
 	}
 #if 0
 	// ceiling check
@@ -258,8 +189,8 @@ hit_plane:
 #endif
 do_wall:
 	// radius offset
-	d0.x -= (wall->solid.dist.y * hitscan.radius) >> 8;
-	d0.y += (wall->solid.dist.x * hitscan.radius) >> 8;
+	d0.x -= (wall->dist.y * hitscan.radius) >> 8;
+	d0.y += (wall->dist.x * hitscan.radius) >> 8;
 
 do_hit:
 	hitscan.dist = dist;
@@ -269,7 +200,7 @@ do_hit:
 		scan_things(cb_attack_thing);
 		if(hitscan.thing_pick)
 		{
-			thing_type_t *info = thing_type + things[hitscan.thing_pick].type;
+			thing_type_t *info = thing_type + thing_ptr(hitscan.thing_pick)->ticker.type;
 
 			hitscan.sector = hitscan.thing_sdx;
 
@@ -300,7 +231,7 @@ do_spawn:
 	if(!tdx)
 		return 1;
 
-	th = things + tdx;
+	th = thing_ptr(tdx);
 	th->target = hitscan.origin;
 	th->angle = hitscan.angle;
 
@@ -310,9 +241,9 @@ do_spawn:
 //
 // generic hitscan
 
-void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
+void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 {
-	thing_t *th = things + tdx;
+	thing_t *th = thing_ptr(tdx);
 	uint8_t sdx = thingsec[tdx][0];
 	int16_t x = th->x >> 8;
 	int16_t y = th->y >> 8;
@@ -328,15 +259,15 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 	while(1)
 	{
 		sector_t *sec = map_sectors + sdx;
-		void *wall_ptr = (void*)map_data + sec->walls;
+		wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
+		wall_t *walf = wall;
 		uint8_t last_angle;
 
 		{
-			wall_combo_t *wall = wall_ptr;
 			vertex_t *vtx;
 
 			// V0 diff
-			vtx = &wall->solid.vtx;
+			vtx = &wall->vtx;
 			p2a_coord.x = vtx->x - x;
 			p2a_coord.y = vtx->y - y;
 
@@ -346,14 +277,9 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 
 		while(1)
 		{
-			wall_combo_t *wall = wall_ptr;
-			wall_end_t *waln;
+			wall_t *waln = map_walls[sec->wall.bank] + wall->next;
 			vertex_t *vtx;
 			uint8_t angle, hit;
-
-			// wall ptr
-			wall_ptr += wall_size_tab[(wall->solid.angle & MARK_MID_BITS) >> 12];
-			waln = wall_ptr;
 
 			// V0 diff
 			vtx = &waln->vtx;
@@ -379,27 +305,26 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 					break;
 				}
 
-				if(!(wall->solid.angle & MARK_PORTAL))
+				if(!wall->backsector)
 					return;
 
-				if(!wall->portal.backsector)
-					return;
-
-				sdx = wall->portal.backsector;
+				sdx = wall->backsector;
 
 				sector_list[sector_idx++] = sdx;
 
 				break;
 			}
 
-			if(wall->solid.angle & MARK_LAST)
+			last_angle = angle;
+			wall = waln;
+
+			if(wall == walf)
 			{
 				// this should never happen
+				// THIS CHECK IS NOT PRESENT IN 6502 CODE
 				printf("NO HITSCAN WALL!\n");
 				return;
 			}
-
-			last_angle = angle;
 		}
 	}
 }
@@ -409,29 +334,20 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_combo_t*))
 
 void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, uint8_t type)
 {
-	thing_t *th = things + tdx;
+	thing_t *th = thing_ptr(tdx);
 	thing_type_t *info = thing_type + type;
 
 	hitscan.origin = tdx;
 
 	hitscan.radius = info->alt_radius + 1;
 	hitscan.height = info->height;
-	hitscan.blockedby = info->blockedby;
+	hitscan.blockedby = info->alt_block;
 	hitscan.damage = info->health;
 
 	hitscan.z = th->z >> 8;
 	hitscan.z += zadd;
 
-	hitscan.sin = tab_sin[hang];
-	hitscan.cos = tab_cos[hang];
-
-	hitscan.axis = (hang + 0x20) << 1;
-	if(hitscan.axis & 0x80)
-		hitscan.idiv = inv_div[hitscan.sin];
-	else
-		hitscan.idiv = inv_div[hitscan.cos];
-
-	hitscan.wtan = tab_tan_hs[halfpitch];
+	hitscan_angles(hang, halfpitch);
 
 	if(halfpitch & 0x40)
 		halfpitch -= 0x40;
@@ -447,3 +363,86 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, 
 	hitscan_func(tdx, hang, cb_attack);
 }
 
+//
+// wall hit calculation
+
+void hitscan_angles(uint8_t hang, uint8_t halfpitch)
+{
+	hitscan.sin = tab_sin[hang];
+	hitscan.cos = tab_cos[hang];
+
+	hitscan.axis = (hang + 0x20) << 1;
+	if(hitscan.axis & 0x80)
+		hitscan.idiv = inv_div[hitscan.sin];
+	else
+		hitscan.idiv = inv_div[hitscan.cos];
+
+	hitscan.wtan = tab_tan_hs[halfpitch];
+}
+
+int32_t hitscan_wall_pos(wall_t *wall, vertex_t *d0, int32_t *dout)
+{
+	vertex_t *vtx;
+	uint8_t angle;
+	int32_t dist, dd;
+
+	// V0 diff
+	vtx = &wall->vtx;
+	d0->x = vtx->x - hitscan.x;
+	d0->y = vtx->y - hitscan.y;
+
+	// get distance
+	dist = (d0->x * wall->dist.y - d0->y * wall->dist.x) >> 8;
+
+	// get angle
+	angle = wall->angle >> 4;
+	angle -= hitscan.angle;
+
+	// get location A
+	d0->x = hitscan.x;
+	d0->x += (wall->dist.y * dist) >> 8;
+	d0->y = hitscan.y;
+	d0->y -= (wall->dist.x * dist) >> 8;
+
+	// get location B
+	dist *= tab_tan_hs[angle];
+	dist >>= 8;
+	d0->x += (wall->dist.x * dist) >> 8;
+	d0->y += (wall->dist.y * dist) >> 8;
+
+	// get range
+	if(hitscan.axis & 0x80)
+		dist = d0->x - hitscan.x;
+	else
+		dist = d0->y - hitscan.y;
+
+	dist *= hitscan.idiv * 2;
+	dist >>= 8;
+	if(dout)
+		*dout = dist;
+
+	// get Z
+	dd = (dist * hitscan.wtan) >> 8;
+	return hitscan.z + dd;
+}
+
+int32_t hitscan_thing_dd(thing_t *th, vertex_t *d1)
+{
+	int32_t dd;
+
+	d1->x = (th->x >> 8) - hitscan.x;
+	d1->y = (th->y >> 8) - hitscan.y;
+
+	dd = (d1->x * hitscan.cos - d1->y * hitscan.sin) >> 8;
+	if(dd < 0)
+		dd = -dd;
+
+	dd -= th->radius;
+
+	return dd;
+}
+
+int32_t hitscan_thing_dt(thing_t *th, vertex_t *d1)
+{
+	return (d1->y * hitscan.cos + d1->x * hitscan.sin) >> 8;
+}

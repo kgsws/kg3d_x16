@@ -34,6 +34,8 @@
 
 #define SWPN_MAX_DATA	4096
 
+#define ANIM_TIME_EXPORT_OFFSET	4
+
 #define LIGHT_CRC_XOR	0xD17F114E
 #define PLANE_CRC_XOR	0x50E3FB68
 #define WALL_CRC_XOR	0x8ED0D2DA
@@ -3685,7 +3687,7 @@ static void stex_x16_export_wall(uint8_t *buffer, uint8_t *txt)
 			ptr++;
 
 			*ptr++ = vi->sw.anim[0];
-			*ptr++ = vi->sw.anim[1];
+			*ptr++ = vi->sw.anim[1] + ANIM_TIME_EXPORT_OFFSET;
 			*ptr++ = vi->sw.anim[2];
 
 			ptl = ptr;
@@ -4686,6 +4688,7 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 	{
 		int16_t temp;
 		float femp;
+		int8_t iemp;
 
 		ui_gfx_plane_effect.elements[0]->base.disabled = 0;
 
@@ -4696,12 +4699,13 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 		sprintf(text, "Effect: %s", plane_effect_name[effect[0] & X16G_MASK_PL_EFFECT]);
 		glui_set_text((void*)ui_gfx_plane_effect.elements[0], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
-		if(effect[1] & 0x80)
-			femp = 1 << (effect[1] & 0x7F);
+		iemp = effect[1];
+		if(iemp < 0)
+			femp = -1.0f / ((float)iemp - 1.0f);
 		else
-			femp = 1.0f / (float)(1 << effect[1]);
+			femp = 1 << iemp;
 
-		sprintf(text, "Speed: %.3f", femp);
+		sprintf(text, "Delay: %.3f", femp);
 		glui_set_text((void*)ui_gfx_plane_effect.elements[1], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
 		switch(effect[0] & X16G_MASK_PL_EFFECT)
@@ -4845,7 +4849,7 @@ static const uint8_t *update_gfx_walls(ui_idx_t *idx)
 
 			if(va->sw.anim[0])
 			{
-				sprintf(text, "Speed: %.3f", 1.0f / (float)(1 << va->sw.anim[1]));
+				sprintf(text, "Delay: %.3f", 1 << va->sw.anim[1]);
 				glui_set_text((void*)ui_gfx_wall_animation.elements[1], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 				ui_gfx_wall_animation.elements[1]->base.disabled = 0;
 
@@ -6705,19 +6709,17 @@ int32_t uin_gfx_plane_effect_btn(glui_element_t *elm, int32_t x, int32_t y)
 				effect[i] = 0;
 		break;
 		case 1: // delay
-			if(effect[1] & 0x80)
-			{
-				effect[1]--;
-				if(effect[1] == 0x80)
-					effect[1] = 0;
-			} else
-			{
-				effect[1]++;
-				if(effect[1] > 6)
-					effect[1] = 0x84;
-			}
-			if(	(effect[0] & X16G_MASK_PL_EFFECT) == X16G_PL_EFFECT_ANIMATE &&
-				effect[1] & 0x80
+			effect[1]++;
+			if(	effect[1] < 0xFC &&
+				effect[1] > 5
+			)
+				effect[1] = 0xFC;
+
+			if(	effect[1] & 0x80 &&
+				(
+					(effect[0] & X16G_MASK_PL_EFFECT) == X16G_PL_EFFECT_ANIMATE ||
+					(effect[0] & X16G_MASK_PL_EFFECT) == X16G_PL_EFFECT_RANDOM
+				)
 			)
 				effect[1] = 0;
 		break;
@@ -7044,7 +7046,7 @@ int32_t uin_gfx_wall_animation_btn(glui_element_t *elm, int32_t x, int32_t y)
 		break;
 		case 1:
 			anim[1]++;
-			if(anim[1] > 6)
+			if(anim[1] > 5)
 				anim[1] = 0;
 		break;
 		case 2:
@@ -9153,6 +9155,7 @@ void x16g_export()
 			size = 2 + 64 * 64 + 4;
 			stuff.ep.num_variants = 0xF0;
 			memcpy(stuff.ep.bpp8.effect, pl->variant[0].pl.effect, 4);
+			stuff.ep.bpp8.effect[1] += ANIM_TIME_EXPORT_OFFSET;
 		} else
 		{
 			// 4bpp
@@ -9185,6 +9188,7 @@ void x16g_export()
 				ev->bright = pv->pl.bright;
 				memcpy(ev->data, pv->pl.data, 16);
 				memcpy(ev->effect, pv->pl.effect, 4);
+				ev->effect[1] += ANIM_TIME_EXPORT_OFFSET;
 			}
 		}
 

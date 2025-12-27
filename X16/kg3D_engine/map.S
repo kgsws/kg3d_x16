@@ -11,6 +11,7 @@
 .include "things.inc"
 .include "render.inc"
 .include "input.inc"
+.include "tick.inc"
 .include "file.inc"
 .include "sound.inc"
 
@@ -114,7 +115,7 @@ MAP_TEMP_PLANE8_EFFECT = $B000
 ;;;
 
 MAP_HEAD__SIZE = $20
-MAP_HEAD__VERSION = 18
+MAP_HEAD__VERSION = 25
 MAP_CMAP__SIZE = 4
 MAP_PLANE__SIZE = 5
 MAP_WALL__SIZE = 5
@@ -141,14 +142,14 @@ WSPR_VARIANT_SIZE = 5
 ; stuff
 ;;;
 
-MAP_TEMP_FRM_IDX_L = G_LEVEL_TICK_L
-MAP_TEMP_FRM_IDX_H = G_LEVEL_TICK_H
+MAP_TEMP_IMG_IDX_L = G_LEVEL_TICK_L
+MAP_TEMP_IMG_IDX_H = G_LEVEL_TICK_H
 MAP_TEMP_SPR_IDX = TICK_CMD_BITS_L
 MAP_TEMP_WPN_IDX = BACKSEC_PTR_I
 MAP_TEMP_TH_TYPE = TICK_CMD_BITS_H
 MAP_TEMP_COUNT_THING = TICK_CMD_ANGLE
 MAP_TEMP_COUNT_LIGHTS = TICK_CMD_PITCH
-MAP_TEMP_START_COUNT = TICK_IDX
+MAP_TEMP_START_COUNT = G_TICKER_IDX
 MAP_LOAD_WRAM_L = FUNC_ARG_L
 MAP_LOAD_WRAM_H = FUNC_ARG_H
 MAP_LOAD_TEX_TMP = SECTOR_PTR_I
@@ -193,21 +194,30 @@ ex_precache:
 	sta	REG_RAM_BANK
 
 	; get thing sprite count
-	lda	$A000 + THSTATE_STRUCT_ARG0
+	lda	THSTATE_STRUCT_THG_SPRLNK
 	sta	TAB_THG_SPRLNK
 
 	; get logo sprite
-	lda	$A000 + THSTATE_STRUCT_ARG1
+	lda	THSTATE_STRUCT_MENU_LOGO
 	sta	TAB_MENU_LOGO
 
+	; get player types
+	lda	THSTATE_STRUCT_PLAYER_C
+	sta	TAB_PLAYER_C
+	lda	THSTATE_STRUCT_PLAYER_S
+	sta	TAB_PLAYER_S
+	lda	THSTATE_STRUCT_PLAYER_F
+	sta	TAB_PLAYER_F
+
 	; reset memory
-	lda	#$08
+	lda	#$A0
+	sta	MAP_LOAD_WRAM_L
+	lda	#$04
 	sta	MAP_LOAD_WRAM_H
-	stz	MAP_LOAD_WRAM_L
 	stz	MAP_TEMP_SPR_IDX
 	stz	MAP_TEMP_WPN_IDX
-	stz	MAP_TEMP_FRM_IDX_L
-	stz	MAP_TEMP_FRM_IDX_H
+	stz	MAP_TEMP_IMG_IDX_L
+	stz	MAP_TEMP_IMG_IDX_H
 
 	; reset sprite remaps
 	lda	#$FF
@@ -237,7 +247,7 @@ ex_precache:
 	stx	MAP_TEMP_STACK
 
 	; check logo sprite
-	ldx	TAB_MENU_LOGO
+	ldy	TAB_MENU_LOGO
 	bmi	:+
 
 	; name is already set
@@ -274,10 +284,10 @@ ex_precache:
 	sta	TAB_PRELOAD_SPR_IDX
 	lda	MAP_TEMP_WPN_IDX
 	sta	TAB_PRELOAD_WPN_IDX
-	lda	MAP_TEMP_FRM_IDX_L
-	sta	TAB_PRELOAD_FRM_IDX+0
-	lda	MAP_TEMP_FRM_IDX_H
-	sta	TAB_PRELOAD_FRM_IDX+1
+	lda	MAP_TEMP_IMG_IDX_L
+	sta	TAB_PRELOAD_IMG_IDX+0
+	lda	MAP_TEMP_IMG_IDX_H
+	sta	TAB_PRELOAD_IMG_IDX+1
 	lda	MAP_LOAD_WRAM_L
 	sta	TAB_PRELOAD_WRAM+0
 	lda	MAP_LOAD_WRAM_H
@@ -313,10 +323,10 @@ ex_map_load:
 	sta	MAP_TEMP_SPR_IDX
 	lda	TAB_PRELOAD_WPN_IDX
 	sta	MAP_TEMP_WPN_IDX
-	lda	TAB_PRELOAD_FRM_IDX+0
-	sta	MAP_TEMP_FRM_IDX_L
-	lda	TAB_PRELOAD_FRM_IDX+1
-	sta	MAP_TEMP_FRM_IDX_H
+	lda	TAB_PRELOAD_IMG_IDX+0
+	sta	MAP_TEMP_IMG_IDX_L
+	lda	TAB_PRELOAD_IMG_IDX+1
+	sta	MAP_TEMP_IMG_IDX_H
 	lda	TAB_PRELOAD_WRAM+0
 	sta	MAP_LOAD_WRAM_L
 	lda	TAB_PRELOAD_WRAM+1
@@ -396,21 +406,12 @@ ex_map_load:
 	dex
 	bne	@loop_magic
 
-	; check size (lazy)
-	lda	MAP_HEAD_SIZE_DATA_H
-	cmp	#$81
-	bcs	@verify_error
-
 	; check light count
 	lda	MAP_HEAD_COUNT_LIGHTS
 	cmp	#8
 	bcs	@verify_error
 	ina
 	sta	MAP_TEMP_COUNT_LIGHTS
-
-	; check sector count
-	lda	MAP_HEAD_COUNT_SECTORS
-	beq	@verify_error
 
 	; check starts count
 	sec	; +1
@@ -421,6 +422,12 @@ ex_map_load:
 	bcs	@verify_error
 	beq	@verify_error
 	sta	MAP_TEMP_START_COUNT
+
+	; check wall bank count
+	lda	MAP_HEAD_COUNT_WBANKS
+	beq	@verify_error
+	cmp	#17
+	bcs	@verify_error
 
 	; check thing count
 	lda	MAP_HEAD_COUNT_THINGS
@@ -799,45 +806,9 @@ ex_map_load:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	; load sectors
-	stz	MAP_LOAD_IDX
-@loop_sector:
-	; read single sector
-	lda	#SECTOR__STRUCT_SIZE
-	ldx	#<MAP_TEMP_DATA_STRUCT
-	ldy	#>MAP_TEMP_DATA_STRUCT
-	jsr	file_read_8_wram
-	bcc	:+
-
-	; error
-	lda	#8
-	jmp	load_error
-:
-	; expand structure
-	lda	#SECTOR__STRUCT_SIZE
-	sta	REG_0_L
-	inc	MAP_LOAD_IDX
-	ldy	MAP_LOAD_IDX
-	lda	#$A0
-	sta	HI_PTR_H
-	jsr	expand_struct
-
-	; next
-	lda	MAP_LOAD_IDX
-	cmp	MAP_HEAD_COUNT_SECTORS
-	bne	@loop_sector
-
-	;;;;
-	; map data
-
-	; map bank
-	lda	#BANK_MAPDATA
-	sta	REG_RAM_BANK
-
-	; load raw map data
-	lda	MAP_HEAD_SIZE_DATA_L
-	sta	TAB_FILE_BUF_SIZE+0
-	lda	MAP_HEAD_SIZE_DATA_H
+	; load raw sector data
+	stz	TAB_FILE_BUF_SIZE+0
+	lda	#$20
 	sta	TAB_FILE_BUF_SIZE+1
 	stz	TAB_FILE_DEST+0
 	lda	#$A0
@@ -856,41 +827,45 @@ ex_map_load:
 	lda	#BANK_PLAYER_START
 	sta	REG_RAM_BANK
 
-	; load player starts
-	stz	MAP_LOAD_IDX
-@loop_plrst:
-	; load info
-	lda	#MAP_PLAYER_START__SIZE
-	ldx	#<MAP_TEMP_DATA_STRUCT
-	ldy	#>MAP_TEMP_DATA_STRUCT
-	jsr	file_read_8_wram
+	; load
+	stz	TAB_FILE_BUF_SIZE+0
+	lda	#$10
+	sta	TAB_FILE_BUF_SIZE+1
+	stz	TAB_FILE_DEST+0
+	lda	#$B0
+	sta	TAB_FILE_DEST+1
+	jsr	file_read_16_wram
 	bcc	:+
 
 	; error
 	lda	#10
 	jmp	load_error
 :
-	ldy	MAP_LOAD_IDX
+	;;;;
+	; wall banks
 
-	; expand structure (A)
-	lda	#6
-	sta	REG_0_L
-	lda	#>PLRSTART_STRUCT_X_L
-	sta	HI_PTR_H
-	jsr	expand_struct
+	; other walls
+	lda	#BANK_MAPWALLS
+	sta	REG_RAM_BANK
+@loop_wdat:
+	; load
+	stz	TAB_FILE_BUF_SIZE+0
+	lda	#$10
+	sta	TAB_FILE_BUF_SIZE+1
+	stz	TAB_FILE_DEST+0
+	lda	#$A0
+	sta	TAB_FILE_DEST+1
+	jsr	file_read_16_wram
+	bcc	:+
 
-	; expand structure (B)
-	lda	#MAP_PLAYER_START__SIZE
-	sta	REG_0_L
-	lda	#>PLRSTART_STRUCT_SECTOR
-	sta	HI_PTR_H
-	jsr	expand_struct_ext
-
+	; error
+	lda	#11
+	jmp	load_error
+:
 	; next
-	iny
-	sty	MAP_LOAD_IDX
-	cpy	MAP_TEMP_START_COUNT
-	bne	@loop_plrst
+	inc	REG_RAM_BANK
+	dec	MAP_HEAD_COUNT_WBANKS
+	bne	@loop_wdat
 
 	;;;;
 	; things
@@ -899,7 +874,7 @@ ex_map_load:
 	jsr	math_setup_vera
 
 	; reset stuff
-	jsr	thing_clear
+	jsr	tick_clear
 
 	; thing load stack pointer
 	; (to prevent sprite load recursion)
@@ -918,7 +893,7 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#11
+	lda	#12
 	jmp	load_error
 :
 	; thing bank
@@ -948,7 +923,7 @@ ex_map_load:
 	bpl	@loop_thing_type
 
 	; error
-	lda	#12
+	lda	#13
 	jmp	load_error
 
 @do_thing_spawn:
@@ -957,48 +932,43 @@ ex_map_load:
 
 	; type
 	lda	MAP_TEMP_TH_TYPE
-	sta	ARG_THING_SPAWN_TYPE
+	sta	ARG_THING_TYPE
 
 	; X
-	stz	ARG_THING_SPAWN_X_S
+	stz	ARG_THING_X_S
 	lda	MAP_TEMP_THING_X_L
-	sta	ARG_THING_SPAWN_X_L
+	sta	ARG_THING_X_L
 	lda	MAP_TEMP_THING_X_H
-	sta	ARG_THING_SPAWN_X_H
+	sta	ARG_THING_X_H
 
 	; Y
-	stz	ARG_THING_SPAWN_Y_S
+	stz	ARG_THING_Y_S
 	lda	MAP_TEMP_THING_Y_L
-	sta	ARG_THING_SPAWN_Y_L
+	sta	ARG_THING_Y_L
 	lda	MAP_TEMP_THING_Y_H
-	sta	ARG_THING_SPAWN_Y_H
+	sta	ARG_THING_Y_H
 
 	; Z
-	stz	ARG_THING_SPAWN_Z_S
+	stz	ARG_THING_Z_S
 	lda	MAP_TEMP_THING_Z_L
-	sta	ARG_THING_SPAWN_Z_L
+	sta	ARG_THING_Z_L
 	lda	MAP_TEMP_THING_Z_H
-	sta	ARG_THING_SPAWN_Z_H
+	sta	ARG_THING_Z_H
 
 	; sector
 	lda	MAP_TEMP_THING_SECTOR
-	sta	ARG_THING_SPAWN_SECTOR
+	sta	ARG_THING_SECTOR
 
 	; spawn thing
 	jsr	thing_spawn
-	ldy	RET_THING_SPAWN
-
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
 
 	; set thing angle
 	lda	MAP_TEMP_THING_ANGLE
-	sta	THING_STRUCT_ANGLE,y
+	sta	THING_STRUCT_ANGLE,x
 
 	; set thing pitch
 	lda	#$80
-	sta	THING_STRUCT_PITCH,y
+	sta	THING_STRUCT_PITCH,x
 
 	; next thing
 	dec	MAP_TEMP_COUNT_THING
@@ -1011,10 +981,6 @@ ex_map_load:
 
 	;;;;
 	; finalize
-
-	; map bank
-	lda	#BANK_MAPDATA
-	sta	REG_RAM_BANK
 
 	;; spawn player
 
@@ -1035,65 +1001,55 @@ ex_map_load:
 	sta	TICK_CMD_PITCH
 
 	; thing type
-	lda	#127
-	sta	ARG_THING_SPAWN_TYPE
+	lda	#THING_TYPE_PLAYER_N
+	sta	ARG_THING_TYPE
 
 	; X
-	stz	ARG_THING_SPAWN_X_S
+	stz	ARG_THING_X_S
 	lda	PLRSTART_STRUCT_X_L
-	sta	ARG_THING_SPAWN_X_L
+	sta	ARG_THING_X_L
 	lda	PLRSTART_STRUCT_X_H
-	sta	ARG_THING_SPAWN_X_H
+	sta	ARG_THING_X_H
 
 	; Y
-	stz	ARG_THING_SPAWN_Y_S
+	stz	ARG_THING_Y_S
 	lda	PLRSTART_STRUCT_Y_L
-	sta	ARG_THING_SPAWN_Y_L
+	sta	ARG_THING_Y_L
 	lda	PLRSTART_STRUCT_Y_H
-	sta	ARG_THING_SPAWN_Y_H
+	sta	ARG_THING_Y_H
 
 	; Z
-	stz	ARG_THING_SPAWN_Z_S
+	stz	ARG_THING_Z_S
 	lda	PLRSTART_STRUCT_Z_L
-	sta	ARG_THING_SPAWN_Z_L
+	sta	ARG_THING_Z_L
 	lda	PLRSTART_STRUCT_Z_H
-	sta	ARG_THING_SPAWN_Z_H
+	sta	ARG_THING_Z_H
 
 	; sector
 	lda	PLRSTART_STRUCT_SECTOR
-	sta	ARG_THING_SPAWN_SECTOR
+	sta	ARG_THING_SECTOR
 
 	; spawn thing
 	jsr	thing_spawn
 
 	; save thing ID
-	lda	RET_THING_SPAWN
-	sta	G_PLAYER_THING
-	sta	G_CAMERA_THING
-	tay
+	stx	G_PLAYER_THING
+	stx	G_CAMERA_THING
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
-	sta	REG_RAM_BANK
+	; change ticker
+	lda	#TICKER_FUNC_PLAYER
+	sta	TICKER_STRUCT_FUNC,x
 
 	; set thing angle
 	lda	TICK_CMD_ANGLE
-	sta	THING_STRUCT_ANGLE,y
+	sta	THING_STRUCT_ANGLE,x
 
 	; set thing pitch
 	lda	TICK_CMD_PITCH
-	sta	THING_STRUCT_PITCH,y
-
-	; get type
-	ldx	THING_STRUCT_TYPE,y
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
+	sta	THING_STRUCT_PITCH,x
 
 	; camera reset
-	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
-	sta	G_VIEW_HEIGHT
+	lda	THING_STRUCT_VIEW_HEIGHT,x
 	sta	G_VIEWHEIGHT
 	stz	G_VIEWDELTA
 	stz	G_DAMAGE_LEVEL
@@ -1712,9 +1668,8 @@ load_wall:
 	sta	MAP_LOAD_TEX_TMP
 
 	; go trough variants
-	lda	MAP_WALL_VCNT
-	and	#$7F
-	sta	MAP_WALL_VCNT
+	lda	#$80
+	trb	MAP_WALL_VCNT
 @loop_variant:
 	; check WRAM space
 	lda	MAP_LOAD_TMP_H
@@ -1901,26 +1856,26 @@ load_wall:
 ;;;
 
 load_sprite:
-	phx
+	phy
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
 	; generate sprite file name
-	lda	THTYPE_SHASH_0,x
+	lda	THTYPE_SHASH_0,y
 	sta	MAP_TEMP_NHASH_0
-	lda	THTYPE_SHASH_1,x
+	lda	THTYPE_SHASH_1,y
 	sta	MAP_TEMP_NHASH_1
-	lda	THTYPE_SHASH_2,x
+	lda	THTYPE_SHASH_2,y
 	sta	MAP_TEMP_NHASH_2
-	lda	THTYPE_SHASH_3,x
+	lda	THTYPE_SHASH_3,y
 	sta	MAP_TEMP_NHASH_3
 	jsr	make_hash
 
 	; check type
-	plx
-	cpx	TAB_THG_SPRLNK
+	ply
+	cpy	TAB_THG_SPRLNK
 	bcc	load_sprite_thg
 
 	;; WEAPON SPRITE
@@ -1928,7 +1883,7 @@ load_sprite_wpn:
 
 	; mark as loaded
 	lda	MAP_TEMP_WPN_IDX
-	sta	TAB_SPRITE_REMAP,x
+	sta	TAB_SPRITE_REMAP,y
 
 	; suffix
 	ldx	#(type_weapon-txt_types)
@@ -1952,7 +1907,7 @@ load_sprite_wpn:
 	; actually load the sprite
 	jsr	load_wspr
 :
-	; close wall file
+	; close file
 	jsr	file_close
 
 	; restore handle
@@ -1966,7 +1921,7 @@ load_sprite_thg:
 
 	; mark as loaded
 	lda	MAP_TEMP_SPR_IDX
-	sta	TAB_SPRITE_REMAP,x
+	sta	TAB_SPRITE_REMAP,y
 
 	; suffix
 	ldx	#(type_sprite-txt_types)
@@ -1990,7 +1945,7 @@ load_sprite_thg:
 	; actually load the sprite
 	jsr	load_tspr
 :
-	; close wall file
+	; close file
 	jsr	file_close
 
 	; restore handle
@@ -2013,8 +1968,8 @@ load_tspr:
 	rts
 :
 	; check image count
-	lda	MAP_TEMP_FRM_IDX_H
-	cmp	#2
+	lda	MAP_TEMP_IMG_IDX_H
+	cmp	#4
 	bcc	:+
 
 	; too many images
@@ -2031,7 +1986,6 @@ load_tspr:
 
 	; go trough variants
 	lda	MAP_WALL_VCNT
-	and	#$7F
 	sta	MAP_LOAD_VIDX
 @loop_variant:
 	; check WRAM space
@@ -2089,79 +2043,54 @@ load_tspr:
 	sta	HI_PTR_H
 
 	; save rotation frame
-	lda	MAP_TEMP_FRM_IDX_L
+	lda	MAP_TEMP_IMG_IDX_L
 	sta	(HI_PTR_L),y
+
+	; save rotation bank
 	lda	#$08
 	tsb	HI_PTR_H
-	lda	MAP_TEMP_FRM_IDX_H
+	lda	MAP_TEMP_IMG_IDX_H
+	ora	#BANK_SPRITE_GFX
 	sta	(HI_PTR_L),y
 
-	; data size (real)
-	stz	MATH_VAR_H
-	lda	MAP_WALL_DLEN
-	sta	MATH_VAR_L
-	bne	:+
-	inc	MATH_VAR_H
-:
-	; check fullbright flag
-	lda	MAP_WALL_VCNT
-	bpl	:+
-
-	; data size (no lights)
-	stz	MATH_VAR_L
-	stz	MATH_VAR_H
-:
-	; sprite frame bank
-	lda	#BANK_SPRITE_FRM
+	; sprite image bank
 	sta	REG_RAM_BANK
 
 	; get sprite frame
-	lda	MAP_TEMP_FRM_IDX_L
-	sta	THTEMP_PTR_L
-	ldx	MAP_TEMP_FRM_IDX_H
-	lda	TAB_SWAP,x
-	ora	#$A0
-	sta	THTEMP_PTR_H
+	ldx	MAP_TEMP_IMG_IDX_L
 
 	; frm->width = info->width
 	lda	MAP_TEMP_SPRITE_WIDTH
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_WIDTH,x
 
 	; frm->height = info->height
-	inc	THTEMP_PTR_H
 	lda	MAP_TEMP_SPRITE_HEIGHT
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_HEIGHT,x
 
 	; frm->ox = info->ox
-	inc	THTEMP_PTR_H
 	lda	MAP_TEMP_SPRITE_OX
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_OX,x
 
 	; frm->oy = info->oy
-	inc	THTEMP_PTR_H
 	lda	MAP_TEMP_SPRITE_OY
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_OY,x
 
 	; frm->offs_cols = offs_cols
-	inc	THTEMP_PTR_H
 	lda	MAP_LOAD_TMP_L
-	sta	(THTEMP_PTR_L)
-	inc	THTEMP_PTR_H
+	sta	SPRFRM_STRUCT_OFFS_COLS_L,x
 	lda	MAP_LOAD_TMP_H
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_OFFS_COLS_H,x
 
 	; frm->offs_data = offset
-	inc	THTEMP_PTR_H
 	lda	MAP_LOAD_WRAM_L
-	sta	(THTEMP_PTR_L)
-	inc	THTEMP_PTR_H
+	sta	SPRFRM_STRUCT_OFFS_DATA_L,x
 	lda	MAP_LOAD_WRAM_H
-	sta	(THTEMP_PTR_L)
+	sta	SPRFRM_STRUCT_OFFS_DATA_H,x
 
 	; num_sframes++
-	inc	MAP_TEMP_FRM_IDX_L
+	inc	MAP_TEMP_IMG_IDX_L
 	bne	:+
-	inc	MAP_TEMP_FRM_IDX_H
+	inc	MAP_TEMP_IMG_IDX_H
 :
 	;; load columns
 
@@ -2381,7 +2310,7 @@ convert_pixels:
 	clc
 	lda	MAP_LOAD_XDI
 	adc	#>TAB_LIGHTMAPS
-	sta	WALL_PTR_H
+	sta	PCONV_PTR_H
 
 	; get source pointer
 	lda	#BANK_MAP_TEMP
@@ -2414,7 +2343,7 @@ convert_pixels:
 
 	; load pixel color
 	lda	(TMP_PTR_L)
-	sta	WALL_PTR_L
+	sta	PCONV_PTR_L
 
 	; load pixel brightness
 	inc	TMP_PTR_L
@@ -2422,8 +2351,8 @@ convert_pixels:
 	bne	@skip_remap
 
 	; get light remap
-	lda	(WALL_PTR_L)
-	sta	WALL_PTR_L
+	lda	(PCONV_PTR_L)
+	sta	PCONV_PTR_L
 
 @skip_remap:
 	; destination bank
@@ -2431,7 +2360,7 @@ convert_pixels:
 	sta	REG_RAM_BANK
 
 	; store pixel
-	lda	WALL_PTR_L
+	lda	PCONV_PTR_L
 	sta	(COLORMAP_L),y
 
 	; increment source
@@ -2499,60 +2428,52 @@ load_thing_sprites_r:
 	sta	THTEMP_PTR_H
 	lda	(THTEMP_PTR_L),y
 	tax
-	and	#$F8
-	sta	MAP_TMP_PTR_L
-
 	lda	MAP_LOAD_AIDX
 	ora	#>THTYPE_ANIM_H
 	sta	THTEMP_PTR_H
 	lda	(THTEMP_PTR_L),y
-;	and	#$60
-	lsr
-	lsr
-	sta	MAP_TMP_PTR_H
-	txa
-	and	#$07
-	ora	#$A0
-	ora	MAP_TMP_PTR_H
-	sta	MAP_TMP_PTR_H
 
 	; thing states bank
-	lda	#BANK_THING_STATES
+	and	#$07
+	ora	#BANK_THING_STATES
 	sta	REG_RAM_BANK
 
 	; go trough states
 @loop_state:
+	phx
 	phy
 
 	; get state sprite
-	ldy	#THSTATE_STRUCT_SPRITE
-	lda	(MAP_TMP_PTR_L),y
-	tax
+	ldy	THSTATE_STRUCT_SPRITE,x
 
 	; check for 'none'
 	bmi	@skip_load
 
 	; check if already loaded
-	lda	TAB_SPRITE_REMAP,x
+	lda	TAB_SPRITE_REMAP,y
 	bpl	@skip_load
+
+	; backup bank
+	lda	REG_RAM_BANK
+	pha
 
 	; load sprite(s)
 	jsr	load_sprite
 
 	; thing states bank
-	lda	#BANK_THING_STATES
+	pla
 	sta	REG_RAM_BANK
 
 @skip_load:
 	ply
+	plx
 
 	; increment state pointer
-	clc
-	lda	MAP_TMP_PTR_L
-	adc	#THSTATE__STRUCT_SIZE
-	sta	MAP_TMP_PTR_L
-	bcc	:+
-	inc	MAP_TMP_PTR_H
+	inx
+	bne	:+
+
+	; increment state bank
+	inc	REG_RAM_BANK
 :
 	; next state
 	dec	MAP_LOAD_SIDX
@@ -2592,26 +2513,6 @@ load_thing_sprites_r:
 	bne	@loop_spawn
 
 @skip_recursion:
-	rts
-
-;;;
-; structure expansion
-;;;
-; expands linear structure array at MAP_TEMP_DATA_STRUCT to 6502 structure array at HI_PTR_*
-; REG_0_L is structure size
-; Y is structure index
-
-expand_struct:
-	ldx	#$00
-expand_struct_ext:
-@loop_expand:
-	lda	MAP_TEMP_DATA_STRUCT,x
-	sta	(HI_PTR_L),y
-	inc	HI_PTR_H
-	inx
-	cpx	REG_0_L
-	bne	@loop_expand
-
 	rts
 
 ;;;

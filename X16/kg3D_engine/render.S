@@ -81,8 +81,34 @@ render_init:
 ;;;
 
 render_view:
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; animation tick table
+	lda	G_LEVEL_TICK_L
+	sta	MATH_VAR_L
+	sta	TAB_ANIM_TICK+4
+	lda	G_LEVEL_TICK_M
+	sta	MATH_VAR_H
+	ldx	#5
+	ldy	#5
+@loop_tp:
+	lsr	MATH_VAR_H
+	ror	MATH_VAR_L
+	lda	MATH_VAR_L
+	sta	TAB_ANIM_TICK,y
+	iny
+	dex
+	bne	@loop_tp
+	lda	G_LEVEL_TICK_L
+	sta	MATH_VAR_L
+	ldx	#4
+@loop_tn:
+	asl	MATH_VAR_L
+	lda	MATH_VAR_L
+	sta	TAB_ANIM_TICK-1,x
+	dex
+	bne	@loop_tn
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	;; setup camera position
@@ -141,7 +167,7 @@ render_view:
 	sta	REG_RAM_BANK
 
 	; thing sector pointer
-	lda	$A000,y
+	lda	$B000,y
 	sta	PROJECTION_SECTOR
 	tax
 
@@ -464,8 +490,8 @@ render_view:
 	cmp	G_CAMERA_THING
 	bne	wspr_no_gfx
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; show_wpn.idx = things[0].sprite
@@ -635,6 +661,7 @@ render_sector:
 	; the loop
 	lda	#$A0
 	sta	SPR_PTR_H
+	stz	SPR_PTR_L
 @loop_spr_prep:
 	; get thing at this slot
 	lda	(SPR_PTR_L),y
@@ -665,8 +692,39 @@ render_sector:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	;; walls
-	jsr	render_walls
+	;; WALLS
+
+	; last_angle = 'invalid'
+	lda	#$80
+	sta	WALL_LAST_ANGLE_H
+
+	; wall info
+	ldy	SECTOR_PTR_I
+	lda	SECTOR_STRUCT_WALL_BANK,y
+	ora	#BANK_MAPWALLS
+	sta	WALL_BANK
+	lda	SECTOR_STRUCT_WALL_FIRST,y
+	sta	WALL_FIRST
+
+@loop_walls:
+	sta	WALL_NOW
+	tax
+
+	; enable math
+	jsr	math_setup_vera
+
+	; WALL
+	jsr	render_wall
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; next
+	ldx	WALL_NOW
+	lda	WALL_STRUCT_NEXT,x
+	cmp	WALL_FIRST
+	bne	@loop_walls
 
 	;; PLANES
 
@@ -903,98 +961,6 @@ render_sector:
 	sta	MEM_PORTALS_SPRITE,y
 
 	; done
-	rts
-
-;;;
-; render_walls
-;;;
-
-render_walls:
-	ldy	SECTOR_PTR_I
-	lda	SECTOR_STRUCT_WALLS_L,y
-	sta	WALN_PTR_L
-	lda	SECTOR_STRUCT_WALLS_H,y
-	sta	WALN_PTR_H
-	tax
-
-	; wall pointer
-	and	#$1F
-	ora	#$A0
-	sta	WALN_PTR_H
-	lda	TAB_BANK,x
-	ora	#BANK_MAPDATA
-	sta	WALL_PTR_B
-
-	; last_angle = 'invalid'
-	lda	#$80
-	sta	WALL_LAST_ANGLE_H
-
-@loop:
-	; wall pointer
-	lda	WALN_PTR_L
-	sta	WALL_PTR_L
-	lda	WALN_PTR_H
-	sta	WALL_PTR_H
-
-	; dcsel = 2, addrsel = 0
-	lda	#$04
-	sta	VERA_CTRL
-
-	; ADDR0 = 0x001F00, increment = 1
-	stz	VERA_ADDRx_L
-	lda	#$1F
-	sta	VERA_ADDRx_M
-	lda	#%00010000
-	sta	VERA_ADDRx_H
-
-	; enable cache write
-	lda	#%01000000
-	sta	VERA_FX_CTRL
-
-	; reset accumulator, set addition, enable multiplication
-	lda	#%10010000
-	sta	VERA_FX_MULT
-
-	; dcsel = 6, addrsel = 0
-	lda	#$0C
-	sta	VERA_CTRL
-
-	; wall bank
-	lda	WALL_PTR_B
-	sta	REG_RAM_BANK
-
-	; next wall pointer
-	ldy	#WALL_STRUCT_ANGLE+1
-	lda	(WALL_PTR_L),y
-	tax
-	lda	TAB_SWAP,x
-	and	#7
-	tax
-	clc
-	lda	WALL_PTR_L
-	adc	wall_sizes,x
-	sta	WALN_PTR_L
-	lda	WALL_PTR_H
-	adc	#0
-	sta	WALN_PTR_H
-
-	; wall->angle & MARK_XPEG
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	sta	WALL_XPEG
-
-	; WALL
-	jsr	render_wall
-
-	; wall bank
-	lda	WALL_PTR_B
-	sta	REG_RAM_BANK
-
-	; check for STOP
-	ldy	#WALL_STRUCT_ANGLE+1
-	lda	(WALL_PTR_L),y
-	bpl	@loop
-
 	rts
 
 ;;;
@@ -1435,32 +1401,77 @@ sky_plane_loop:
 ;;;
 ; render wall
 ;;;
+; X is current wall
+
+do_v1_diff:
+	ldy	WALL_STRUCT_NEXT,x
+
+	; d1.x = v1->x - (projection.x >> 8)
+	sec
+	lda	WALL_STRUCT_VTX_X_L,y
+	sbc	PROJECTION_X_L
+	sta	WALL_D1_X_L
+	lda	WALL_STRUCT_VTX_X_H,y
+	sbc	PROJECTION_X_H
+	sta	WALL_D1_X_H
+
+	; d1.y = v1->y - (projection.y >> 8)
+	sec
+	lda	WALL_STRUCT_VTX_Y_L,y
+	sbc	PROJECTION_Y_L
+	sta	WALL_D1_Y_L
+	lda	WALL_STRUCT_VTX_Y_H,y
+	sbc	PROJECTION_Y_H
+	sta	WALL_D1_Y_H
+
+	; skip second call
+	lda	#$AD
+	sta	v1diff_opcode
+
+	; done
+	rts
 
 render_wall:
+	; reset
+	lda	#$20
+	sta	v1diff_opcode
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
 	;; V0 diff
 
 	; d0.x = v0->x - (projection.x >> 8)
 	sec
-	ldy	#WALL_STRUCT_VTX_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_VTX_X_L,x
 	sbc	PROJECTION_X_L
 	sta	WALL_D0_X_L
-	iny
-	lda	(WALL_PTR_L),y
+	sta	WALL_D1_X_L
+	lda	WALL_STRUCT_VTX_X_H,x
 	sbc	PROJECTION_X_H
 	sta	WALL_D0_X_H
+	sta	WALL_D1_X_H
 
 	; d0.y = v0->y - (projection.y >> 8)
 	sec
-	ldy	#WALL_STRUCT_VTX_Y
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_VTX_Y_L,x
 	sbc	PROJECTION_Y_L
 	sta	WALL_D0_Y_L
-	iny
-	lda	(WALL_PTR_L),y
+	sta	WALL_D1_Y_L
+	lda	WALL_STRUCT_VTX_Y_H,x
 	sbc	PROJECTION_Y_H
 	sta	WALL_D0_Y_H
+	sta	WALL_D1_Y_H
 
+	;; swap check
+	lda	WALL_STRUCT_ANGLE_H,x
+	bpl	:+
+
+	;; V1 diff
+	jsr	do_v1_diff
+
+:
 	;; get distance Y
 	; ld.y = (d0.x * wall->dist.y - d0.y * wall->dist.x) >> 8;
 
@@ -1468,17 +1479,15 @@ render_wall:
 	lda	VERA_FX_ACCUM_RESET
 
 	; d0.x
-	lda	WALL_D0_X_L
+	lda	WALL_D1_X_L
 	sta	VERA_FX_CACHE_L
-	lda	WALL_D0_X_H
+	lda	WALL_D1_X_H
 	sta	VERA_FX_CACHE_M
 
 	; wall->dist.y
-	ldy	#WALL_STRUCT_DIST_Y
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_Y_L,x
 	sta	VERA_FX_CACHE_H
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_Y_H,x
 	sta	VERA_FX_CACHE_U
 
 	; accumulate
@@ -1487,18 +1496,16 @@ render_wall:
 	; -d0.y
 	sec
 	lda	#$00
-	sbc	WALL_D0_Y_L
+	sbc	WALL_D1_Y_L
 	sta	VERA_FX_CACHE_L
 	lda	#$00
-	sbc	WALL_D0_Y_H
+	sbc	WALL_D1_Y_H
 	sta	VERA_FX_CACHE_M
 
 	; wall->dist.x
-	ldy	#WALL_STRUCT_DIST_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_X_L,x
 	sta	VERA_FX_CACHE_H
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_X_H,x
 	sta	VERA_FX_CACHE_U
 
 	; save result
@@ -1511,7 +1518,7 @@ render_wall:
 	lda	VERA_DATA0
 	sta	WALL_LD_Y_H
 
-	; if(ld.y <= 0)
+	; if(ld.y < 0)
 	bpl	:+
 
 @invalidate:
@@ -1522,31 +1529,18 @@ render_wall:
 	; inside the wall, stop
 	rts
 :
-	; inside = 0
-	stz	WALL_PORTAL_INSIDE
-
-	; if(ld.y <= 1)
-	bne	@done_inside
+	; if(!ld.y)
+	bne	:+
 	lda	WALL_LD_Y_L
-	cmp	#2
-	bcs	@done_inside
+	bne	:+
 
-	; inside line
-	sty	WALL_PORTAL_INSIDE
-
-	; if(ld.y <= 0)
-	lda	WALL_LD_Y_L
-	bne	@done_inside
-
-	; check projection sector
+	; if(idx != projection.sector)
 	lda	PROJECTION_SECTOR
 	cmp	SECTOR_PTR_I
-	beq	@done_inside
 
 	; inside the wall, stop
-	bra	@invalidate
-
-@done_inside:
+	bne	@invalidate
+:
 	;; V0 angle
 	lda	WALL_LAST_ANGLE_L
 	sta	WALL_A0_L
@@ -1571,36 +1565,19 @@ render_wall:
 	sta	WALL_A0_L
 	lda	MATH_VAR_H
 
+	; restore
+	ldx	WALL_NOW
+
 @skip_a0:
 	sta	WALL_A0_H
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	;; V1 diff
-
-	; d1.x = v1->x - (projection.x >> 8)
-	sec
-	ldy	#WALL_STRUCT_VTX_X
-	lda	(WALN_PTR_L),y
-	sbc	PROJECTION_X_L
-	sta	WALL_D1_X_L
-	iny
-	lda	(WALN_PTR_L),y
-	sbc	PROJECTION_X_H
-	sta	WALL_D1_X_H
-
-	; d1.y = v1->y - (projection.y >> 8)
-	sec
-	ldy	#WALL_STRUCT_VTX_Y
-	lda	(WALN_PTR_L),y
-	sbc	PROJECTION_Y_L
-	sta	WALL_D1_Y_L
-	iny
-	lda	(WALN_PTR_L),y
-	sbc	PROJECTION_Y_H
-	sta	WALL_D1_Y_H
+v1diff_opcode:
+	jsr	do_v1_diff	; modified opcode
 
 	;; V1 angle
 
@@ -1625,6 +1602,9 @@ render_wall:
 	sta	WALL_A1_H
 	sta	WALL_LAST_ANGLE_H
 
+	; restore
+	ldx	WALL_NOW
+
 	;; side check
 
 	; if((a1 - a0) & 2048)
@@ -1634,16 +1614,14 @@ render_wall:
 	lda	WALL_A1_H
 	sbc	WALL_A0_H
 	and	#$08
-	beq	:++
-
-	; check if inside portal
-	lda	WALL_PORTAL_INSIDE
 	beq	:+
+
+	; if(!((a0 ^ a1) & 2048))
 	lda	WALL_A0_H
 	eor	WALL_A1_H
 	and	#$08
-	bne	:++
-:
+	bne	:+
+
 	; behind the wall, stop
 	rts
 :
@@ -2217,16 +2195,20 @@ render_wall:
 	; ld.x = (d0.x * wall->dist.x + d0.y * wall->dist.y) >> 1
 	; ld.x = (d1.x * wall->dist.x + d1.y * wall->dist.y) >> 1
 
+	; restore
+	ldx	WALL_NOW
+
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
 	; check X peg
-	lda	WALL_XPEG
-	bpl	:+
+	lda	WALL_STRUCT_ANGLE_H,x
+	and	#WALL_MARK_XORIGIN
+	beq	:+
 
 	; d1.x
 	lda	WALL_D1_X_L
@@ -2242,19 +2224,18 @@ render_wall:
 	sta	VERA_FX_CACHE_M
 :
 	; wall->dist.x
-	ldy	#WALL_STRUCT_DIST_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_X_L,x
 	sta	VERA_FX_CACHE_H
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_X_H,x
 	sta	VERA_FX_CACHE_U
 
 	; accumulate
 	lda	VERA_FX_ACCUM
 
 	; check X peg
-	lda	WALL_XPEG
-	bpl	:+
+	lda	WALL_STRUCT_ANGLE_H,x
+	and	#WALL_MARK_XORIGIN
+	beq	:+
 
 	; d1.y
 	lda	WALL_D1_Y_L
@@ -2270,11 +2251,9 @@ render_wall:
 	sta	VERA_FX_CACHE_M
 :
 	; wall->dist.y
-	ldy	#WALL_STRUCT_DIST_Y
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_Y_L,x
 	sta	VERA_FX_CACHE_H
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_DIST_Y_H,x
 	sta	VERA_FX_CACHE_U
 
 	; save result
@@ -2294,12 +2273,10 @@ render_wall:
 
 	; lca = wall->angle - projection.a
 	sec
-	ldy	#WALL_STRUCT_ANGLE
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_ANGLE_L,x
 	sbc	PROJECTION_A_L
 	sta	WALL_LCA_L
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_ANGLE_H,x
 	sbc	PROJECTION_A_H
 	sta	WALL_LCA_H
 
@@ -2513,65 +2490,53 @@ render_wall:
 	stz	WALL_HAVE_TEX_X
 	stz	WALL_TEXTURE_FIX
 
+	; restore
+	ldx	WALL_NOW
+
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
-	; if(proj_msk_idx < MAX_DRAW_MASKED)
+	; proj_msk_idx < MAX_DRAW_MASKED
 	lda	PROJECTION_MASKED_IDX
 	cmp	#16
 	bcs	@skip_masked
 
-	; if((wall->solid.angle & MARK_TYPE_BITS) == MARK_MASKED)
-	ldy	#WALL_STRUCT_ANGLE+1
-	lda	(WALL_PTR_L),y
-	and	#WALL__MARK_MID_BITS
-	cmp	#WALL__MARK_MASKED
-	bne	@skip_masked
+	; wall->angle & WALL_MARK_EXTENDED
+	lda	WALL_STRUCT_ANGLE_H,x
+	and	#WALL_MARK_EXTENDED
+	beq	@do_solid
 
-	; if(wall->masked.texture_mid)
-	; if(!(wall->masked.texture_mid & 0x80))
-	ldy	#WALL_STRUCT_TEX_MID
-	lda	(WALL_PTR_L),y
-	beq	@skip_masked
+	; !(wall->mid.texture & 0x80)
+	ldy	WALL_STRUCT_MID_TEX,x
 	bmi	@skip_masked
 
-	; if(!(texture_remap[wall->masked.texture_mid] & 0x80))
-	sta	WALL_MT_TEXTURE
-	tax
-	lda	TAB_TEXTURE_REMAP,x
+	; !(texture_remap[wall->mid.texture] & 0x80)
+	lda	TAB_TEXTURE_REMAP,y
 	bmi	@skip_masked
 
 	; prepare masked texture
+	sty	WALL_MT_TEXTURE
 	jsr	prepare_masked
 
+	; restore
+	ldx	WALL_NOW
+
 @skip_masked:
-
-	; if(!(wall->angle & MARK_PORTAL))
-	ldy	#WALL_STRUCT_ANGLE+1
-	lda	(WALL_PTR_L),y
-	and	#WALL__MARK_PORTAL
-	beq	:+
-
-	; if(!wall->backsector)
-	ldy	#WALL_STRUCT_BACKSECTOR
-	lda	(WALL_PTR_L),y
+	; !wall->backsector
+	lda	WALL_STRUCT_BACKSECTOR,x
 	beq	:+
 	jmp	@two_sided
 :
-	; if((wall->solid.angle & MARK_TYPE_BITS) != MARK_SPLIT)
-	lda	(WALL_PTR_L),y
-	and	#WALL__MARK_MID_BITS
-	cmp	#WALL__MARK_SPLIT
-	bne	:+
+	; wall->split != -32768
+	lda	WALL_STRUCT_SPLIT_H,x
+	cmp	$80	; lazy check
+	beq	@do_solid
 
 	; get split height
-	ldy	#WALL_STRUCT_HEIGHT_SPLIT
-	lda	(WALL_PTR_L),y
-	sta	WALL_TMP_CALC_L
-	iny
-	lda	(WALL_PTR_L),y
 	sta	WALL_TMP_CALC_H
+	lda	WALL_STRUCT_SPLIT_L,x
+	sta	WALL_TMP_CALC_L
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2592,12 +2557,11 @@ render_wall:
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	;;; solid wall
-:
+@do_solid:
 	; texture Y peg
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	lda	WALL_STRUCT_TFLAGS,x
+	ror	; WALL_TFLAG_PEG_Y
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2622,27 +2586,26 @@ render_wall:
 	sta	VERA_CTRL
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
+	; restore
+	ldx	WALL_NOW
+
 	; texture offsets
-	ldy	#WALL_STRUCT_TEX_TOP_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_TOP_OX,x
 	sta	RENDER_TEXTURE_OX
-	iny
 	sec
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_TOP_OY,x
 	sbc	WALL_TEXTURE_FIX
 	sta	RENDER_TEXTURE_OY
 
 	; texture flags
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_TFLAGS,x
 	sta	WALL_TEXTURE_FLAGS
 
 	; texture
-	ldy	#WALL_STRUCT_TEX_TOP
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_TOP_TEX,x
 	jsr	texture_set
 
 @single_hack_bot:
@@ -2743,25 +2706,23 @@ render_wall:
 	sta	VERA_CTRL
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; texture flags
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	tax
-	lda	TAB_SWAP,x
+	ldx	WALL_NOW
+	ldy	WALL_STRUCT_TFLAGS,x
+	lda	TAB_SWAP,y
 	sta	WALL_TEXTURE_FLAGS
 
 	; texture
-	ldy	#WALL_STRUCT_TEX_BOT
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_BOT_TEX,x
 	jsr	texture_set
 
 	; texture Y peg
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ror
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2782,16 +2743,17 @@ render_wall:
 	sta	WALL_TEXTURE_FIX
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 :
+	; restore
+	ldx	WALL_NOW
+
 	; texture offsets
-	ldy	#WALL_STRUCT_TEX_BOT_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_BOT_OX,x
 	sta	RENDER_TEXTURE_OX
-	iny
 	sec
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_BOT_OY,x
 	sbc	WALL_TEXTURE_FIX
 	sta	RENDER_TEXTURE_OY
 
@@ -2818,14 +2780,14 @@ render_wall:
 	sta	WALL_TEXTURE_FIX
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; texture Y peg
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ldx	WALL_NOW
+	lda	WALL_STRUCT_TFLAGS,x
+	ror	; WALL_TFLAG_PEG_Y
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2871,7 +2833,7 @@ render_wall:
 	jsr	wall_top
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; sector bank
@@ -2909,17 +2871,17 @@ render_wall:
 	sta	VERA_CTRL
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; texture flags
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
+	ldx	WALL_NOW
+	lda	WALL_STRUCT_TFLAGS,x
 	sta	WALL_TEXTURE_FLAGS
 
 	; texture Y peg
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ror
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -2940,22 +2902,22 @@ render_wall:
 	sta	WALL_TEXTURE_FIX
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
+
+	; restore
+	ldx	WALL_NOW
 :
 	; texture offsets
-	ldy	#WALL_STRUCT_TEX_TOP_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_TOP_OX,x
 	sta	RENDER_TEXTURE_OX
-	iny
 	sec
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_TOP_OY,x
 	sbc	WALL_TEXTURE_FIX
 	sta	RENDER_TEXTURE_OY
 
 	; texture
-	ldy	#WALL_STRUCT_TEX_TOP
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_TOP_TEX,x
 	jsr	texture_set
 
 	; dcsel = 6, addrsel = 0
@@ -3079,19 +3041,18 @@ render_wall:
 	sta	VERA_CTRL
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; texture flags
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	tax
-	lda	TAB_SWAP,x
+	ldx	WALL_NOW
+	ldy	WALL_STRUCT_TFLAGS,x
+	lda	TAB_SWAP,y
 	sta	WALL_TEXTURE_FLAGS
 
 	; texture peg
-	and	#WALL__TEXFLAG_PEG_Y
-	beq	:+
+	ror
+	bcc	:+
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -3112,22 +3073,22 @@ render_wall:
 	sta	WALL_TEXTURE_FIX
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
+
+	; restore
+	ldx	WALL_NOW
 :
 	; texture offsets
-	ldy	#WALL_STRUCT_TEX_BOT_X
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_BOT_OX,x
 	sta	RENDER_TEXTURE_OX
-	iny
 	sec
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_BOT_OY,x
 	sbc	WALL_TEXTURE_FIX
 	sta	RENDER_TEXTURE_OY
 
 	; texture
-	ldy	#WALL_STRUCT_TEX_BOT
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_BOT_TEX,x
 	jsr	texture_set
 
 	; enable cache write
@@ -3162,7 +3123,7 @@ render_wall:
 	jsr	wall_bot
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; sector bank
@@ -3884,8 +3845,8 @@ prepare_sprite:
 @bail:
 	rts
 :
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; thing clip flag
@@ -4008,7 +3969,7 @@ prepare_sprite:
 	sta	REG_RAM_BANK
 
 	; default to no rotation
-	lda	#$A8
+	lda	#$A0
 	sta	THTEMP_PTR_H
 
 	; if(si->rotate)
@@ -4024,8 +3985,7 @@ prepare_sprite:
 	ldx	MATH_VAR_H
 	lda	TAB_SWAP,x
 	and	#$F0
-	ora	SPRITE_ANG_H
-	sta	SPRITE_ANG_H
+	tsb	SPRITE_ANG_H
 
 	; ang = th->angle - (a0 >> 4)
 	sec
@@ -4040,63 +4000,49 @@ prepare_sprite:
 	tax
 	lda	TAB_BANK,x
 
-	ora	#$A8
+	ora	#$A0
 	sta	THTEMP_PTR_H
 :
 	; frame index
 	lda	(THTEMP_PTR_L)
 	tax
 	lda	#$08
-	trb	THTEMP_PTR_H
+	tsb	THTEMP_PTR_H
 	lda	(THTEMP_PTR_L)
-	sta	THTEMP_PTR_L
 
-	; sprite frame bank
-	lda	#BANK_SPRITE_FRM
+	; sprite image bank
 	sta	REG_RAM_BANK
 
-	; get sprite frame
-	lda	TAB_SWAP,x
-	ora	#$A0
-	sta	THTEMP_PTR_H
-
 	; frm->width
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_WIDTH,x
 	sta	SPRITE_WIDTH
 
 	; frm->height
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_HEIGHT,x
 	sta	SPRITE_HEIGHT
 
 	; frm->ox
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OX,x
 	sta	SPRITE_OFFS_X
 
 	; frm->oy
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OY,x
 	sta	SPRITE_OFFS_Y_L
 
 	; frm->offs_cols
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OFFS_COLS_L,x
 	sta	SPRITE_COLS_L
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OFFS_COLS_H,x
 	sta	SPRITE_COLS_H
 
 	; frm->offs_data
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OFFS_DATA_L,x
 	sta	SPRITE_DATA_L
-	inc	THTEMP_PTR_H
-	lda	(THTEMP_PTR_L)
+	lda	SPRFRM_STRUCT_OFFS_DATA_H,x
 	sta	SPRITE_DATA_H
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; thing scale
@@ -4330,8 +4276,8 @@ prepare_sprite:
 
 	ldy	SPRITE_THING
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; zdiff = projection.z - ((th->z >> 8) + spr_yoffs)
@@ -4478,10 +4424,6 @@ prepare_sprite:
 	lda	SPRITE_CLIP_FLAG
 	bne	:+
 
-	; check if required (dist)
-	lda	SECTOR_STRUCT_FLOOR_DIST,y
-	bne	:+
-
 	; check if required (link)
 	lda	SECTOR_STRUCT_FLOOR_LINK,y
 	beq	@no_bot_clip
@@ -4601,6 +4543,28 @@ prepare_sprite:
 	lda	VERA_DATA0
 	sta	SPRITE_TEX_STEP_H
 
+	; tex_now = 0
+	stz	SPRITE_TEX_NOW_L
+	stz	SPRITE_TEX_NOW_H
+
+	; if(x1 == x0 + 1)
+	sec
+	lda	SPRITE_X1_L
+	sbc	SPRITE_X0_L
+	tax
+	lda	SPRITE_X1_H
+	sbc	SPRITE_X0_H
+	bne	:+
+	txa
+	cmp	#1
+	bne	:+
+
+	; tex_now = (spr_width << 6) & 0xFF00
+	lda	SPRITE_WIDTH
+	lsr
+	lsr
+	sta	SPRITE_TEX_NOW_H
+:
 	; if(x1 > projection.x1d)
 	sec
 	lda	PROJECTION_X1D
@@ -4621,10 +4585,6 @@ prepare_sprite:
 	lda	SPRITE_X0_H
 	sbc	#0
 	sta	SPRITE_XDIFF_H
-
-	; tex_now = 0
-	stz	SPRITE_TEX_NOW_L
-	stz	SPRITE_TEX_NOW_H
 
 	; if(xdiff < 0)
 	bpl	:+
@@ -5455,38 +5415,33 @@ sprite_skip_col:
 
 prepare_masked:
 	; mt_ox = wall->masked.tex_mid_ox
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_MID_OX,x
 	sta	WALL_MT_OX
 
 	; mt_bz = wall->masked.tex_mid_oy * 2
-	iny
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_MID_OY,x
 	asl
 	sta	WALL_MT_BZ_L
 	lda	#0
 	rol
 	sta	WALL_MT_BZ_H
 
-	; mt_xor = wall->masked.tflags & 0b00001000 ? 0x00 : 0xFF
+	; mt_xor = wall->masked.mid.flags & TEXFLAG_MIRROR_X ? 0x00 : 0xFF
 	stz	WALL_MT_XOR
-	ldy	#WALL_STRUCT_TEX_FLAGS
-	lda	(WALL_PTR_L),y
-	and	#%00001000
+	lda	WALL_STRUCT_TFLAGS,x
+	and	#WALL_TFLAG_MID_MIRROR_X
 	bne	:+
 	dec	WALL_MT_XOR
 :
 	lda	SECTOR_PTR_I
 	sta	MATH_VAR_L
 
-	; if(wall->masked.blockmid & 0b10000000)
-	ldy	#WALL_STRUCT_TEX_MID_B
-	lda	(WALL_PTR_L),y
+	; if(wall->masked.mid.flags & TEXFLAG_PEG_MID_BACK)
+	lda	WALL_STRUCT_TFLAGS,x
 	bpl	:+
 
 	; if(wall->portal.backsector)
-	ldy	#WALL_STRUCT_BACKSECTOR
-	lda	(WALL_PTR_L),y
+	lda	WALL_STRUCT_BACKSECTOR,x
 	beq	:+
 
 	sta	MATH_VAR_L
@@ -5627,7 +5582,7 @@ prepare_masked:
 	inc	PROJECTION_MASKED_IDX
 
 	; wall bank
-	lda	WALL_PTR_B
+	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
 	; done
@@ -5706,14 +5661,14 @@ render_masked:
 	; masked pointers
 	ora	#$A0
 	sta	HI_PTR_H
-	sta	WALL_PTR_H
+	sta	MASKTOP_PTR_H
 	sta	MASKED_PTR_H
 	ina
 	sta	IH_PTR_H
-	sta	WALN_PTR_H
+	sta	MASKBOT_PTR_H
 	lda	#160
-	sta	WALL_PTR_L
-	sta	WALN_PTR_L
+	sta	MASKTOP_PTR_L
+	sta	MASKBOT_PTR_L
 	lda	#80
 	sta	MASKED_PTR_L
 
@@ -5818,13 +5773,13 @@ masked_loop_col:
 	tay
 
 	; top clip
-	lda	(WALL_PTR_L),y
+	lda	(MASKTOP_PTR_L),y
 	sta	MASKED_CLIP_TOP
 	bpl	:+
 	jmp	@skip_col
 :
 	; bot clip
-	lda	(WALN_PTR_L),y
+	lda	(MASKBOT_PTR_L),y
 	sta	MASKED_CLIP_BOT
 
 	; texture scale
@@ -6171,81 +6126,59 @@ plane_apply_effect:
 	; check texture effect
 	lda	TEXINFO_STRUCT_EFFECT_0,y
 	and	#3
-	tax
 	bne	:+
 	rts
 :
+	pha	; <type>
+
 	; get ticks
-	lda	G_LEVEL_TICK_L
-	sta	RENDER_TEXTURE_ETIME_L
-	lda	G_LEVEL_TICK_H
-	sta	RENDER_TEXTURE_ETIME_H
+	ldx	TEXINFO_STRUCT_EFFECT_1,y
+	lda	TAB_ANIM_TICK,x
+	sta	MATH_VAR_L
 
-	; scale time
-	lda	TEXINFO_STRUCT_EFFECT_1,y
-	beq	@skip_ticks
-	bpl	:+
-
-	; up
-	and	#$7F
-	beq	@skip_ticks
-@loop_up:
-	asl	RENDER_TEXTURE_ETIME_L
-	dea
-	bne	@loop_up
-	bra	@skip_ticks
-:
-	; down
-@loop_dn:
-	lsr	RENDER_TEXTURE_ETIME_H
-	ror	RENDER_TEXTURE_ETIME_L
-	dea
-	bne	@loop_dn
-
-@skip_ticks:
 	; pick effect
-	cpx	#1
+	pla	; <type>
+	cmp	#1
 	bne	@sincos
 
 	;; random
 
-	lda	RENDER_TEXTURE_ETIME_H
-	and	#$03
-	ora	#>TAB_RANDOM
-	sta	RENDER_TEXTURE_ETIME_H
-
 	phy
 	lda	TEXINFO_STRUCT_EFFECT_2,y
-	sta	MATH_VAR_L
+	sta	MATH_VAR_U
 
 	; random bank
 	lda	#BANK_RANDOM
 	sta	REG_RAM_BANK
 
 	; X
-	bit	MATH_VAR_L
+	lda	#>TAB_RANDOM
+	sta	MATH_VAR_H
+	bit	MATH_VAR_U
 	bmi	:+
 	clc
-	lda	(RENDER_TEXTURE_ETIME_L)
+	lda	(MATH_VAR_L)
 	adc	RENDER_TEXTURE_OX
 	sta	RENDER_TEXTURE_OX
 :
 	; Y
-	bit	MATH_VAR_L
+	inc	MATH_VAR_H
+	bit	MATH_VAR_U
 	bvs	:+
 	clc
 	ldy	#4
-	lda	(RENDER_TEXTURE_ETIME_L),y
+	lda	(MATH_VAR_L),y
 	adc	RENDER_TEXTURE_OY
 	sta	RENDER_TEXTURE_OY
 :
 	; A
-	lda	MATH_VAR_L
+	inc	MATH_VAR_H
+	lda	MATH_VAR_U
 	lsr
 	bcs	:+
 	clc
 	ldy	#8
-	lda	(RENDER_TEXTURE_ETIME_L),y
+	lda	(MATH_VAR_L),y
 	adc	RENDER_TEXTURE_ANGLE
 	sta	RENDER_TEXTURE_ANGLE
 :
@@ -6265,6 +6198,7 @@ plane_apply_effect:
 	lda	TEXINFO_STRUCT_EFFECT_0,y
 	asl
 	bpl	:+
+
 	; negative
 	lda	TEXINFO_STRUCT_EFFECT_3,y
 	eor	#$FF
@@ -6274,7 +6208,7 @@ plane_apply_effect:
 	sta	VERA_FX_CACHE_M
 :
 	; load cos
-	ldx	RENDER_TEXTURE_ETIME_L
+	ldx	MATH_VAR_L
 	math_read_cos	VERA_FX_CACHE_H, VERA_FX_CACHE_U
 
 	; save result
@@ -6294,7 +6228,7 @@ plane_apply_effect:
 	bne	:+
 
 	; double ticks
-	asl	RENDER_TEXTURE_ETIME_L
+	asl	MATH_VAR_L
 :
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
@@ -6315,7 +6249,7 @@ plane_apply_effect:
 	sta	VERA_FX_CACHE_M
 :
 	; load sin
-	ldx	RENDER_TEXTURE_ETIME_L
+	ldx	MATH_VAR_L
 	math_read_sin	VERA_FX_CACHE_H, VERA_FX_CACHE_U
 
 	; save result
@@ -6603,8 +6537,8 @@ update_weapon_swing:
 	; get player thing
 	ldy	G_PLAYER_THING
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; get thing pitch
@@ -6629,7 +6563,7 @@ update_weapon_swing:
 	pha
 
 	; get thing type
-	ldx	THING_STRUCT_TYPE,y
+	ldx	TICKER_STRUCT_TYPE,y
 
 	; thing info bank
 	lda	#BANK_THING_INFO
@@ -6640,8 +6574,8 @@ update_weapon_swing:
 	sta	MATH_VAR_L
 	stz	MATH_VAR_H
 
-	; thing structure bank
-	lda	#BANK_THING_STRUCT
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
 	; abs(mx)
@@ -7141,30 +7075,21 @@ texture_set:
 	beq	:+
 
 	; get ticks
-	lda	G_LEVEL_TICK_L
-	sta	RENDER_TEXTURE_ETIME_L
-	lda	G_LEVEL_TICK_H
-	sta	RENDER_TEXTURE_ETIME_H
-
-	; scale ticks
-	lda	TEXINFO_STRUCT_EFFECT_1,y
-@loop_ts:
-	lsr	RENDER_TEXTURE_ETIME_H
-	ror	RENDER_TEXTURE_ETIME_L
-	dea
-	bne	@loop_ts
+	ldx	TEXINFO_STRUCT_EFFECT_1,y
+	lda	TAB_ANIM_TICK,x
+	sta	MATH_VAR_L
 
 	; calculate animation
 	clc
-	lda	RENDER_TEXTURE_ETIME_L
+	lda	MATH_VAR_L
 	adc	TEXINFO_STRUCT_EFFECT_3,y
 	and	TEXINFO_STRUCT_EFFECT_2,y
-	sta	RENDER_TEXTURE_ETIME_L
+	sta	MATH_VAR_L
 	sec
 	tya
 	sbc	TEXINFO_STRUCT_EFFECT_3,y
 	clc
-	adc	RENDER_TEXTURE_ETIME_L
+	adc	MATH_VAR_L
 	tay
 :
 	; type check
@@ -7213,7 +7138,7 @@ texture_set:
 
 	; check for XY swap
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_MIRROR_Y_SWAP_XY
+	and	#WALL_TFLAG_MIRROR_Y_SWAP_XY
 	beq	:+
 
 	; set to 'swapped plane' type
@@ -7243,7 +7168,7 @@ texture_set:
 
 	; mirror flag
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_MIRROR_X
+	and	#WALL_TFLAG_MIRROR_X
 	beq	:+
 	stz	WALL_TEXTURE_XOR
 :
@@ -7261,7 +7186,7 @@ texture_set:
 
 	; check for Y mirror
 	lda	WALL_TEXTURE_FLAGS
-	and	#WALL__TEXFLAG_MIRROR_Y_SWAP_XY
+	and	#WALL_TFLAG_MIRROR_Y_SWAP_XY
 	beq	:+
 	inc	WALL_TEXTURE_WX
 :
@@ -7307,4 +7232,3 @@ texture_set:
 	sta	wall_affine_opcode_B+2
 
 	bra	@flags
-

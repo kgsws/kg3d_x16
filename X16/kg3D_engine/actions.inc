@@ -1,3 +1,5 @@
 
-.import action_run
-.import action_get_XY
+.import action_xy
+
+.import action_table
+

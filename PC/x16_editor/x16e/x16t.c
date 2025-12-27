@@ -46,6 +46,7 @@ enum
 	ATTR_TYPE_TT,
 	ATTR_TYPE_BLOCK_FLAGS,
 	ATTR_TYPE_SCALE,
+	ATTR_TYPE_IMASS,
 	ATTR_TYPE_U7F,
 	ATTR_TYPE_VIEW_HEIGHT,
 	ATTR_TYPE_ATK_HEIGHT,
@@ -106,14 +107,30 @@ typedef struct
 	void *func;
 } arg_parse_t;
 
-typedef struct
+typedef union
 {
-	uint8_t action;
-	uint8_t next;
-	uint8_t frm_nxt;
-	uint8_t sprite;
-	uint8_t ticks;
-	uint8_t arg[3];
+	uint8_t raw[8];
+	struct
+	{
+		uint8_t action;
+		uint8_t next;
+		uint8_t frm_nxt;
+		uint8_t sprite;
+		uint8_t ticks;
+		uint8_t arg[3];
+	};
+	// state 0 contains extra game config
+	struct
+	{
+		uint8_t num_sprlnk; // number of thing sprite names
+		uint8_t menu_logo; // sprite for main menu logo
+		uint8_t _frm_nxt;
+		uint8_t _sprite;
+		uint8_t _ticks;
+		uint8_t plr_crouch; // player type change
+		uint8_t plr_swim; // player type change
+		uint8_t plr_fly; // player type change
+	};
 } export_state_t;
 
 typedef struct
@@ -167,8 +184,8 @@ static glui_text_t *text_flag;
 static glui_text_t *text_animation;
 static glui_text_t *text_states;
 
-static uint8_t thing_data[8192 * 2];
-static export_state_t *const state_data = (export_state_t*)(thing_data + 8192);
+static uint8_t thing_data[8192 + MAX_X16_STATES * sizeof(export_state_t)];
+static export_state_t state_data[MAX_X16_STATES];
 static uint32_t state_idx;
 
 static int32_t cbor_main_index;
@@ -191,13 +208,12 @@ static const export_type_t default_player_info =
 {
 	.radius = 31,
 	.height = 144, // 0.5x for crouching / swimming
-	.blocking = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN) | BLOCK_FLAG(BLOCKING_CORPSE),
-	.death_bling = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN) | BLOCK_FLAG(BLOCKING_CORPSE),
+	.blocking = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN),
 	.blockedby = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_SPECIAL),
-	.death_blby = BLOCK_FLAG(BLOCKING_CORPSE),
 	.imass = 64,
 	.gravity = 128,
 	.speed = 13, // 0.5x for crouching / swimming
+	.eflags = THING_EFLAG_CANPUSH,
 	.scale = 96,
 	.step_height = 48, // 0.75x for crouching / swimming
 	.view_height = 0,
@@ -225,14 +241,13 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("radius", radius), ATTR_TYPE_U8},
 	{THING_ATTR("alt radius", alt_radius), ATTR_TYPE_ARADIUS},
 	{THING_ATTR("blocking", blocking), ATTR_TYPE_BLOCK_FLAGS},
-	{THING_ATTR("blck (dead)", death_bling), ATTR_TYPE_BLOCK_FLAGS},
 	{THING_ATTR("blocked by", blockedby), ATTR_TYPE_BLOCK_FLAGS},
-	{THING_ATTR("blby (dead)", death_blby), ATTR_TYPE_BLOCK_FLAGS},
-	{THING_ATTR("invmass", imass), ATTR_TYPE_U8},
+	{THING_ATTR("alt block", alt_block), ATTR_TYPE_BLOCK_FLAGS},
+	{THING_ATTR("imass", imass), ATTR_TYPE_IMASS},
 	{THING_ATTR("gravity", gravity), ATTR_TYPE_U8},
 	{THING_ATTR("speed", speed), ATTR_TYPE_U8},
 	{THING_ATTR("scale", scale), ATTR_TYPE_SCALE},
-	{THING_ATTR("step height", step_height), ATTR_TYPE_U7F},
+	{THING_ATTR("step height", step_height), ATTR_TYPE_U8},
 	{THING_ATTR("view height", view_height), ATTR_TYPE_VIEW_HEIGHT},
 	{THING_ATTR("attack height", atk_height), ATTR_TYPE_ATK_HEIGHT},
 	{THING_ATTR("water height", water_height), ATTR_TYPE_WATER_HEIGHT},
@@ -248,13 +263,12 @@ static const thing_edit_attr_t thing_attr[] =
 // editable flags
 static const thing_edit_flag_t thing_flag[] =
 {
-	{FLAG_STR("sliding"), THING_EFLAG_SLIDING},
+	{FLAG_STR("projectile"), THING_EFLAG_PROJECTILE},
 	{FLAG_STR("climbable"), THING_EFLAG_CLIMBABLE},
 	{FLAG_STR("spriteclip"), THING_EFLAG_SPRCLIP},
-	{FLAG_STR("noclip"), THING_EFLAG_NOCLIP},
-	{FLAG_STR("projectile"), THING_EFLAG_PROJECTILE},
+	{FLAG_STR("noradius"), THING_EFLAG_NORADIUS},
 	{FLAG_STR("waterspec"), THING_EFLAG_WATERSPEC},
-	{FLAG_STR("no push"), THING_EFLAG_NOPUSH},
+	{FLAG_STR("canpush"), THING_EFLAG_CANPUSH},
 	{FLAG_STR("pushable"), THING_EFLAG_PUSHABLE},
 };
 
@@ -331,14 +345,7 @@ const state_action_def_t state_action_def[] =
 			.type = ARGT_XY_SPREAD,
 			.def = 0,
 			.lim = {0, 255}
-		},
-		.arg[2] =
-		{
-			.name = "angle",
-			.type = ARGT_S8,
-			.def = 0,
-			.lim = {-128, 127}
-		},
+		}
 	},
 	{
 		.name = "attack: hitscan",
@@ -362,7 +369,7 @@ const state_action_def_t state_action_def[] =
 			.name = "count",
 			.type = ARGT_U8,
 			.def = 1,
-			.lim = {1, 12}
+			.lim = {1, 8}
 		},
 	},
 ///
@@ -397,7 +404,7 @@ const state_action_def_t state_action_def[] =
 		.flags = AFLG_THING | AFLG_WEAPON,
 		.arg[0] =
 		{
-			.name = "rng mask",
+			.name = "rng",
 			.type = ARGT_U8,
 			.def = 1,
 			.lim = {1, 255}
@@ -425,7 +432,32 @@ const state_action_def_t state_action_def[] =
 		{
 			.name = "blocked by",
 			.type = ARGT_BLOCK_FLAGS,
-			.def = BLOCK_FLAG(BLOCKING_CORPSE),
+			.def = 0,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "death: radius",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "gravity",
+			.type = ARGT_U8,
+			.def = 128,
+			.lim = {0, 255}
+		},
+		.arg[1] =
+		{
+			.name = "blocking",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 0,
+			.lim = {0, 255}
+		},
+		.arg[2] =
+		{
+			.name = "blocked by",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 0,
 			.lim = {0, 255}
 		}
 	},
@@ -437,9 +469,9 @@ const state_action_def_t state_action_def[] =
 static const uint8_t *block_req_text[] =
 {
 	"Bits which this thing will block.",
-	"Bits which this thing will block after death.",
+	"Bits which this thing will block. (alt)",
 	"Bits by which this thing is blocked.",
-	"Bits by which this thing is blocked after death.",
+	"Bits by which this thing is blocked. (alt)",
 };
 
 // state argument type parsers
@@ -455,7 +487,7 @@ const arg_parse_t arg_parse[] =
 	[ARGT_S8 - 1] = {"Enter a value (%d to %d).", te_arg_us8},
 	[ARGT_CHANCE - 1] = {"Enter a value (%d to %d).", te_arg_us8},
 	[ARGT_SPAWN_SLOT - 1] = {"Enter spawn slot (A to D).", te_arg_spawn},
-	[ARGT_XY_SPREAD - 1] = {"Enter two values (0, 1, 2, 4, 8, 16, 32, 64).", te_arg_spread},
+	[ARGT_XY_SPREAD - 1] = {"Enter two values (0 to 15).", te_arg_spread},
 	[ARGT_BLOCK_FLAGS - 1] = {NULL, af_block_flags},
 };
 
@@ -1026,7 +1058,7 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 		break;
 		case ARGT_XY_SPREAD:
 			temp = val->u8;
-			sprintf(text, "X(%u) Y(%u)", (1 << (temp & 15)) >> 1, (1 << (temp >> 4)) >> 1);
+			sprintf(text, "X(%u) Y(%u)", temp & 15, temp >> 4);
 		break;
 		case ARGT_BLOCK_FLAGS:
 			edit_put_blockbits(text, val->u8)[0] = 0;
@@ -1121,6 +1153,9 @@ void x16t_update_thing_view(uint32_t force_show_state)
 			break;
 			case ATTR_TYPE_SCALE:
 				sprintf(text, "%.3f", ((float)src->u8 * 2.0f + 64.0f) / 256.0f);
+			break;
+			case ATTR_TYPE_IMASS:
+				sprintf(text, "%.3f", (float)src->u8 / 64.0f);
 			break;
 			case ATTR_TYPE_U7F:
 				// special flag MSB
@@ -1512,6 +1547,19 @@ static void te_set_attr(uint8_t *text)
 		falue *= 256.0f;
 		falue -= 64.0f;
 		falue /= 2.0f;
+		if(falue < 0)
+			value = 0;
+		else
+		if(falue > 255.9f)
+			value = 255;
+		else
+			value = falue;
+	} else
+	if(type == ATTR_TYPE_IMASS)
+	{
+		if(sscanf(text, "%f", &falue) != 1)
+			goto invalid;
+		falue *= 64.0f;
 		if(falue < 0)
 			value = 0;
 		else
@@ -2062,21 +2110,7 @@ static void te_arg_spawn(uint8_t *text)
 
 static uint32_t check_spread(uint32_t *val)
 {
-	uint32_t vv = *val;
-
-	if(!vv)
-		return 0;
-
-	for(uint32_t i = 0; i < 7; i++)
-	{
-		if(vv == (1 << i))
-		{
-			*val = i + 1;
-			return 0;
-		}
-	}
-
-	return 1;
+	return *val > 15;
 }
 
 static void te_arg_spread(uint8_t *text)
@@ -2119,7 +2153,7 @@ static uint32_t select_state(uint32_t idx)
 
 static int32_t uin_state_idx(glui_element_t *elm, int32_t x, int32_t y)
 {
-	select_state(elm->base.custom);
+	select_state(elm->base.custom & 0xFF);
 	return 1;
 }
 
@@ -2271,7 +2305,6 @@ static void thing_cleanup()
 	strcpy(ti->name.text, "Player (normal)");
 	ti->name.hash = x16c_crc(ti->name.text, -1, THING_CRC_XOR);
 	ti->info = default_player_info;
-	ti->info.step_height |= 0x80; // halved when in air
 
 	// player (crouch)
 	ti = thing_info + THING_TYPE_PLAYER_C;
@@ -2472,11 +2505,12 @@ static void fix_action_args(export_state_t *st)
 {
 #if 0
 	const state_action_def_t *sd;
+	uint32_t act = st->action & 0x7F;
 
-	if(!st->action)
+	if(!act)
 		return;
 
-	sd = state_action_def + st->action;
+	sd = state_action_def + act;
 
 	for(uint32_t i = 0; i < 3; i++)
 	{
@@ -2899,6 +2933,18 @@ void x16t_export()
 	uint8_t fly_height = thing_info[THING_TYPE_PLAYER_F].info.height;
 	uint8_t st_next[MAX_X16_STATES];
 
+	// reset
+	memset(state_data, 0, sizeof(state_data));
+
+	// store extra info into dummy state zero
+	state_data->num_sprlnk = x16_num_sprlnk_thg;
+	state_data->menu_logo = 0xFF;
+	state_data->plr_crouch = THING_TYPE_PLAYER_C;
+	state_data->plr_swim = THING_TYPE_PLAYER_S;
+	state_data->plr_fly = THING_TYPE_PLAYER_F;
+
+	// checks
+
 	if(thing_info[THING_TYPE_PLAYER_N].anim[ANIM_SPAWN].count == 0)
 	{
 		edit_status_printf("Player has no spawn animation! Unable to export!");
@@ -2909,26 +2955,26 @@ void x16t_export()
 	{
 		edit_status_printf("Player crouching is disabled!");
 		thing_info[THING_TYPE_PLAYER_C].info.height = 0;
+		state_data->plr_crouch = THING_TYPE_PLAYER_N;
 	}
 
 	if(thing_info[THING_TYPE_PLAYER_S].anim[ANIM_SPAWN].count == 0)
 	{
 		edit_status_printf("Player swimming is not used!");
 		thing_info[THING_TYPE_PLAYER_S].info.height = 0;
+		state_data->plr_swim = THING_TYPE_PLAYER_N;
 	}
 
 	if(thing_info[THING_TYPE_PLAYER_F].anim[ANIM_SPAWN].count == 0)
 	{
 		edit_status_printf("Player flying is not used!");
 		thing_info[THING_TYPE_PLAYER_F].info.height = 0;
+		state_data->plr_fly = THING_TYPE_PLAYER_N;
 	}
 
 	edit_busy_window("Exporting things ...");
 
 	state_idx = 1; // state 0 is 'STOP'
-
-	// store extra info into dummy state zero
-	state_data->arg[1] = 0xFF;
 
 	memset(thing_data, 0, sizeof(thing_data));
 
@@ -2942,7 +2988,7 @@ void x16t_export()
 			hash == 0xF8845BD5
 		)
 			// logo sprite
-			state_data->arg[1] = i;
+			state_data->menu_logo = i;
 
 		*tdst = hash;
 		tdst += 256;
@@ -3004,7 +3050,7 @@ void x16t_export()
 				st = ta->state + k;
 				dst = state_data + state_idx;
 
-				frame = st->frame;
+				frame = st->frame & 0x1F;
 
 				sprite = x16g_spritelink_by_hash(st->sprite);
 				if(sprite < 0)
@@ -3022,13 +3068,13 @@ void x16t_export()
 					else
 						next = 0;
 
-					dst->next = (next << 3) | ((next >> 5) & 0x07);
-					dst->frm_nxt = ((next >> 3) & 0x60) | frame;
+					dst->next = next;
+					dst->frm_nxt = ((next >> 3) & 0xE0) | frame;
 				}
 
 				dst->sprite = sprite;
 				dst->ticks = st->ticks;
-				dst->action = st->action;
+				dst->action = st->action | (st->frame & 0x80);
 				dst->arg[0] = st->arg[0];
 				dst->arg[1] = st->arg[1];
 				dst->arg[2] = st->arg[2];
@@ -3039,13 +3085,13 @@ void x16t_export()
 			}
 
 			ta->index = base_state;
-			tan0[j * 256] = (base_state << 3) | ((base_state >> 5) & 0x07);
-			tan1[j * 256] = ((base_state >> 3) & 0x60) | base_bright;
+			tan0[j * 256] = base_state;
+			tan1[j * 256] = (base_state >> 8) | base_bright;
 			tan2[j * 256] = ta->count;
 		}
 
 		if(!info.view_height)
-			info.view_height = ti->info.height * 3 / 4;
+			info.view_height = ti->info.height * 3 / 4; // this is also used in editor.c
 
 		if(!info.atk_height)
 			info.atk_height = ti->info.height * 8 / 12;
@@ -3078,8 +3124,8 @@ void x16t_export()
 			ta = thing_info[dst->next].anim + in;
 			next = ta->index;
 
-			dst->next = (next << 3) | ((next >> 5) & 0x07);
-			dst->frm_nxt |= ((next >> 3) & 0x60);
+			dst->next = next;
+			dst->frm_nxt |= ((next >> 3) & 0xE0);
 		}
 	}
 
@@ -3104,14 +3150,17 @@ void x16t_export()
 			state = ta->index;
 			bright = ta->state[0].frame & 0x80;
 
-			tan0[j * 256] = (state << 3) | ((state >> 5) & 0x07);
-			tan1[j * 256] = ((state >> 3) & 0x60) | bright;
+			tan0[j * 256] = state;
+			tan1[j * 256] = (state >> 8) | bright;
 			tan2[j * 256] = ta->count;
 		}
 	}
 
-	// store extra info into dummy state zero
-	state_data->arg[0] = x16_num_sprlnk_thg;
+	// convert states
+	for(uint32_t i = 0; i < MAX_X16_STATES / 256; i++)
+		for(uint32_t x = 0; x < sizeof(export_state_t); x++)
+			for(uint32_t y = 0; y < 256; y++)
+				thing_data[8192 + y + x * 256 + i * 2048] = state_data[i * 256 + y].raw[x];
 
 	// save
 	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES4.BIN", thing_data, sizeof(thing_data));

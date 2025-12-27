@@ -1,6 +1,6 @@
 
-#define MAX_X16_STATES	1024	// limited by design
-#define MAX_X16_THING_TYPES	128	// limited by design; > 127 means "special or no thing"
+#define MAX_X16_STATES	2048	// limited by design
+#define MAX_X16_THING_TYPES	128	// limited by design
 
 #define THING_TYPE_PLAYER_N	127	// normal
 #define THING_TYPE_PLAYER_C	126	// crouching
@@ -17,13 +17,12 @@
 
 #define LEN_X16_THING_NAME	16
 
-#define THING_EFLAG_SLIDING	0x80
+#define THING_EFLAG_PROJECTILE	0x80
 #define THING_EFLAG_CLIMBABLE	0x40
 #define THING_EFLAG_SPRCLIP	0x20
-#define THING_EFLAG_NOCLIP	0x10
-#define THING_EFLAG_PROJECTILE	0x08
+#define THING_EFLAG_NORADIUS	0x10
 #define THING_EFLAG_WATERSPEC	0x04
-#define THING_EFLAG_NOPUSH	0x02
+#define THING_EFLAG_CANPUSH	0x02
 #define THING_EFLAG_PUSHABLE	0x01
 
 #define THING_CHECK_WEAPON_SPRITE(a, t)	((a) != ANIM_SPAWN && (t) >= THING_WEAPON_FIRST && (t) < THING_WEAPON_FIRST + THING_WEAPON_COUNT)
@@ -48,10 +47,10 @@ typedef struct
 	//
 	uint8_t radius;
 	uint8_t height;
+	uint8_t alt_radius;
 	uint8_t blocking;
-	uint8_t death_bling;
 	uint8_t blockedby;
-	uint8_t death_blby;
+	uint8_t alt_block;
 	uint8_t imass;
 	uint8_t gravity;
 	uint8_t speed;
@@ -62,7 +61,6 @@ typedef struct
 	uint8_t water_height;
 	uint8_t view_height;
 	uint8_t atk_height;
-	uint8_t alt_radius;
 	uint8_t pain_chance;
 	//
 	uint8_t jump_pwr;

@@ -8,6 +8,7 @@
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
 #include "defs.h"
+#include "tick.h"
 #include "things.h"
 
 #define VRAM_TEXTURE_START	0x0A000
@@ -27,7 +28,6 @@
 #define TEXFLAG_PEG_Y	1
 #define TEXFLAG_MIRROR_X	2
 #define TEXFLAG_MIRROR_Y_SWAP_XY	4
-#define TEXFLAG_PEG_MID_BACK	TEXFLAG_MIRROR_Y_SWAP_XY
 
 #define SECTOR_LIGHT(x)	(((x)->flags >> 4) & 7)
 
@@ -91,10 +91,11 @@ typedef union
 		uint8_t yoffs_h[128];	// @ 0x1D80
 		uint8_t htan_l[128];	// @ 0x1E00
 		uint8_t htan_h[128];	// @ 0x1E80
-		uint8_t sin_l[320];	// @ 0x1F00
-		uint8_t sin_h[320];	// @ 0x2040
-		uint8_t pxloop[0x1553];	// @ 0x2180
-		// 0x36D3
+		uint8_t sign[256];	// @ 0x1F00
+		uint8_t sin_l[320];	// @ 0x2000
+		uint8_t sin_h[320];	// @ 0x2140
+		uint8_t pxloop[0x1553];	// @ 0x2280
+		// 0x37D3
 	};
 } tables_1100_t;
 
@@ -113,12 +114,15 @@ typedef union
 		uint8_t atan_h[4096];	// @ 0xB000 (bank 62)
 		uint8_t a2x_l[2048];	// @ 0xA000 (bank 63)
 		uint8_t a2x_h[2048];	// @ 0xA800 (bank 63)
-		uint8_t random[2048];	// @ 0xB000 (bank 63)
-		uint8_t planex_l[256];	// @ 0xB800 (bank 63) [plane texture stuff]
-		uint8_t planex_h[256];	// @ 0xB900 (bank 63) [plane texture stuff]
-		uint8_t pitch2yc[256];	// @ 0xBA00 (bank 63)
-		// 0xBD00 contains portals (512 bytes)
-		// 0xBF00 contains keyboard input table (256 bytes)
+		uint8_t random[2048];	// @ 0xB000 (bank 63) [rng stuff]
+		uint8_t rng_mask[256];	// @ 0xB800 (bank 63) [rng stuff]
+		uint8_t planex_l[256];	// @ 0xB900 (bank 63) [plane texture stuff]
+		uint8_t planex_h[256];	// @ 0xBA00 (bank 63) [plane texture stuff]
+		uint8_t pitch2yc[256];	// @ 0xBB00 (bank 63)
+		uint8_t vidoffs_x[128];	// @ 0xBC00 (bank 63)
+		uint8_t vidoffs_y[128];	// @ 0xBC80 (bank 63)
+		uint8_t printint[256];	// @ 0xBD00 (bank 63)
+		// 0xBEC0 contains portals
 	};
 } tables_A000_t;
 
@@ -227,15 +231,6 @@ typedef struct
 
 typedef struct
 {
-	int16_t x, y, z;
-	uint8_t sector;
-	uint8_t angle;
-	uint8_t pitch;
-	uint8_t flags;
-} player_start_t;
-
-typedef struct
-{
 	uint64_t magic;
 	uint8_t version;
 	uint8_t flags;
@@ -244,15 +239,14 @@ typedef struct
 	uint8_t count_ptex;
 	uint8_t count_wtex;
 	uint8_t count_textures;
-	uint8_t count_sectors;
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
+	uint8_t count_wbanks;
 	uint8_t count_things;
 	//
-	uint8_t unused[7];
+	uint8_t unused[9];
 	//
-	uint16_t size_data;
 	uint32_t hash_sky;
 } map_head_t;
 
@@ -324,6 +318,7 @@ static uint32_t render_flags;
 static uint32_t input_action;
 
 uint32_t level_tick;
+static uint8_t anim_tick[10];
 
 vertex_t display_point;
 vertex_t display_line[2];
@@ -368,7 +363,7 @@ static float gl_fov_x, gl_fov_y;
 static show_wpn_t show_wpn_now;
 static uint8_t show_wpn_slot = 0x8E;
 
-vertex_t p2a_coord;
+p2a_t p2a_coord;
 
 projection_t projection;
 
@@ -384,7 +379,7 @@ static uint32_t proj_msk_idx;
 
 uint8_t sectorth[256][32];
 
-static player_start_t player_starts[MAX_PLAYER_STARTS * 3];
+player_start_t player_starts[MAX_PLAYER_STARTS];
 
 //// tables
 
@@ -411,23 +406,10 @@ static const uint8_t move_angle[16] =
 	0x00, // MKEY_STRAFE_RIGHT | MKEY_STRAFE_LEFT | MKEY_BACKWARD | MKEY_FORWARD
 };
 
-const uint32_t wall_size_tab[] =
-{
-	// without texture scrolling
-	sizeof(wall_solid_t) - sizeof(wall_scroll_t) * 1,
-	sizeof(wall_split_t) - sizeof(wall_scroll_t) * 2,
-	sizeof(wall_portal_t) - sizeof(wall_scroll_t) * 2,
-	sizeof(wall_masked_t) - sizeof(wall_scroll_t) * 3,
-	// with texture scrolling
-	sizeof(wall_solid_t),
-	sizeof(wall_split_t),
-	sizeof(wall_portal_t),
-	sizeof(wall_masked_t),
-};
-
 // random
-uint8_t tab_rng[2048];
 static uint32_t rng_idx;
+static uint8_t rng_tab[2048];
+static uint8_t rng_mask[256];
 
 // sin / cos
 int16_t tab_sin[256];
@@ -468,10 +450,10 @@ static portal_t *portal_last;
 static uint8_t portal_top, portal_bot;
 
 // map buffer
+static uint8_t map_block_data[8192];
 map_head_t map_head;
 sector_t map_sectors[256];
-sector_extra_t map_secext[256];
-uint8_t map_data[32 * 1024];
+wall_t map_walls[WALL_BANK_COUNT][256];
 
 // font stuff
 static uint8_t font_info[512];
@@ -611,7 +593,7 @@ static texture_info_t *tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t ligh
 	// animation
 	if(mt->effect[0] & 4)
 	{
-		uint32_t etime = level_tick >> mt->effect[1];
+		uint32_t etime = etime = anim_tick[mt->effect[1]];
 		etime += mt->effect[3];
 		idx -= mt->effect[3];
 		idx += etime & mt->effect[2]; // TODO: overflow check
@@ -816,6 +798,20 @@ printf("O: 0; 0x%03X\n", atan_tab[res]);
 	}
 
 	return ret & 4095;
+}
+
+uint16_t point_to_dist()
+{
+	vertex_t vtx;
+	uint8_t ang;
+
+	vtx.x = p2a_coord.x;
+	vtx.y = p2a_coord.y;
+
+	ang = point_to_angle() >> 4;
+	p2a_coord.a = ang;
+
+	return (vtx.x * tab_sin[ang] + vtx.y * tab_cos[ang]) >> 8;
 }
 
 int32_t spec_inv_div(int16_t n, int16_t d)
@@ -1435,7 +1431,7 @@ go_next:
 	}
 }
 
-static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0, uint32_t x1, int16_t s0, int16_t s1)
+static void dr_wall(sector_t *sec, wall_t *wall, vertex_t *ld, uint32_t x0, uint32_t x1, int16_t s0, int16_t s1)
 {
 	int32_t scale_now, top_now, bot_now;
 	int32_t scale_step, top_step, bot_step;
@@ -1445,7 +1441,7 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 	uint8_t xx = x0;
 	uint8_t masked_idx = 0xFF;
 
-	lca = wall->solid.angle - projection.a;
+	lca = wall->angle - projection.a;
 
 	xdiff = x1 - x0;
 	ydiff = s1 - s0;
@@ -1492,29 +1488,28 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 	projection.fix = 0;
 
 	if(	proj_msk_idx < MAX_DRAW_MASKED &&
-		(wall->solid.angle & MARK_MID_BITS) == MARK_MASKED &&
-		wall->masked.texture_mid &&
-		!(wall->masked.texture_mid & 0x80) &&
-		!(texture_remap[wall->masked.texture_mid] & 0x80)
+		wall->angle & WALL_MARK_EXTENDED &&
+		!(wall->mid.texture & 0x80) &&
+		!(texture_remap[wall->mid.texture] & 0x80)
 	){
 		proj_msk_t *mt = proj_msk + proj_msk_idx;
 		sector_t *ss = sec;
 
-		mt->bz = wall->masked.tex_mid_oy * 2;
+		mt->bz = wall->mid.oy * 2;
 
-		if(	wall->portal.backsector &&
-			wall->masked.blockmid & 0b10000000 // TEXFLAG_PEG_MID_BACK
+		if(	wall->backsector &&
+			wall->tflags & 0b10000000
 		)
-			ss = map_sectors + wall->portal.backsector;
+			ss = map_sectors + wall->backsector;
 
 		mt->scale_now = scale_now;
 		mt->scale_step = scale_step;
 		mt->x0 = xx;
 		mt->x1 = x1;
-		mt->texture = wall->masked.texture_mid;
+		mt->texture = wall->mid.texture;
 		mt->bz += ss->floor.height;
-		mt->xor = wall->masked.tflags & 0b00001000 ? 0x00 : 0xFF; // TEXFLAG_MIRROR_X
-		mt->ox = wall->masked.tex_mid_ox;
+		mt->xor = wall->tflags & 0b00001000 ? 0x00 : 0xFF;
+		mt->ox = wall->mid.ox;
 		mt->sflags = sec->flags;
 
 		memcpy(mt->tmap_scale, tmap_scale, sizeof(tmap_scale));
@@ -1525,28 +1520,33 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		proj_msk_idx++;
 	}
 
-	if((wall->solid.angle & MARK_PORTAL && wall->portal.backsector) || (wall->solid.angle & MARK_MID_BITS) == MARK_SPLIT)
-	{
+	if(	wall->backsector ||
+		(
+			wall->angle & WALL_MARK_EXTENDED &&
+			wall->split != -32768
+		)
+	){
 		sector_t *bs;
 		int16_t diff;
 
-		if((wall->solid.angle & MARK_MID_BITS) == MARK_SPLIT)
+		if(!wall->backsector)
 		{
 			static sector_t fake_bs;
 
-			fake_bs.floor.height = wall->split.height_split;
-			fake_bs.ceiling.height = wall->split.height_split;
+			fake_bs.floor.height = wall->split;
+			fake_bs.ceiling.height = wall->split;
 
 			bs = &fake_bs;
 		} else
-			bs = map_sectors + wall->portal.backsector;
+			bs = map_sectors + wall->backsector;
 
 		diff = bs->floor.height - sec->ceiling.height;
 		if(diff >= 0)
 		{
-			if(wall->portal.tflags & (TEXFLAG_PEG_Y << 4))
+			uint32_t tflags = wall->tflags >> 4;
+			if(tflags & TEXFLAG_PEG_Y)
 				projection.fix = (int16_t)(sec->floor.height - bs->floor.height) >> 1;
-			tex_set(wall->portal.texture_bot, wall->portal.tex_bot_ox, wall->portal.tex_bot_oy, SECTOR_LIGHT(sec), wall->portal.tflags >> 4);
+			tex_set(wall->bot.texture, wall->bot.ox, wall->bot.oy, SECTOR_LIGHT(sec), tflags);
 			goto do_solid_bot;
 		}
 
@@ -1554,7 +1554,7 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		if(diff >= 0)
 		{
 			projection.fix = diff >> 1;
-			if(wall->portal.tflags & TEXFLAG_PEG_Y)
+			if(wall->tflags & TEXFLAG_PEG_Y)
 				projection.fix += (int16_t)(bs->ceiling.height - sec->ceiling.height) >> 1;
 			goto do_solid_top;
 		}
@@ -1584,11 +1584,11 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 			sim24bit(&bot_now);
 			sim24bit(&bot_step);
 
-			if(wall->portal.tflags & TEXFLAG_PEG_Y)
+			if(wall->tflags & TEXFLAG_PEG_Y)
 				projection.fix = (int16_t)(bs->ceiling.height - sec->ceiling.height) >> 1;
 
 			// draw
-			tex_set(wall->portal.texture_top, wall->portal.tex_top_ox, wall->portal.tex_top_oy, SECTOR_LIGHT(sec), wall->portal.tflags);
+			tex_set(wall->top.texture, wall->top.ox, wall->top.oy, SECTOR_LIGHT(sec), wall->tflags);
 			dr_textured_strip(xx, x1, top_now, top_step, bot_now, bot_step, 1);
 		} else
 		{
@@ -1609,6 +1609,8 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 
 		if(bs->floor.height > sec->floor.height)
 		{
+			uint32_t tflags = wall->tflags >> 4;
+
 			// masked clip
 			if(!(masked_idx & 0x80))
 				memcpy(proj_msk[masked_idx].clip_bot, clip_bot, sizeof(clip_bot));
@@ -1621,13 +1623,13 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 			sim24bit(&top_now);
 			sim24bit(&top_step);
 
-			if(wall->portal.tflags & (TEXFLAG_PEG_Y << 4))
+			if(tflags & TEXFLAG_PEG_Y)
 				projection.fix = (int16_t)(sec->floor.height - bs->floor.height) >> 1;
 			else
 				projection.fix = 0;
 
 			// draw
-			tex_set(wall->portal.texture_bot, wall->portal.tex_bot_ox, wall->portal.tex_bot_oy, SECTOR_LIGHT(sec), wall->portal.tflags >> 4);
+			tex_set(wall->bot.texture, wall->bot.ox, wall->bot.oy, SECTOR_LIGHT(sec), tflags);
 			dr_textured_strip(xx, x1, top_now, top_step, bot_now, bot_step, 2);
 		} else
 		{
@@ -1642,11 +1644,11 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		if(	!portal_top && !portal_bot &&
 			bs->ceiling.height > bs->floor.height
 		){
-			if(portal_last->sector != wall->portal.backsector)
+			if(portal_last->sector != wall->backsector)
 			{
 				if(portal_wr - portals < MAX_DRAW_PORTALS)
 				{
-					portal_wr->sector = wall->portal.backsector;
+					portal_wr->sector = wall->backsector;
 					portal_wr->x0 = xx;
 					portal_wr->x1 = x1;
 					portal_wr->masked = masked_idx;
@@ -1678,10 +1680,10 @@ static void dr_wall(sector_t *sec, wall_combo_t *wall, vertex_t *ld, uint32_t x0
 		}
 	} else
 	{
-		if(wall->solid.tflags & TEXFLAG_PEG_Y)
+		if(wall->tflags & TEXFLAG_PEG_Y)
 			projection.fix = (int16_t)(sec->floor.height - sec->ceiling.height) >> 1;
 do_solid_top:
-		tex_set(wall->solid.texture, wall->solid.tex_ox, wall->solid.tex_oy, SECTOR_LIGHT(sec), wall->solid.tflags);
+		tex_set(wall->top.texture, wall->top.ox, wall->top.oy, SECTOR_LIGHT(sec), wall->tflags);
 do_solid_bot:
 		// masked clip
 		if(!(masked_idx & 0x80))
@@ -1891,15 +1893,15 @@ next:
 static void do_walls(uint8_t idx)
 {
 	sector_t *sec = map_sectors + idx;
-	void *wall_ptr = (void*)map_data + sec->walls;
+	wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
+	wall_t *walf = wall;
 	uint16_t last_angle = 0x8000;
 
 	portal_last = portal_rd;
 
-	while(1)
+	do
 	{
-		wall_combo_t *wall = wall_ptr;
-		wall_end_t *waln;
+		wall_t *waln = map_walls[sec->wall.bank] + wall->next;
 		uint16_t a0, a1, ad;
 		vertex_t *v0, *v1;
 		vertex_t d0, d1, dc;
@@ -1911,18 +1913,24 @@ static void do_walls(uint8_t idx)
 		uint8_t do_right_clip = 0;
 		uint8_t inside = 0;
 
-		wall_ptr += wall_size_tab[(wall->solid.angle & MARK_MID_BITS) >> 12];
-		waln = wall_ptr;
-
-		v0 = &wall->solid.vtx;
+		v0 = &wall->vtx;
 		v1 = &waln->vtx;
 
-		// V0 diff
-		d0.x = v0->x - (projection.x >> 8);
-		d0.y = v0->y - (projection.y >> 8);
+		// flip check
+		if(wall->angle & WALL_MARK_SWAP)
+		{
+			// V1 diff
+			d0.x = v1->x - (projection.x >> 8);
+			d0.y = v1->y - (projection.y >> 8);
+		} else
+		{
+			// V0 diff
+			d0.x = v0->x - (projection.x >> 8);
+			d0.y = v0->y - (projection.y >> 8);
+		}
 
 		// get distance Y
-		ld.y = (d0.x * wall->solid.dist.y - d0.y * wall->solid.dist.x) >> 8;
+		ld.y = (d0.x * wall->dist.y - d0.y * wall->dist.x) >> 8;
 		if(	ld.y < 0 ||
 			(!ld.y && idx != projection.sector)
 		){
@@ -1930,7 +1938,9 @@ static void do_walls(uint8_t idx)
 			goto do_next;
 		}
 
-		inside = ld.y == 0 || ld.y == 1;
+		// V0 diff
+		d0.x = v0->x - (projection.x >> 8);
+		d0.y = v0->y - (projection.y >> 8);
 
 		// V0 angle
 		a0 = last_angle;
@@ -1955,13 +1965,11 @@ static void do_walls(uint8_t idx)
 
 		// side check
 		ad = a1 - a0;
-		if(ad & 2048)
-		{
-			if(!inside || !((a0 ^ a1) & 0x800))
-			{
-//				printf("behind 0x%04X 0x%04X\n", a0, a1);
-				goto do_next;
-			}
+		if(	ad & 2048 &&
+			!((a0 ^ a1) & 2048)
+		){
+//			printf("behind 0x%04X 0x%04X\n", a0, a1);
+			goto do_next;
 		}
 
 		// V0 rejection and clipping checks
@@ -2082,10 +2090,10 @@ static void do_walls(uint8_t idx)
 		s1 = tab_depth[p1.y];
 
 		// get distance X
-		if(wall->solid.tflags & 0b10000000)
-			ld.x = (d1.x * wall->solid.dist.x + d1.y * wall->solid.dist.y) >> 1;
+		if(wall->angle & WALL_MARK_XORIGIN)
+			ld.x = (d1.x * wall->dist.x + d1.y * wall->dist.y) >> 1;
 		else
-			ld.x = (d0.x * wall->solid.dist.x + d0.y * wall->solid.dist.y) >> 1;
+			ld.x = (d0.x * wall->dist.x + d0.y * wall->dist.y) >> 1;
 /*
 printf("A0 0x%03X A1 0x%03X\n", a0, a1);
 printf("x0 %d x1 %d\n", x0, x1);
@@ -2096,15 +2104,15 @@ printf("s1 %d y1 %d\n", s1, p1.y);
 		// draw
 		dr_wall(sec, wall, &ld, x0, x1, s0, s1);
 
+		// next
 do_next:
-		if(wall->solid.angle & MARK_LAST)
-			break;
-	}
+		wall = waln;
+	} while(wall != walf);
 }
 
 static void prepare_sprite(uint8_t tdx, sector_t *sec)
 {
-	thing_t *th = things + tdx;
+	thing_t *th = thing_ptr(tdx);
 	uint8_t light = SECTOR_LIGHT(sec);
 	proj_spr_t *spr;
 	vertex_t d0;
@@ -2220,8 +2228,7 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 
 	// bot clip
 	if(	th->eflags & THING_EFLAG_SPRCLIP ||
-		sec->floor.link ||
-		sec->floordist
+		sec->floor.link
 	){
 		zdiff = projection.z - sec->floor.height;
 		y1 = (dist * zdiff) >> 8;
@@ -2246,6 +2253,10 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	// texturing
 	tex_step = (spr_width * (int32_t)inv_div[xdiff]) >> 8;
 	tex_now = 0;
+
+	// special centering
+	if(x1 == x0 + 1)
+		tex_now = (spr_width << 6) & 0xFF00;
 
 	// X limit
 	if(x1 > projection.x1d)
@@ -2352,7 +2363,7 @@ static int16_t fix_effect_value(uint8_t val, uint8_t flip)
 static uint8_t handle_plane_effect(texture_info_t *ti, uint8_t ang)
 {
 	uint8_t *effect;
-	uint16_t etime;
+	uint8_t etime;
 	int16_t temp;
 
 	if(!ti)
@@ -2363,32 +2374,28 @@ static uint8_t handle_plane_effect(texture_info_t *ti, uint8_t ang)
 	if(!effect[0])
 		return ang;
 
-	if(effect[1] & 0x80)
-		etime = level_tick << (effect[1] & 0x7F);
-	else
-		etime = level_tick >> effect[1];
+	etime = anim_tick[effect[1]];
 
 	switch(effect[0] & 3)
 	{
 		case 1: // random
-			etime &= 1023;
 			if(!(effect[2] & 0x80))
-				projection.ox += tab_rng[etime + 0];
+				projection.ox += rng_tab[etime + 0];
 			if(!(effect[2] & 0x40))
-				projection.oy += tab_rng[etime + 4];
+				projection.oy += rng_tab[etime + 256];
 			if(!(effect[2] & 0x01))
-				ang += tab_rng[etime + 8];
+				ang += rng_tab[etime + 512];
 		break;
 		case 2: // circle
 		case 3: // eight
 			temp = fix_effect_value(effect[3], effect[0] << 1);
-			projection.oy += (tab_cos[etime & 0xFF] * temp) >> 8;
+			projection.oy += (tab_cos[etime] * temp) >> 8;
 
 			if((effect[0] & 3) == 3)
 				etime <<= 1;
 
 			temp = fix_effect_value(effect[2], effect[0]);
-			projection.ox += (tab_sin[etime & 0xFF] * temp) >> 8;
+			projection.ox += (tab_sin[etime] * temp) >> 8;
 
 		break;
 	}
@@ -2485,10 +2492,15 @@ static void do_sector(uint8_t idx)
 
 static void do_3d()
 {
-	thing_t *th = things + camera_thing;
+	thing_t *th = thing_ptr(camera_thing);
 	show_wpn_t show_wpn;
 	sector_t *sec;
 	uint32_t pidx;
+
+	for(int32_t i = 0; i < 4; i++)
+		anim_tick[i] = level_tick << (4-i);
+	for(int32_t i = 0; i < 6; i++)
+		anim_tick[i+4] = level_tick >> i;
 
 	projection.x = th->x & ~0xFF;
 	projection.y = th->y & ~0xFF;
@@ -2578,7 +2590,7 @@ static void do_3d()
 	show_wpn.idx = 0xFF;
 
 	if(camera_thing == player_thing)
-		show_wpn.idx = things[0].sprite;
+		show_wpn.idx = thing_ptr(0)->sprite;
 
 	if(show_wpn.idx >= 128)
 	{
@@ -2631,20 +2643,22 @@ static void do_3d()
 
 		if(show_wpn.idx < 128)
 		{
+			thing_t *th = thing_ptr(player_thing);
+			thing_t *tw = thing_ptr(0);
 			weapon_part_t *part = weapon_frame[show_wpn.idx].part;
 			int32_t ox, oy;
 			int32_t dist = 0;
 
-			ox = abs(things[player_thing].mx) >> 8;
-			oy = abs(things[player_thing].my) >> 8;
+			ox = abs(th->mx) >> 8;
+			oy = abs(th->my) >> 8;
 			dist = ox > oy ? ox + oy / 2 : oy + ox / 2;
-			dist *= inv_div[thing_type[things[player_thing].type].speed];
+			dist *= inv_div[thing_type[th->ticker.type].speed];
 			dist >>= 8;
 
 			if(dist > 127)
 				dist = 127;
 
-			if(things[0].iflags)
+			if(tw->iflags)
 				dist >>= 2;
 
 			show_wpn_now.avg >>= 1;
@@ -2664,11 +2678,11 @@ static void do_3d()
 				oy = 0;
 			}
 
-			oy += things[0].height;
+			oy += tw->height;
 
-			if(things[player_thing].pitch >= 148)
+			if(th->pitch >= 148)
 			{
-				int32_t diff = (int32_t)things[player_thing].pitch - 148;
+				int32_t diff = (int32_t)th->pitch - 148;
 				oy += diff >> 2;
 			}
 
@@ -2692,20 +2706,18 @@ static void do_3d()
 
 static void render()
 {
+	thing_t *th = thing_ptr(player_thing);
 	float angle;
 
 	frame_counter++;
-
+#if 1
 	if(!(frame_counter % 4))
+#else
+	if(!(frame_counter % 32))
+#endif
 	{
-		if(camera_damage <= 3)
-			camera_damage = 0;
-		else
-		if(camera_damage)
-			camera_damage -= 3;
-
 		level_tick++;
-		things_tick(); // 15 TPS
+		tick_run(); // 15 TPS
 		input_action = 0;
 #if 0
 		thing_t *th = things + player_thing;
@@ -2738,7 +2750,7 @@ static void render()
 
 	glLoadIdentity();
 
-	glTranslatef(-things[player_thing].x >> 8, -things[player_thing].y >> 8, 0);
+	glTranslatef(-th->x >> 8, -th->y >> 8, 0);
 
 	//
 	// special mark
@@ -2761,7 +2773,7 @@ static void render()
 	// camera
 
 	glLoadIdentity();
-	angle = ANG8_TO_DEG(things[player_thing].angle);
+	angle = ANG8_TO_DEG(th->angle);
 	glRotatef(-angle, 0, 0, 1);
 
 	// FOV
@@ -3106,9 +3118,6 @@ static uint32_t load_tables()
 	for(uint32_t i = 0; i < 2048; i++)
 		angle2x[i] = (tables_A000.a2x_h[i] << 8) | tables_A000.a2x_l[i];
 
-	// random
-	memcpy(tab_rng, tables_A000.random, sizeof(tab_rng));
-
 	// plane X
 	for(uint32_t i = 0; i < 256; i++)
 		tab_planex[i] = (tables_A000.planex_h[i] << 8) | tables_A000.planex_l[i];
@@ -3116,6 +3125,10 @@ static uint32_t load_tables()
 	// pitch to Y center
 	for(uint32_t i = 0; i < 256; i++)
 		pitch2yc[i] = tables_A000.pitch2yc[i];
+
+	// random
+	memcpy(rng_tab, tables_A000.random, sizeof(rng_tab));
+	memcpy(rng_mask, tables_A000.rng_mask, sizeof(rng_mask));
 
 	/// finishing touch
 
@@ -3645,7 +3658,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 	for(int32_t j = NUM_THING_ANIMS-1; j >= 0; j--)
 	{
 		thing_anim_t *anim = thing_anim[type] + j;
-		thing_state_t *st = thing_state + decode_state(anim->state);
+		thing_state_t *st = thing_state + (anim->state & (MAX_X16_STATES-1));
 
 		for(uint32_t k = 0; k < anim->count; k++, st++)
 		{
@@ -3655,7 +3668,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 			if(!(sprite_remap[st->sprite] & 0x80))
 				continue;
 
-			if(st->sprite >= num_sprlnk_thg)
+			if(st->sprite >= thing_state->num_sprlnk)
 			{
 				sprite_remap[st->sprite] = num_wframes;
 				sprintf(text, "DATA/%08X.WPS", sprite_hash[st->sprite]);
@@ -3684,6 +3697,36 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 	return 0;
 }
 
+static void expand_array(void *dest, uint32_t rs, uint32_t ss)
+{
+	uint8_t *dst = dest;
+	uint8_t *src = map_block_data;
+
+	if(!ss)
+		ss = rs;
+
+	for(uint32_t j = 0; j < rs; j++)
+	{
+		for(uint32_t i = 0; i < 256; i++)
+			dst[j + i * ss] = *src++;
+	}
+}
+
+static void expand_walls(uint32_t idx)
+{
+	uint8_t *dst = (uint8_t*)&map_walls[idx][0];
+	uint8_t *src = (uint8_t*)&map_walls[idx][1];
+
+	dst += 16;
+
+	for(uint32_t i = 0; i < 255; i++)
+	{
+		memcpy(dst, src, 16);
+		src += 32;
+		dst += 32;
+	}
+}
+
 static uint32_t load_map()
 {
 	int32_t fd;
@@ -3695,7 +3738,7 @@ static uint32_t load_map()
 	memset(&show_wpn_now, 0xFF, sizeof(show_wpn_t));
 	show_wpn_now.avg = 0;
 
-	memset(things, 0xFF, sizeof(things));
+	tick_clear();
 
 	fd = open("DATA/DEFAULT.MAP", O_RDONLY);
 	if(fd < 0)
@@ -3728,16 +3771,16 @@ static uint32_t load_map()
 	if(map_head.count_lights >= MAX_LIGHTS)
 		goto error;
 
-	if(!map_head.count_sectors)
+	temp = map_head.count_starts_normal;
+	temp += map_head.count_starts_coop;
+	temp += map_head.count_starts_dm;
+
+	if(temp >= MAX_PLAYER_STARTS)
 		goto error;
 
-	if(map_head.count_starts_normal >= MAX_PLAYER_STARTS)
-		goto error;
-
-	if(map_head.count_starts_coop >= MAX_PLAYER_STARTS)
-		goto error;
-
-	if(map_head.count_starts_dm >= MAX_PLAYER_STARTS)
+	if(	!map_head.count_wbanks ||
+		map_head.count_wbanks > WALL_BANK_COUNT
+	)
 		goto error;
 
 	if(!map_head.count_things)
@@ -3804,22 +3847,26 @@ static uint32_t load_map()
 	}
 
 	// map sectors
-	temp = map_head.count_sectors * sizeof(sector_t);
-	if(read(fd, map_sectors + 1, temp) != temp)
+	if(read(fd, map_block_data, 256 * 32) != 256 * 32)
 		goto error;
-
-	// map data
-	if(read(fd, map_data, map_head.size_data) != map_head.size_data)
-		goto error;
+	expand_array(map_sectors, sizeof(sector_t), 0);
 
 	// player starts
-	temp = map_head.count_starts_normal;
-	temp += map_head.count_starts_coop;
-	temp += map_head.count_starts_dm;
-	temp++;
-	temp *= sizeof(player_start_t);
-	if(read(fd, player_starts, temp) != temp)
+	if(read(fd, map_block_data, 4096) != 4096)
 		goto error;
+	expand_array(player_starts, sizeof(player_start_t), 0);
+
+	// wall banks
+	for(uint32_t i = 0; i < map_head.count_wbanks; i++)
+	{
+		if(read(fd, map_block_data, WALL_BANK_SIZE) != WALL_BANK_SIZE)
+			goto error;
+		expand_array(map_walls[i], 16, sizeof(wall_t));
+	}
+
+	// expand walls
+	for(uint32_t i = 0; i < map_head.count_wbanks; i++)
+		expand_walls(i);
 
 	// things
 	for(uint32_t i = 0; i < map_head.count_things; i++)
@@ -3839,7 +3886,7 @@ static uint32_t load_map()
 			goto error;
 
 		ti = thing_spawn((int32_t)th.x << 8, (int32_t)th.y << 8, (int32_t)th.z << 8, (int32_t)th.sector, type, 0);
-		things[ti].angle = th.angle;
+		thing_ptr(ti)->angle = th.angle;
 	}
 
 	// done
@@ -3863,7 +3910,7 @@ static uint32_t precache()
 
 	memset(sprite_remap, 0xFF, sizeof(sprite_remap));
 
-	if(	!(logo_spr_idx & 0x80) &&
+	if(	!(thing_state->menu_logo & 0x80) &&
 		load_wspr("DATA/F8845BD5.WPS")
 	)
 		return 1;
@@ -3894,7 +3941,18 @@ uint8_t rng_get()
 	uint32_t ret = rng_idx;
 	rng_idx++;
 	rng_idx &= 2047;
-	return tab_rng[ret];
+	return rng_tab[ret];
+}
+
+uint8_t rng_val(uint8_t val)
+{
+	uint8_t mask = rng_mask[val];
+	while(1)
+	{
+		uint8_t rng = rng_get() & mask;
+		if(rng <= val)
+			return rng;
+	}
 }
 
 //
@@ -3943,16 +4001,7 @@ int main(int argc, void **argv)
 	glGenTextures(2, texture);
 	glBindTexture(GL_TEXTURE_2D, texture[0]);
 
-	printf("seccnt %u datasize %u\n", map_head.count_sectors, map_head.size_data);
-
-	player_thing = thing_spawn((int32_t)player_starts[0].x << 8, (int32_t)player_starts[0].y << 8, (int32_t)player_starts[0].z << 8, (int32_t)player_starts[0].sector, THING_TYPE_PLAYER_N, 0);
-	camera_thing = player_thing;
-	things[player_thing].angle = player_starts[0].angle;
-	ticcmd.angle = player_starts[0].angle;
-	ticcmd.pitch = player_starts[0].pitch;
-	projection.viewheight = thing_type[things[player_thing].type].view_height;
-	projection.wh = projection.viewheight;
-	projection.wd = 0;
+	thing_spawn_player();
 
 	while(!stopped)
 	{

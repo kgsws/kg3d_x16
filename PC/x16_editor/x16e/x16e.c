@@ -10,138 +10,56 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	18
+#define MAP_VERSION	25
 #define MAP_MAGIC	0x36315870614D676B
 
-#define MAX_BANKS	4
-#define BANK_SIZE	8192
+#define WALL_BANK_COUNT	16
+#define WALL_BANK_SIZE	4096
+#define WALL_BANK_WCNT	(WALL_BANK_SIZE / 16)
 
 #define MAX_LIGHTS	8	// engine limit is 8
 #define MAX_TEXTURES	128	// engine limit is 128
 #define MAX_THINGS	200	// engine limit is 255; but there should be some space for players, projectiles and so on
-#define MAX_PLAYER_STARTS	32	// amount per start type
+#define MAX_PLAYER_STARTS	256
 
-#define MARK_SPLIT	0x1000
-#define MARK_PORTAL	0x2000
-#define MARK_SCROLL	0x4000
-#define MARK_LAST	0x8000
-#define MARK_TYPE_BITS	(MARK_SCROLL | MARK_PORTAL | MARK_SPLIT)
-#define MARK_MID_BITS	(MARK_PORTAL | MARK_SPLIT)
-#define MARK_MASKED	MARK_MID_BITS
+#define WALL_MARK_SWAP	0x8000
+#define WALL_MARK_EXTENDED	0x4000
+#define WALL_MARK_XORIGIN	0x2000
 
 #define ERROR_TEXT_TITLE	"Map export failed!"
 #define ERROR_COMMON_TEXT	"Your map can not be exported!\nThe reason for failed export is:\n\n%s"
 #define ERROR_COLOR	0x2020F0
 #define PASS_COLOR	0xA0A0A0
 
-typedef union
-{
-	uint32_t c;
-	int16_t t[2];
-} tile_combo_t;
-
-typedef struct
-{
-	int8_t x, y;
-} wall_scroll_t;
-
 typedef struct
 {
 	int16_t x, y;
-} vertex_t;
+} __attribute__((packed)) vertex_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-} wall_end_t;
+	uint8_t texture;
+	uint8_t ox;
+	uint8_t oy;
+} __attribute__((packed)) tex_info_t;
 
 typedef struct
 {
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture; // F
-	uint8_t tex_ox; // G
-	uint8_t tex_oy; // H
-	// MARK_SCROLL
-	wall_scroll_t scroll;
-} __attribute__((packed)) wall_solid_t;
-
-typedef struct
-{
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	// this order is forced by 6502 ASM
-	uint8_t backsector; // L
-	uint8_t blocking; // M
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
-} __attribute__((packed)) wall_portal_t;
-
-typedef struct
-{
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	int16_t height_split; // L M
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
-} __attribute__((packed)) wall_split_t;
-
-typedef struct
-{
-	vertex_t vtx; // A
-	vertex_t dist; // B
-	uint16_t angle; // C
-	uint16_t special; // D
-	uint8_t tflags; // E
-	uint8_t texture_top; // F
-	uint8_t tex_top_ox; // G
-	uint8_t tex_top_oy; // H
-	uint8_t texture_bot; // I
-	uint8_t tex_bot_ox; // J
-	uint8_t tex_bot_oy; // K
-	uint8_t backsector; // L
-	uint8_t blocking; // M
-	uint8_t texture_mid;
-	uint8_t tex_mid_ox;
-	uint8_t tex_mid_oy;
-	uint8_t blockmid;
-	// MARK_SCROLL
-	wall_scroll_t scroll_top;
-	wall_scroll_t scroll_bot;
-	wall_scroll_t scroll_mid;
-} __attribute__((packed)) wall_masked_t;
-
-typedef union
-{
-	wall_end_t end;
-	wall_solid_t solid;
-	wall_portal_t portal;
-	wall_split_t split;
-	wall_masked_t masked;
-} __attribute__((packed)) wall_combo_t;
+	vertex_t vtx; // $00
+	vertex_t dist; // $04
+	uint16_t angle; // $08
+	uint8_t next; // $0A
+	uint8_t backsector; // $0B
+	uint8_t tflags; // $0C
+	tex_info_t top; // $0D
+	tex_info_t bot; // $10
+	tex_info_t mid; // $13
+	uint8_t blocking; // $16
+	uint8_t blockmid; // $17
+	int16_t split; // $18
+	uint8_t special; // $1A
+	uint8_t padding[5]; // $1B
+} __attribute__((packed)) wall_t;
 
 typedef struct
 {
@@ -155,13 +73,20 @@ typedef struct
 
 typedef struct
 {
-	// limit is 31 bytes
+	// 32 bytes total
 	sector_plane_t floor;
 	sector_plane_t ceiling;
-	uint16_t walls;
+	struct
+	{
+		uint8_t bank;
+		uint8_t first;
+	} wall;
 	uint8_t flags; // light, palette, underwater
-	int8_t floordist;
-	uint8_t floormasked;
+	uint8_t midheight;
+	//
+	uint8_t filler[9];
+	// internal
+	uint8_t midhit;
 } __attribute__((packed)) sector_t;
 
 typedef struct
@@ -181,6 +106,7 @@ typedef struct
 	uint8_t angle;
 	uint8_t pitch;
 	uint8_t flags;
+	uint8_t unused[6];
 } player_start_t;
 
 typedef struct
@@ -193,15 +119,14 @@ typedef struct
 	uint8_t count_ptex;
 	uint8_t count_wtex;
 	uint8_t count_textures;
-	uint8_t count_sectors;
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
+	uint8_t count_wbanks;
 	uint8_t count_things;
 	//
-	uint8_t unused[7];
+	uint8_t unused[9];
 	//
-	uint16_t size_data;
 	uint32_t hash_sky;
 } map_head_t;
 
@@ -217,12 +142,20 @@ typedef struct
 	uint32_t vhash;
 } marked_variant_t;
 
+typedef struct
+{
+	uint32_t used;
+	uint8_t data[WALL_BANK_SIZE];
+} wall_block_t;
+
 //
 
 uint_fast8_t x16e_enable_logo;
 uint8_t x16e_logo_data[160 * 120];
 
 static uint8_t temp_data[160 * 120];
+
+static uint32_t validcount;
 
 //
 
@@ -237,10 +170,12 @@ static marked_texture_t marked_walls[MAX_TEXTURES];
 static uint32_t count_textures;
 static marked_variant_t marked_variant[MAX_TEXTURES];
 
-static uint32_t map_bank[MAX_BANKS];
-static uint8_t map_data[MAX_BANKS * BANK_SIZE];
+static uint32_t count_starts[3];
 
 static sector_t map_sectors[255];
+static uint8_t map_block_data[8192];
+
+static wall_block_t wall_block[WALL_BANK_COUNT];
 
 static kge_thing_t *player_starts[3][MAX_PLAYER_STARTS];
 
@@ -250,22 +185,6 @@ static map_head_t map_head =
 {
 	.magic = MAP_MAGIC,
 	.version = MAP_VERSION,
-};
-
-//
-
-static const uint32_t wall_size_tab[] =
-{
-	// without texture scrolling
-	sizeof(wall_solid_t) - sizeof(wall_scroll_t) * 1,
-	sizeof(wall_split_t) - sizeof(wall_scroll_t) * 2,
-	sizeof(wall_portal_t) - sizeof(wall_scroll_t) * 2,
-	sizeof(wall_masked_t) - sizeof(wall_scroll_t) * 3,
-	// with texture scrolling
-	sizeof(wall_solid_t),
-	sizeof(wall_split_t),
-	sizeof(wall_portal_t),
-	sizeof(wall_masked_t),
 };
 
 //
@@ -290,37 +209,18 @@ static void error_light_count()
 //
 // stuff
 
-static uint8_t convert_pitch(int16_t pitch)
+static uint8_t convert_pitch(uint16_t pitch)
 {
-	if((pitch & 0x80))
-	{
-		if(pitch < 0xCA)
-			pitch = 0xCA;
-	} else
-	if(pitch > 0x36)
-		pitch = 0x36;
+	pitch += 0x8000;
+	pitch >>= 8;
+
+	if(pitch < 0x4A)
+		pitch = 0x4A;
+	else
+	if(pitch > 0xB6)
+		pitch = 0xB6;
 
 	return pitch;
-}
-
-static void write_player_starts(int32_t fd, kge_thing_t **tha, uint32_t count)
-{
-	player_start_t ps;
-
-	for(uint32_t i = 0; i < count; i++)
-	{
-		kge_thing_t *th = tha[i];
-
-		ps.x = th->pos.x;
-		ps.y = th->pos.y;
-		ps.z = th->pos.z;
-		ps.sector = list_get_idx(&edit_list_sector, (link_entry_t*)th->pos.sector - 1) + 1;
-		ps.angle = 0x100 - (th->pos.angle >> 8);
-		ps.pitch = convert_pitch(th->pos.pitch >> 8) ^ 0x80;
-		ps.flags = 0;
-
-		write(fd, &ps, sizeof(ps));
-	}
 }
 
 static void fix_marked_lights(marked_texture_t *mt, uint32_t mc)
@@ -428,6 +328,49 @@ static uint32_t find_light_id(uint32_t idx)
 	return 0;
 }
 
+static void place_struct(uint8_t *base, uint32_t idx, void *src, uint32_t ss)
+{
+	for(uint32_t i = 0; i < ss; i++)
+	{
+		uint8_t *dst = base + i * 256;
+		dst[idx] = *(uint8_t*)(src + i);
+	}
+}
+
+static void conv_player_start(kge_thing_t *th, player_start_t *ps)
+{
+	memset(ps, 0, sizeof(player_start_t));
+
+	ps->x = th->pos.x;
+	ps->y = th->pos.y;
+	ps->z = th->pos.z;
+	ps->sector = list_get_idx(&edit_list_sector, (link_entry_t*)th->pos.sector - 1) + 1;
+	ps->angle = 0x100 - (th->pos.angle >> 8);
+	ps->pitch = convert_pitch(th->pos.pitch);
+	ps->flags = 0;
+
+}
+
+static void write_player_starts(int32_t fd)
+{
+	uint32_t idx = 0;
+	player_start_t ps;
+
+	memset(map_block_data, 0xFF, sizeof(map_block_data));
+
+	for(uint32_t j = 0; j < 3; j++)
+	{
+		for(uint32_t i = 0; i < count_starts[j]; i++)
+		{
+			conv_player_start(player_starts[j][i], &ps);
+			place_struct(map_block_data, idx, &ps, sizeof(player_start_t));
+			idx++;
+		}
+	}
+
+	write(fd, map_block_data, 256 * 16);
+}
+
 //
 // API
 
@@ -459,19 +402,18 @@ void x16_export_map()
 {
 	sector_t *map_sector;
 	link_entry_t *ent;
-	uint32_t size;
 	int32_t ret;
 	int32_t fd;
 	uint32_t count_walls = 0;
 	uint32_t count_things = 0;
-	uint32_t count_starts_normal = 0;
-	uint32_t count_starts_coop = 0;
-	uint32_t count_starts_dm = 0;
-	uint32_t masked_height;
-	uint8_t wall_data[EDIT_MAX_SECTOR_LINES * sizeof(wall_portal_t)];
+	uint32_t count_wbanks = 0;
+	wall_t wall_tmp[EDIT_MAX_SECTOR_LINES];
+	uint8_t widx[EDIT_MAX_SECTOR_LINES];
 
 	if(edit_check_map())
 		return;
+
+	validcount++;
 
 	marked_lights = 1;
 
@@ -479,16 +421,19 @@ void x16_export_map()
 	count_ptex = 0;
 	count_wtex = 0;
 
+	count_starts[0] = 0;
+	count_starts[1] = 0;
+	count_starts[2] = 0;
+
 	memset(marked_planes, 0, sizeof(marked_planes));
 	memset(marked_walls, 0, sizeof(marked_walls));
 
-	memset(map_data, 0, sizeof(map_data));
 	memset(map_sectors, 0, sizeof(map_sectors));
 
-	for(uint32_t i = 0; i < MAX_BANKS; i++)
-		map_bank[i] = 0;
+	memset(wall_block, 0, sizeof(wall_block));
+	wall_block[0].used = 1; // very fist wall is used for hacks
 
-	// TODO: count valid things; at least 1 must exist
+	memset(map_block_data, 0, sizeof(map_block_data));
 
 	// count things, add player starts
 	ent = tick_list_normal.top;
@@ -516,31 +461,31 @@ void x16_export_map()
 						switch(th->prop.type)
 						{
 							case THING_TYPE_START_NORMAL:
-								if(count_starts_normal >= MAX_PLAYER_STARTS)
+								if(count_starts[0] >= MAX_PLAYER_STARTS)
 								{
 									error_generic("Too many normal player starts!");
 									return;
 								}
-								player_starts[0][count_starts_normal] = th;
-								count_starts_normal++;
+								player_starts[0][count_starts[0]] = th;
+								count_starts[0]++;
 							break;
 							case THING_TYPE_START_COOP:
-								if(count_starts_coop >= MAX_PLAYER_STARTS)
+								if(count_starts[1] >= MAX_PLAYER_STARTS)
 								{
 									error_generic("Too many coop player starts!");
 									return;
 								}
-								player_starts[1][count_starts_coop] = th;
-								count_starts_coop++;
+								player_starts[1][count_starts[1]] = th;
+								count_starts[1]++;
 							break;
 							case THING_TYPE_START_DM:
-								if(count_starts_dm >= MAX_PLAYER_STARTS)
+								if(count_starts[2] >= MAX_PLAYER_STARTS)
 								{
 									error_generic("Too many deathmatch player starts!");
 									return;
 								}
-								player_starts[2][count_starts_dm] = th;
-								count_starts_dm++;
+								player_starts[2][count_starts[2]] = th;
+								count_starts[2]++;
 							break;
 						}
 					break;
@@ -553,7 +498,16 @@ void x16_export_map()
 
 	// checks
 	if(!count_things)
+	{
 		error_generic("At least one thing must be placed!");
+		return;
+	}
+
+	if(count_starts[0] + count_starts[1] + count_starts[2] > MAX_PLAYER_STARTS)
+	{
+		error_generic("Too many combined player starts!");
+		return;
+	}
 
 	// go trough sectors
 	map_sector = map_sectors;
@@ -561,53 +515,47 @@ void x16_export_map()
 	while(ent)
 	{
 		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
-		uint32_t wall_size, wall_offs;
-		void *wall_ptr = wall_data;
-		uint32_t lidx;
+		uint32_t mid_height = 0;
+		int32_t wall_bank = -1;
+		int32_t wall_first;
+		int32_t wfrst = -1;
+		uint32_t wcnt;
 
-		masked_height = 0;
-
-		memset(wall_data, 0, sizeof(wall_data));
-
-		// find first line
-		for(lidx = 0; lidx < sec->line_count; lidx++)
-		{
-			uint32_t ii = sec->line_count - lidx - 1; // reverse order
-			kge_line_t *line = sec->line + ii;
-			kge_line_t *lprv = line + 1;
-
-			if(lprv >= sec->line + sec->line_count)
-				lprv = sec->line;
-
-			if(!line->backsector)
-				break;
-
-			if(line->backsector != lprv->backsector)
-				break;
-		}		
+		memset(wall_tmp, 0, sizeof(wall_tmp));
 
 		// go trough lines
 		for(uint32_t i = 0; i < sec->line_count; i++)
 		{
-			kge_line_t *line = &sec->line[sec->line_count - lidx - 1]; // reverse order
-			wall_combo_t *wall = wall_ptr;
+			kge_line_t *line = &sec->line[i];
+			wall_t *wall = wall_tmp + i;
+			uint16_t aflags = 0;
 			kge_vertex_t *v0, *v1;
 			float dist, xx, yy, dx, dy;
-
-			lidx++;
-			if(lidx >= sec->line_count)
-				lidx = 0;
 
 			count_walls++;
 
 			v0 = line->vertex[1];
 			v1 = line->vertex[0];
 
-			wall->solid.vtx.x = v0->x;
-			wall->solid.vtx.y = v0->y;
+			wall->vtx.x = v0->x;
+			wall->vtx.y = v0->y;
+
+			wall->mid.texture = 0xFF;
+			wall->split = -32768;
 
 			if(line->backsector)
 			{
+				aflags = WALL_MARK_EXTENDED;
+
+				if(line->vc.x16port != validcount)
+				{
+					kge_line_t *ol;
+
+					ol = e2d_find_other_line(line->backsector, sec, line);
+					if(ol)
+						ol->vc.x16port = validcount;
+				}
+
 				ret = mark_texture(line->texture[1].idx, sec->light.idx);
 				if(ret < 0)
 				{
@@ -615,16 +563,19 @@ void x16_export_map()
 					return;
 				}
 
-				wall->portal.backsector = list_get_idx(&edit_list_sector, (link_entry_t*)line->backsector - 1) + 1;
-				wall->portal.blocking = line->info.blocking;
-				wall->portal.texture_bot = ret;
-				wall->portal.tex_bot_ox = line->texture[1].ox;
-				wall->portal.tex_bot_oy = line->texture[1].oy;
-				wall->portal.tflags = line->texture[1].flags << 4;
-				wall->portal.angle = MARK_PORTAL;
+				wall->backsector = list_get_idx(&edit_list_sector, (link_entry_t*)line->backsector - 1) + 1;
+
+				wall->blocking = line->info.blocking;
+				wall->bot.texture = ret;
+				wall->bot.ox = line->texture[1].ox;
+				wall->bot.oy = line->texture[1].oy;
+
+				wall->tflags = line->texture[1].flags << 4;
 
 				if(line->texture[2].idx)
 				{
+					editor_texture_t *et = editor_texture + line->texture[2].idx;
+
 					ret = mark_texture(line->texture[2].idx, sec->light.idx);
 					if(ret < 0)
 					{
@@ -633,45 +584,49 @@ void x16_export_map()
 					}
 
 					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
-						wall->masked.tflags |= 0b00001000;
+						wall->tflags |= 0b00001000;
 
-					wall->masked.blockmid = line->info.blockmid & 0b01111111;
 					if(line->texture[2].flags & TEXFLAG_PEG_MID_BACK)
-						wall->masked.blockmid |= 0b10000000;
+						wall->tflags |= 0b10000000;
 					else
 					{
 						editor_texture_t *et = editor_texture + line->texture[2].idx;
-						masked_height = et->height + line->texture[2].oy;
+						mid_height = et->height + line->texture[2].oy;
 					}
 
-					wall->masked.angle = MARK_MASKED;
-					wall->masked.texture_mid = ret;
-					wall->masked.tex_mid_ox = line->texture[2].ox;
-					wall->masked.tex_mid_oy = line->texture[2].oy;
+					wall->blockmid = line->info.blockmid & 0b01111111;
+					wall->mid.texture = ret;
+					wall->mid.ox = line->texture[2].ox;
+					wall->mid.oy = line->texture[2].oy;
 				}
 			} else
-			if(line->texture_split != INFINITY)
 			{
-				ret = mark_texture(line->texture[1].idx, sec->light.idx);
-				if(ret < 0)
-				{
-					error_texture_count();
-					return;
-				}
+				wfrst = i;
 
-				wall->split.height_split = line->texture_split;
-				wall->split.texture_bot = ret;
-				wall->split.tex_bot_ox = line->texture[1].ox;
-				wall->split.tex_bot_oy = line->texture[1].oy;
-				wall->split.tflags = line->texture[1].flags << 4;
-				wall->split.angle = MARK_SPLIT;
-			} else
-			{
-				wall->solid.tflags = 0;
-				wall->solid.angle = 0;
+				if(line->texture_split != INFINITY)
+				{
+					aflags = WALL_MARK_EXTENDED;
+
+					ret = mark_texture(line->texture[1].idx, sec->light.idx);
+					if(ret < 0)
+					{
+						error_texture_count();
+						return;
+					}
+
+					wall->split = line->texture_split;
+
+					wall->bot.texture = ret;
+					wall->bot.ox = line->texture[1].ox;
+					wall->bot.oy = line->texture[1].oy;
+
+					wall->tflags |= line->texture[1].flags << 4;
+				}
 
 				if(line->texture[2].idx)
 				{
+					aflags = WALL_MARK_EXTENDED;
+
 					ret = mark_texture(line->texture[2].idx, sec->light.idx);
 					if(ret < 0)
 					{
@@ -679,16 +634,32 @@ void x16_export_map()
 						return;
 					}
 
-					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
-						wall->masked.tflags |= 0b00001000;
+					wall->mid.texture = ret;
+					wall->mid.ox = line->texture[2].ox;
+					wall->mid.oy = line->texture[2].oy;
 
-					wall->portal.backsector = 0;
-					wall->masked.blockmid = 0;
-					wall->masked.angle = MARK_MASKED;
-					wall->masked.texture_bot = 0;
-					wall->masked.texture_mid = ret;
-					wall->masked.tex_mid_ox = line->texture[2].ox;
-					wall->masked.tex_mid_oy = line->texture[2].oy;
+					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
+						wall->tflags |= 0b00001000;
+				}
+			}
+
+			if(wfrst < 0)
+			{
+				// find first line
+				for(uint32_t i = 0; i < sec->line_count; i++)
+				{
+					uint32_t ii = sec->line_count - i - 1; // reverse order
+					kge_line_t *line = sec->line + ii;
+					kge_line_t *lprv = line + 1;
+
+					if(lprv >= sec->line + sec->line_count)
+						lprv = sec->line;
+
+					if(line->backsector == lprv->backsector)
+						continue;
+
+					wfrst = i;
+					break;
 				}
 			}
 
@@ -699,18 +670,18 @@ void x16_export_map()
 				return;
 			}
 
-			wall->solid.texture = ret;
-			wall->solid.tex_ox = line->texture[0].ox;
-			wall->solid.tex_oy = line->texture[0].oy;
-			wall->solid.tflags |= line->texture[0].flags;
+			wall->top.texture = ret;
+			wall->top.ox = line->texture[0].ox;
+			wall->top.oy = line->texture[0].oy;
+			wall->tflags |= line->texture[0].flags;
 
 			if(line->info.flags & WALLFLAG_PEG_X)
-				wall->solid.tflags |= 0b10000000;
+				aflags |= WALL_MARK_XORIGIN;
 
-			if(i == sec->line_count-1)
-				wall->solid.angle |= MARK_LAST;
+			if(line->vc.x16port == validcount)
+				aflags |= WALL_MARK_SWAP;
 
-			wall->solid.special = 0;
+			wall->special = 0;
 
 			xx = v0->x - v1->x;
 			yy = v0->y - v1->y;
@@ -720,46 +691,74 @@ void x16_export_map()
 			dx = xx / dist;
 			dy = yy / dist;
 
-			wall->solid.dist.x = dx;
-			wall->solid.dist.y = dy;
+			wall->dist.x = dx;
+			wall->dist.y = dy;
 
-			wall->solid.angle |= line->stuff.x16angle;
-
-			wall_ptr += wall_size_tab[(wall->solid.angle & MARK_TYPE_BITS) >> 12];
+			wall->angle = aflags | line->stuff.x16angle;
 		}
 
-		// wall terminator (first vertex)
+		// index walls
+		wcnt = 0;
+		for(uint32_t i = 0; i < sec->line_count; i++)
 		{
-			wall_portal_t *wall = (wall_portal_t*)wall_data;
-			wall_end_t *wend = wall_ptr;
-			wend->vtx = wall->vtx;
-			wall_ptr += sizeof(wall_end_t);
+			wall_t *wall = wall_tmp + i;
+
+			widx[i] = wcnt++;
+
+			if(wall->angle & WALL_MARK_EXTENDED)
+				wcnt++;
 		}
 
-		// get wall space
-		wall_size = (uint8_t*)wall_ptr - wall_data;
-		wall_ptr = NULL;
-
-		// get bank with free space
-		for(uint32_t bank = 0; bank < MAX_BANKS; bank++)
+		// link walls
+		for(uint32_t i = 0; i < sec->line_count; i++)
 		{
-			wall_offs = map_bank[bank];
-			if(BANK_SIZE - wall_offs >= wall_size)
+			wall_t *wall = wall_tmp + i;
+			int32_t ii = i - 1;
+			if(ii < 0)
+				ii = sec->line_count - 1;
+			wall->next = widx[ii];
+		}
+
+		// find wall bank
+		for(uint32_t i = 0; i < WALL_BANK_COUNT; i++)
+		{
+			wall_block_t *wb = wall_block + i;
+			uint32_t total = wb->used + wcnt;
+			uint32_t idx;
+
+			if(total > WALL_BANK_WCNT)
+				continue;
+
+			if(count_wbanks < i)
+				count_wbanks = i;
+
+			// fix base and expand
+			wall_bank = i;
+			idx = wb->used;
+			for(uint32_t i = 0; i < sec->line_count; i++)
 			{
-				map_bank[bank] += wall_size;
-				wall_offs += bank * BANK_SIZE;
-				wall_ptr = (void*)map_data + wall_offs;
-				break;
+				wall_t *wall = wall_tmp + i;
+
+				wall->next += wb->used;
+
+				if(i == wfrst)
+					wall_first = idx;
+
+				place_struct(wb->data, idx++, wall, 16);
+				if(wall->angle & WALL_MARK_EXTENDED)
+					place_struct(wb->data, idx++, (void*)wall + 16, 16);
 			}
+
+			wb->used = total;
+
+			break;
 		}
 
-		if(!wall_ptr)
+		if(wall_bank < 0)
 		{
 			error_generic("Out of space for walls!");
 			return;
 		}
-
-		memcpy(wall_ptr, wall_data, wall_size);
 
 		// export sector
 		ret = mark_texture(sec->plane[PLANE_BOT].texture.idx, sec->light.idx);
@@ -792,10 +791,10 @@ void x16_export_map()
 		if(sec->plane[PLANE_TOP].link)
 			map_sector->ceiling.link = list_get_idx(&edit_list_sector, (link_entry_t*)sec->plane[PLANE_TOP].link - 1) + 1;
 
-		map_sector->walls = wall_offs;
+		map_sector->wall.bank = wall_bank;
+		map_sector->wall.first = wall_first;
 
-		map_sector->floordist = sec->plane[PLANE_BOT].dist;
-		map_sector->floormasked = masked_height * 2;
+		map_sector->midheight = mid_height;
 
 		// flags will be added later
 
@@ -804,13 +803,7 @@ void x16_export_map()
 		ent = ent->next;
 	}
 
-	// get data size
-	for(uint32_t bank = 0; bank < MAX_BANKS; bank++)
-	{
-		if(!map_bank[bank])
-			break;
-		size = bank * BANK_SIZE + map_bank[bank];
-	}
+	count_wbanks++;
 
 	// count lights and make remap table
 	map_head.count_lights = 0;
@@ -851,14 +844,13 @@ void x16_export_map()
 	map_head.count_ptex = count_ptex;
 	map_head.count_wtex = count_wtex;
 	map_head.count_textures = count_textures;
-	map_head.count_sectors = edit_list_sector.count;
-	map_head.count_starts_normal = count_starts_normal;
-	map_head.count_starts_coop = count_starts_coop;
-	map_head.count_starts_dm = count_starts_dm;
+	map_head.count_starts_normal = count_starts[0];
+	map_head.count_starts_coop = count_starts[1];
+	map_head.count_starts_dm = count_starts[2];
+	map_head.count_wbanks = count_wbanks;
 	map_head.count_things = count_things;
 	map_head.hash_sky = edit_sky_num < 0 ? 0 : editor_sky[edit_sky_num].hash;
 	map_head.flags = 0;
-	map_head.size_data = size;
 
 	if(x16e_enable_logo)
 		map_head.flags |= 0x80;
@@ -871,10 +863,10 @@ void x16_export_map()
 		return;
 	}
 
-	// write map header
+	// map header
 	write(fd, &map_head, sizeof(map_head));
 
-	// write map logo
+	// map logo
 	if(x16e_enable_logo)
 	{
 		uint8_t *dst = temp_data;
@@ -892,7 +884,7 @@ void x16_export_map()
 		write(fd, temp_data, 160 * 120);
 	}
 
-	// write light list; skip white light
+	// light list; skip white light
 	for(uint32_t i = 1; i < x16_num_lights; i++)
 	{
 		if(!(marked_lights & (1 << i)))
@@ -900,28 +892,28 @@ void x16_export_map()
 		write(fd, &editor_light[i].hash, sizeof(uint32_t));
 	}
 
-	// write plane list
+	// plane list
 	write(fd, marked_planes, count_ptex * sizeof(marked_texture_t));
 
-	// write wall list
+	// wall list
 	write(fd, marked_walls, count_wtex * sizeof(marked_texture_t));
 
-	// write texture list
+	// texture list
 	write(fd, marked_variant, count_textures * sizeof(marked_variant_t));
 
-	// write sectors
-	write(fd, map_sectors, edit_list_sector.count * sizeof(sector_t));
+	// sectors
+	for(uint32_t i = 1; i < 256; i++)
+		place_struct(map_block_data, i, map_sectors + i - 1, sizeof(sector_t));
+	write(fd, map_block_data, 256 * 32);
 
-	// write map data
-	write(fd, map_data, size);
+	// player starts
+	write_player_starts(fd);
 
-	// write player starts
-	write_player_starts(fd, player_starts[0], count_starts_normal);
-	write_player_starts(fd, player_starts[1], count_starts_coop);
-	write_player_starts(fd, player_starts[2], count_starts_dm);
-	write_player_starts(fd, &edit_camera_thing, 1);
+	// wall banks
+	for(uint32_t i = 0; i < count_wbanks; i++)
+		write(fd, wall_block[i].data, WALL_BANK_SIZE);
 
-	// write things
+	// things
 	ent = tick_list_normal.top;
 	while(ent)
 	{
@@ -956,7 +948,7 @@ void x16_export_map()
 	close(fd);
 
 	// export OK
-printf("EXPORTED OK\n");
+printf("EXPORTED OK; sec %u ln %u th %u wb %u\n", edit_list_sector.count, count_walls, count_things, count_wbanks);
 /*
 	sprintf(edit_info_box_text,	"Sector count: %u\n"
 					"Wall count: %u\n"

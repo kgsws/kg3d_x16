@@ -11,7 +11,7 @@
 #define float32bits(x)	*((uint32_t*)&(x))
 
 // texture flags (walls)
-#define TEXFLAG_PEG_Y	1
+#define TEXFLAG_PEG_Y	1	// forced by X16
 #define TEXFLAG_MIRROR_X	2
 #define TEXFLAG_MIRROR_Y_SWAP_XY	4
 
@@ -133,6 +133,7 @@ typedef struct kge_sector_validcount_s
 
 typedef struct kge_line_validcount_s
 {
+	uint32_t x16port;
 	uint32_t editor;
 	uint32_t move;
 } kge_line_validcount_t;
@@ -179,7 +180,6 @@ typedef struct kge_sector_stuff_s
 typedef struct kge_secplane_s
 {
 	float height;
-	int8_t dist;
 	kge_x16_tex_t texture;
 	struct kge_sector_s *link;
 } kge_secplane_t;

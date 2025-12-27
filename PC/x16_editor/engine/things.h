@@ -30,5 +30,6 @@ kge_thing_t *thing_spawn(float x, float y, float z, kge_sector_t *sec);
 void thing_remove(kge_thing_t*);
 
 void thing_update_sector(kge_thing_t *thing, uint32_t forced);
+uint32_t thing_check_links(kge_thing_t *thing);
 
 void thing_thrust(kge_thing_t *th, float speed, uint32_t angle, int32_t vngle);

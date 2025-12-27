@@ -156,20 +156,6 @@ static int32_t in3d_increase()
 
 	if(edit_hit.sector)
 	{
-		if(input_ctrl && input_alt)
-		{
-			if(edit_hit.idx == PLANE_BOT)
-			{
-				int32_t tmp = edit_hit.sector->plane[PLANE_BOT].dist;
-				tmp -= change;
-				if(tmp < -127)
-					tmp = -127;
-				edit_hit.sector->plane[PLANE_BOT].dist = tmp;
-				edit_status_printf("Floor fake height: %.0f (offs %+d)", edit_hit.sector->plane[PLANE_BOT].height - (float)tmp, tmp);
-			}
-			return 1;
-		}
-
 		if(input_ctrl)
 		{
 			edit_status_printf("Sector light: %s", change_sector_light(edit_hit.sector, 1));
@@ -245,20 +231,6 @@ static int32_t in3d_decrease()
 
 	if(edit_hit.sector)
 	{
-		if(input_ctrl && input_alt)
-		{
-			if(edit_hit.idx == PLANE_BOT)
-			{
-				int32_t tmp = edit_hit.sector->plane[PLANE_BOT].dist;
-				tmp -= change;
-				if(tmp > 127)
-					tmp = 127;
-				edit_hit.sector->plane[PLANE_BOT].dist = tmp;
-				edit_status_printf("Floor fake height: %.0f (offs %+d)", edit_hit.sector->plane[PLANE_BOT].height - (float)tmp, tmp);
-			}
-			return 1;
-		}
-
 		if(input_ctrl)
 		{
 			edit_status_printf("Sector light: %s", change_sector_light(edit_hit.sector, -1));
@@ -856,19 +828,13 @@ static int32_t in3d_wall_split()
 
 		if(edit_hit.line->texture_split == INFINITY)
 		{
-			if(!edit_hit.line->texture[2].idx)
-			{
-				int32_t split;
+			int32_t split;
 
-				split = (edit_hit.extra_sector->plane[PLANE_TOP].height - edit_hit.extra_sector->plane[PLANE_BOT].height) * 0.5f;
-				split += edit_hit.extra_sector->plane[PLANE_BOT].height;
-				edit_hit.line->texture_split = split;
+			split = (edit_hit.extra_sector->plane[PLANE_TOP].height - edit_hit.extra_sector->plane[PLANE_BOT].height) * 0.5f;
+			split += edit_hit.extra_sector->plane[PLANE_BOT].height;
+			edit_hit.line->texture_split = split;
 
-				edit_status_printf("Wall texture split created.");
-				return 1;
-			}
-
-			edit_status_printf("Masked walls can't have a split!");
+			edit_status_printf("Wall texture split created.");
 			return 1;
 		}
 
@@ -1031,11 +997,8 @@ void e3d_draw()
 
 			if(e3d_highlight > 2)
 			{
-				temp = edit_hit.sector->plane[edit_hit.idx].height;
-				edit_hit.sector->plane[edit_hit.idx].height -= edit_hit.sector->plane[edit_hit.idx].dist;
 				shader_buffer.shading.color[3] = edit_highlight_alpha;
 				r_draw_plane(edit_hit.sector, edit_hit.idx | PLANE_USE_COLOR);
-				edit_hit.sector->plane[edit_hit.idx].height = temp;
 			}
 
 			shader_buffer.shading.color[3] = editor_color[EDITCOLOR_SECTOR_HIGHLIGHT].color[3];
@@ -1043,7 +1006,6 @@ void e3d_draw()
 			shader_update();
 
 			temp = edit_hit.sector->plane[edit_hit.idx].height;
-			temp -= edit_hit.sector->plane[edit_hit.idx].dist;
 
 			for(uint32_t i = 0; i < edit_hit.sector->line_count; i++)
 			{

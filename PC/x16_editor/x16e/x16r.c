@@ -59,10 +59,11 @@ typedef union
 		uint8_t yoffs_h[128];	// @ 0x1D80
 		uint8_t htan_l[128];	// @ 0x1E00
 		uint8_t htan_h[128];	// @ 0x1E80
-		uint8_t sin_l[320];	// @ 0x1F00
-		uint8_t sin_h[320];	// @ 0x2040
-		uint8_t pxloop[0x1553];	// @ 0x2180
-		// 0x36D3
+		uint8_t sign[256];	// @ 0x1F00
+		uint8_t sin_l[320];	// @ 0x2000
+		uint8_t sin_h[320];	// @ 0x2140
+		uint8_t pxloop[0x1553];	// @ 0x2280
+		// 0x37D3
 	};
 } tables_1100_t;
 
@@ -81,15 +82,15 @@ typedef union
 		uint8_t atan_h[4096];	// @ 0xB000 (bank 62)
 		uint8_t a2x_l[2048];	// @ 0xA000 (bank 63)
 		uint8_t a2x_h[2048];	// @ 0xA800 (bank 63)
-		uint8_t random[2048];	// @ 0xB000 (bank 63)
-		uint8_t planex_l[256];	// @ 0xB800 (bank 63) [plane texture stuff]
-		uint8_t planex_h[256];	// @ 0xB900 (bank 63) [plane texture stuff]
-		uint8_t pitch2yc[256];	// @ 0xBA00 (bank 63)
-		uint8_t vidoffs_x[128];	// @ 0xBB00 (bank 63)
-		uint8_t vidoffs_y[128];	// @ 0xBB80 (bank 63)
-		uint8_t printint[256];	// @ 0xBC00 (bank 63)
-		// 0xBD00 contains portals (512 bytes)
-		// 0xBF00 contains keyboard input table (256 bytes)
+		uint8_t random[2048];	// @ 0xB000 (bank 63) [rng stuff]
+		uint8_t rng_mask[256];	// @ 0xB800 (bank 63) [rng stuff]
+		uint8_t planex_l[256];	// @ 0xB900 (bank 63) [plane texture stuff]
+		uint8_t planex_h[256];	// @ 0xBA00 (bank 63) [plane texture stuff]
+		uint8_t pitch2yc[256];	// @ 0xBB00 (bank 63)
+		uint8_t vidoffs_x[128];	// @ 0xBC00 (bank 63)
+		uint8_t vidoffs_y[128];	// @ 0xBC80 (bank 63)
+		uint8_t printint[256];	// @ 0xBD00 (bank 63)
+		// 0xBEC0 contains portals
 	};
 } tables_A000_t;
 
@@ -1532,7 +1533,7 @@ static int16_t fix_effect_value(uint8_t val, uint8_t flip)
 static uint8_t apply_plane_effect(editor_texture_t *et, uint8_t ang)
 {
 	const uint8_t *effect;
-	uint16_t etime;
+	uint8_t etime;
 	int16_t temp;
 	uint32_t level_tick;
 
@@ -1549,31 +1550,30 @@ static uint8_t apply_plane_effect(editor_texture_t *et, uint8_t ang)
 	level_tick = gametick / 8;
 
 	if(effect[1] & 0x80)
-		etime = level_tick << (effect[1] & 0x7F);
+		etime = level_tick << (~effect[1] + 1);
 	else
 		etime = level_tick >> effect[1];
 
 	switch(effect[0] & 3)
 	{
 		case 1: // random
-			etime &= 1023;
 			if(!(effect[2] & 0x80))
 				tex_x_start += tables_A000.random[etime + 0];
 			if(!(effect[2] & 0x40))
-				tex_y_start += tables_A000.random[etime + 4];
+				tex_y_start += tables_A000.random[etime + 256];
 			if(!(effect[2] & 0x01))
-				ang += tables_A000.random[etime + 8];
+				ang += tables_A000.random[etime + 512];
 		break;
 		case 2: // circle
 		case 3: // eight
 			temp = fix_effect_value(effect[3], effect[0] << 1);
-			tex_y_start += (tab_cos[etime & 0xFF] * temp) >> 8;
+			tex_y_start += (tab_cos[etime] * temp) >> 8;
 
 			if((effect[0] & 3) == 3)
 				etime <<= 1;
 
 			temp = fix_effect_value(effect[2], effect[0]);
-			tex_x_start += (tab_sin[etime & 0xFF] * temp) >> 8;
+			tex_x_start += (tab_sin[etime] * temp) >> 8;
 
 		break;
 	}
@@ -1990,6 +1990,14 @@ uint32_t x16r_init()
 	for(uint32_t i = 0; i < 2048; i++)
 		tables_A000.random[i] = rand(); // TODO: check quality
 
+	for(uint32_t i = 0; i < 256; i++)
+	{
+		uint32_t ii = (i - 1) & 255;
+		uint32_t j;
+		for(j = 1; j < i; j <<= 1);
+		tables_A000.rng_mask[ii] = j - 1;
+	}
+
 	return 0;
 }
 
@@ -2337,6 +2345,10 @@ void x16r_generate()
 		ptr = put_code(ptr, pxspr, sizeof(pxspr));
 	*ptr++ = 0x60; // RTS
 //	printf("pthg end 0x%04X\n", ptr - tables_1100.pxloop);
+
+	// sign extension
+	for(uint32_t i = 0; i < 256; i++)
+		tables_1100.sign[i] = i < 128 ? 0x00 : 0xFF;
 
 	// EXPORT
 	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES0.BIN", tables_1100.raw, sizeof(tables_1100));
