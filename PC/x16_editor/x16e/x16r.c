@@ -1,9 +1,9 @@
 #include "inc.h"
 #include "defs.h"
+#include "list.h"
 #include "engine.h"
 #include "editor.h"
 #include "things.h"
-#include "list.h"
 #include "system.h"
 #include "matrix.h"
 #include "shader.h"
@@ -854,7 +854,7 @@ static void finish_sprite(uint8_t idx)
 	uint8_t x0, x1;
 
 	x0 = spr->x0 / 2;
-	x1 = spr->x1 / 2;
+	x1 = (spr->x1 + 1) / 2;
 
 	for( ; x0 < x1; x0++)
 	{
@@ -875,6 +875,12 @@ static void dr_textured_strip(uint8_t x0, uint8_t x1, int32_t top_now, int32_t t
 		int32_t y0, y1;
 		int32_t tnow;
 		int16_t clipdiff;
+
+		if(clip_top[x0] & 0x80)
+		{
+			xx += 2;
+			goto skip;
+		}
 
 		sim24bit(&top_now);
 		sim24bit(&bot_now);
@@ -947,6 +953,7 @@ go_next:
 		if(flags & 4)
 			clip_top[x0] = 0xF0;
 
+skip:
 		top_now += top_step;
 		bot_now += bot_step;
 	}
@@ -957,6 +964,9 @@ static void dr_mark_top(uint8_t x0, uint8_t x1, int32_t now, int32_t step)
 	for( ; x0 < x1; x0++)
 	{
 		int32_t y0;
+
+		if(clip_top[x0] & 0x80)
+			goto skip;
 
 		sim24bit(&now);
 
@@ -979,6 +989,7 @@ go_next:
 
 		clip_top[x0] = y0;
 
+skip:
 		now += step;
 	}
 }
@@ -988,6 +999,9 @@ static void dr_mark_bot(uint8_t x0, uint8_t x1, int32_t now, int32_t step)
 	for( ; x0 < x1; x0++)
 	{
 		int32_t y1;
+
+		if(clip_top[x0] & 0x80)
+			goto skip;
 
 		sim24bit(&now);
 
@@ -1010,6 +1024,7 @@ go_next:
 
 		clip_bot[x0] = y1;
 
+skip:
 		now += step;
 	}
 }
@@ -1051,7 +1066,8 @@ static void dr_wall(kge_sector_t *sec, kge_line_t *line, vertex_t *ld, uint32_t 
 
 	for( ; x0 < x1; x0++)
 	{
-		tmap_scale[x0] = tex_scale[top_now >> 8];
+		if(!(clip_top[x0] & 0x80))
+			tmap_scale[x0] = tex_scale[top_now >> 8];
 		top_now += top_step;
 	}
 
@@ -1574,16 +1590,203 @@ static uint8_t apply_plane_effect(editor_texture_t *et, uint8_t ang)
 
 			temp = fix_effect_value(effect[2], effect[0]);
 			tex_x_start += (tab_sin[etime] * temp) >> 8;
-
 		break;
 	}
 
 	return ang;
 }
 
+static void do_wall(kge_line_t *line, kge_sector_t *sec, kge_sector_t *origin)
+{
+	uint16_t a0, a1, ad;
+	vertex_t wall_dist;
+	vertex_t v0, v1;
+	vertex_t d0, d1, dc;
+	vertex_t p0, p1;
+	vertex_t ld;
+	uint8_t x0, x1;
+	int16_t s0, s1;
+	uint8_t do_left_clip = 0;
+	uint8_t do_right_clip = 0;
+	uint8_t inside = 0;
+
+	wall_dist.x = line->stuff.normal.y * 256;
+	wall_dist.y = -line->stuff.normal.x * 256;
+	v0.x = line->vertex[1]->x;
+	v0.y = line->vertex[1]->y;
+	v1.x = line->vertex[0]->x;
+	v1.y = line->vertex[0]->y;
+
+	// V0 diff
+	d0.x = v0.x - projection.x;
+	d0.y = v0.y - projection.y;
+
+	// get distance Y
+	ld.y = (d0.x * wall_dist.y - d0.y * wall_dist.x) >> 8;
+	if(ld.y < 0)
+		return;
+	inside = ld.y == 0 || ld.y == 1;
+	if(!ld.y && sec != origin)
+		return;
+
+	// V0 angle
+	p2a_coord.x = d0.x;
+	p2a_coord.y = d0.y;
+	a0 = point_to_angle();
+
+	// V1 diff
+	d1.x = v1.x - projection.x;
+	d1.y = v1.y - projection.y;
+
+	// V1 angle
+	p2a_coord.x = d1.x;
+	p2a_coord.y = d1.y;
+	a1 = point_to_angle();
+
+	// side check
+	ad = a1 - a0;
+	if(ad & 2048)
+	{
+		if(!inside || !((a0 ^ a1) & 0x800))
+			return;
+	}
+
+	// V0 rejection and clipping checks
+	// 0x000 -> 0x3FF: normal wall
+	// 0xD00 -> 0xFFF: left clip
+	a0 -= projection.a;
+	a0 += H_FOV;
+	a0 &= 4095;
+	if(a0 & 0x800)
+	{
+		do_left_clip = 1;
+	} else
+	if(a0 >= 0x400)
+		return;
+
+	// V1 rejection and clipping checks
+	a1 -= projection.a;
+	a1 += H_FOV;
+	a1 &= 4095;
+	if(a1 >= 0xC00)
+		return;
+	else
+	if(a1 >= 0x400)
+		do_right_clip = 1;
+
+	// extra reject
+	if(a0 & a1 & 0x800)
+		return;
+
+	// angle clipping and X projection
+	if(do_left_clip)
+		x0 = 0;
+	else
+		x0 = angle2x[a0] / 2;
+
+	if(do_right_clip)
+		x1 = 80;
+	else
+		x1 = angle2x[a1] / 2;
+
+	if(x0 >= x1)
+		return;
+
+	if(x1 <= projection.x0)
+		return;
+
+	if(x0 >= projection.x1)
+		return;
+
+	// project angle
+	projection.lca = (line->stuff.x16angle - projection.a) & 4095;
+
+	// project Y0
+	p0.y = (d0.x * projection.sin + d0.y * projection.cos) >> 8;
+
+	// project Y1
+	p1.y = (d1.x * projection.sin + d1.y * projection.cos) >> 8;
+
+	// clipping
+	if(do_left_clip || do_right_clip)
+	{
+		if(ld.y < 6)
+		{
+			p0.y = 0;
+			p1.y = 0;
+			do_left_clip = 0;
+			do_right_clip = 0;
+		} else
+		{
+			// project X0
+			p0.x = (d0.x * projection.cos - d0.y * projection.sin) >> 8;
+
+			// project X1
+			p1.x = (d1.x * projection.cos - d1.y * projection.sin) >> 8;
+
+			dc.x = p1.x - p0.x;
+			dc.y = p1.y - p0.y;
+		}
+	}
+
+	// left clip
+	if(do_left_clip)
+	{
+		int32_t d, n, r;
+
+		d = dc.x + dc.y;
+		n = - p0.x - p0.y;
+#ifndef USE_SPECDIV_CLIPPING
+		r = n * inv_div[d];
+#else
+		r = spec_inv_div(n, d);
+#endif
+		if(r > 0 && r < 32768)
+			p0.y += (dc.y * r) >> 15;
+	}
+
+	// right clip
+	if(do_right_clip)
+	{
+		int32_t d, n, r;
+
+		d = dc.x - dc.y;
+		n = p1.x - p1.y;
+#ifndef USE_SPECDIV_CLIPPING
+		r = n * inv_div[d];
+#else
+		r = spec_inv_div(n, d);
+#endif
+		if(r > 0 && r < 32768)
+			p1.y -= (dc.y * r) >> 15;
+	}
+
+	// extra step on PC
+	if(p0.y > 4095)
+		p0.y = 4095;
+	if(p1.y > 4095)
+		p1.y = 4095;
+
+	// depth projection
+	s0 = tab_depth[p0.y];
+	s1 = tab_depth[p1.y];
+
+	// get distance X
+	if(line->info.flags & WALLFLAG_PEG_X)
+		ld.x = (d1.x * wall_dist.x + d1.y * wall_dist.y) >> 1;
+	else
+		ld.x = (d0.x * wall_dist.x + d0.y * wall_dist.y) >> 1;
+
+	// draw
+	dr_wall(sec, line, &ld, x0, x1, s0, s1);
+}
+
 static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 {
 	sector_link_t *link;
+	link_entry_t *ent;
+	uint32_t did_object = 0;
+	edit_sec_obj_t *obj_top = NULL;
 
 	// fix plane clip
 	plc_top[projection.x0] = 0xF0;
@@ -1607,191 +1810,73 @@ static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 		link = link->next_thing;
 	}
 
+	// objects
+	ent = sec->objects.top;
+	while(ent)
+	{
+		edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+		float xx, yy;
+
+		xx = obj->origin.x - projection.x;
+		yy = obj->origin.y - projection.y;
+
+		obj->next = NULL;
+		obj->prev = NULL;
+		obj->dist = xx * xx + yy * yy;
+
+		if(obj_top)
+		{
+			edit_sec_obj_t *pick = obj_top;
+
+			while(pick)
+			{
+				if(pick->dist > obj->dist)
+				{
+					if(pick->prev)
+						pick->prev->next = obj;
+					else
+						obj_top = obj;
+
+					obj->next = pick;
+					obj->prev = pick->prev;
+					pick->prev = obj;
+
+					break;
+				}
+
+				if(!pick->next)
+				{
+					obj->prev = pick;
+					pick->next = obj;
+					break;
+				}
+
+				pick = pick->next;
+			}
+		} else
+			obj_top = obj;
+
+		ent = ent->next;
+	}
+
+	while(obj_top)
+	{
+		for(uint32_t i = 0; i < obj_top->count; i++)
+		{
+			kge_line_t *line = &obj_top->line[obj_top->count - i - 1]; // reverse order
+			do_wall(line, sec, NULL);
+		}
+
+		did_object = 1;
+
+		obj_top = obj_top->next;
+	}
+
 	// walls
 	for(uint32_t i = 0; i < sec->line_count; i++)
 	{
 		kge_line_t *line = &sec->line[sec->line_count - i - 1]; // reverse order
-		uint16_t a0, a1, ad;
-		vertex_t wall_dist;
-		vertex_t v0, v1;
-		vertex_t d0, d1, dc;
-		vertex_t p0, p1;
-		vertex_t ld;
-		uint8_t x0, x1;
-		int16_t s0, s1;
-		uint8_t do_left_clip = 0;
-		uint8_t do_right_clip = 0;
-		uint8_t inside = 0;
-
-		wall_dist.x = line->stuff.normal.y * 256;
-		wall_dist.y = -line->stuff.normal.x * 256;
-		v0.x = line->vertex[1]->x;
-		v0.y = line->vertex[1]->y;
-		v1.x = line->vertex[0]->x;
-		v1.y = line->vertex[0]->y;
-
-		// V0 diff
-		d0.x = v0.x - projection.x;
-		d0.y = v0.y - projection.y;
-
-		// get distance Y
-		ld.y = (d0.x * wall_dist.y - d0.y * wall_dist.x) >> 8;
-		if(ld.y < 0)
-			continue;
-		inside = ld.y == 0 || ld.y == 1;
-		if(!ld.y && sec != origin)
-			continue;
-
-		// V0 angle
-		p2a_coord.x = d0.x;
-		p2a_coord.y = d0.y;
-		a0 = point_to_angle();
-
-		// V1 diff
-		d1.x = v1.x - projection.x;
-		d1.y = v1.y - projection.y;
-
-		// V1 angle
-		p2a_coord.x = d1.x;
-		p2a_coord.y = d1.y;
-		a1 = point_to_angle();
-
-		// side check
-		ad = a1 - a0;
-		if(ad & 2048)
-		{
-			if(!inside || !((a0 ^ a1) & 0x800))
-				continue;
-		}
-
-		// V0 rejection and clipping checks
-		// 0x000 -> 0x3FF: normal wall
-		// 0xD00 -> 0xFFF: left clip
-		a0 -= projection.a;
-		a0 += H_FOV;
-		a0 &= 4095;
-		if(a0 & 0x800)
-		{
-			do_left_clip = 1;
-		} else
-		if(a0 >= 0x400)
-			continue;
-
-		// V1 rejection and clipping checks
-		a1 -= projection.a;
-		a1 += H_FOV;
-		a1 &= 4095;
-		if(a1 >= 0xC00)
-			continue;
-		else
-		if(a1 >= 0x400)
-			do_right_clip = 1;
-
-		// extra reject
-		if(a0 & a1 & 0x800)
-			continue;
-
-		// angle clipping and X projection
-		if(do_left_clip)
-			x0 = 0;
-		else
-			x0 = angle2x[a0] / 2;
-
-		if(do_right_clip)
-			x1 = 80;
-		else
-			x1 = angle2x[a1] / 2;
-
-		if(x0 >= x1)
-			continue;
-
-		if(x1 <= projection.x0)
-			continue;
-
-		if(x0 >= projection.x1)
-			continue;
-
-		// project angle
-		projection.lca = (line->stuff.x16angle - projection.a) & 4095;
-
-		// project Y0
-		p0.y = (d0.x * projection.sin + d0.y * projection.cos) >> 8;
-
-		// project Y1
-		p1.y = (d1.x * projection.sin + d1.y * projection.cos) >> 8;
-
-		// clipping
-		if(do_left_clip || do_right_clip)
-		{
-			if(ld.y < 6)
-			{
-				p0.y = 0;
-				p1.y = 0;
-				do_left_clip = 0;
-				do_right_clip = 0;
-			} else
-			{
-				// project X0
-				p0.x = (d0.x * projection.cos - d0.y * projection.sin) >> 8;
-
-				// project X1
-				p1.x = (d1.x * projection.cos - d1.y * projection.sin) >> 8;
-
-				dc.x = p1.x - p0.x;
-				dc.y = p1.y - p0.y;
-			}
-		}
-
-		// left clip
-		if(do_left_clip)
-		{
-			int32_t d, n, r;
-
-			d = dc.x + dc.y;
-			n = - p0.x - p0.y;
-#ifndef USE_SPECDIV_CLIPPING
-			r = n * inv_div[d];
-#else
-			r = spec_inv_div(n, d);
-#endif
-			if(r > 0 && r < 32768)
-				p0.y += (dc.y * r) >> 15;
-		}
-
-		// right clip
-		if(do_right_clip)
-		{
-			int32_t d, n, r;
-
-			d = dc.x - dc.y;
-			n = p1.x - p1.y;
-#ifndef USE_SPECDIV_CLIPPING
-			r = n * inv_div[d];
-#else
-			r = spec_inv_div(n, d);
-#endif
-			if(r > 0 && r < 32768)
-				p1.y -= (dc.y * r) >> 15;
-		}
-
-		// extra step on PC
-		if(p0.y > 4095)
-			p0.y = 4095;
-		if(p1.y > 4095)
-			p1.y = 4095;
-
-		// depth projection
-		s0 = tab_depth[p0.y];
-		s1 = tab_depth[p1.y];
-
-		// get distance X
-		if(line->info.flags & WALLFLAG_PEG_X)
-			ld.x = (d1.x * wall_dist.x + d1.y * wall_dist.y) >> 1;
-		else
-			ld.x = (d0.x * wall_dist.x + d0.y * wall_dist.y) >> 1;
-
-		// draw
-		dr_wall(sec, line, &ld, x0, x1, s0, s1);
+		do_wall(line, sec, origin);
 	}
 
 	// floor
@@ -1838,6 +1923,19 @@ static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 		projection.pl_cos = tab_cos[ang];
 
 		dr_plane(projection.z - (int16_t)sec->plane[PLANE_TOP].height, plc_top, plc_bot);
+	}
+
+	// object cleanup
+	if(did_object)
+	{
+		for(uint32_t x0 = projection.x0; x0 < projection.x1; x0++)
+		{
+			if(clip_top[x0] & 0x80)
+			{
+				plc_top[x0] = 0xF0;
+				plf_top[x0] = 0xF0;
+			}
+		}
 	}
 
 	// finish sprites

@@ -873,6 +873,14 @@ render_sector:
 	; disable cache write
 	stz	VERA_FX_CTRL
 
+	;; OBJECT CLEANUP
+
+
+;;; TODO
+
+
+	;; FINISH SPRITES
+
 	; sprite bank
 	lda	#BANK_DRAW_SPRITES
 	sta	REG_RAM_BANK
@@ -2453,6 +2461,10 @@ v1diff_opcode:
 	; loop start
 	ldx	WALL_X0
 @loop_texture_map_y:
+	; object check
+	lda	RENDER_CLIP_TOP,x
+	bmi	@skip
+
 	; save result
 	stz	VERA_ADDRx_L
 	stz	VERA_DATA0
@@ -2463,7 +2475,7 @@ v1diff_opcode:
 	lda	VERA_DATA0
 	sta	WALL_TOP_NOW_H
 
-	; tstep = tex_scale[scale_now >> 8]
+	; tmap_scale[x0] = tex_scale[top_now >> 8]
 	lda	(WALL_TOP_NOW_M)
 	sta	RENDER_TEXSCALE_L,x
 	lda	#>TAB_TSCALE_H
@@ -2471,6 +2483,7 @@ v1diff_opcode:
 	lda	(WALL_TOP_NOW_M)
 	sta	RENDER_TEXSCALE_H,x
 
+@skip:
 	; scale_now += scale_step (accumulate)
 	lda	VERA_FX_ACCUM
 

@@ -259,6 +259,7 @@ typedef struct kge_line_s
 	kge_line_info_t info;
 	kge_identity_t tex_ident[3];
 	float texture_split;
+	void *object;
 	kge_line_stuff_t stuff;
 	kge_line_validcount_t vc;
 	struct kge_sector_s *frontsector;
@@ -273,6 +274,7 @@ typedef struct kge_sector_s
 	kge_identity_t pl_ident[2];
 	kge_sector_stuff_t stuff;
 	kge_sector_validcount_t vc;
+	linked_list_t objects;
 	uint32_t line_count;
 	kge_line_t line[];
 } kge_sector_t;

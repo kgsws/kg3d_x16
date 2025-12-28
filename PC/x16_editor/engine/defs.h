@@ -15,6 +15,7 @@
 
 // x16
 #define MAX_X16_MAPSTRING	32
+#define MAX_SECTOR_OBJECTS	6
 
 //
 static inline void apply_4f(float *dst, const float *src)

@@ -1,5 +1,6 @@
 #include "inc.h"
 #include "defs.h"
+#include "list.h"
 #include "engine.h"
 #include "x16r.h"
 

@@ -1,6 +1,8 @@
 #include "inc.h"
 #include "defs.h"
+#include "list.h"
 #include "engine.h"
+#include "editor.h"
 #include "matrix.h"
 #include "shader.h"
 #include "things.h"
@@ -482,6 +484,7 @@ void render_scan_sector(kge_sector_t *sec, uint32_t recursion)
 	float fb, ft;
 	float bt, bb;
 	kge_sector_t *bs;
+	link_entry_t *ent;
 	sector_link_t *link;
 	kge_vertex_t *v0, *v1;
 	shader_clip_info_t clipinfo;
@@ -588,6 +591,39 @@ void render_scan_sector(kge_sector_t *sec, uint32_t recursion)
 	glDisable(GL_ALPHA_TEST);
 
 	shader_buffer.lightmap = LIGHTMAP_IDX(sec->light.idx);
+
+	// draw objects
+	ent = sec->objects.top;
+	while(ent)
+	{
+		edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+		kge_line_t *line = obj->line;
+
+		for(uint32_t i = 0; i < obj->count; i++, line++)
+		{
+			if(kge_line_point_side(line, viewpos.x, viewpos.y) < 0.0f)
+				continue;
+
+			v0 = line->vertex[0];
+			v1 = line->vertex[1];
+
+			gl_vertex_buf[0].x = v0->x;
+			gl_vertex_buf[0].y = v0->y;
+			gl_vertex_buf[1].x = v1->x;
+			gl_vertex_buf[1].y = v1->y;
+			gl_vertex_buf[2].x = v0->x;
+			gl_vertex_buf[2].y = v0->y;
+			gl_vertex_buf[3].x = v1->x;
+			gl_vertex_buf[3].y = v1->y;
+
+			bt = ft;
+			bb = fb;
+
+			draw_wall(sec, line, line->info.flags << 8, ft, fb, 0);
+		}
+
+		ent = ent->next;
+	}
 
 	// draw walls and check portals
 	for(uint32_t i = 0; i < sec->line_count; i++)

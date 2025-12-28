@@ -1,12 +1,12 @@
 #include "inc.h"
 #include "defs.h"
+#include "list.h"
 #include "engine.h"
 #include "system.h"
 #include "shader.h"
 #include "matrix.h"
 #include "render.h"
 #include "input.h"
-#include "list.h"
 #include "tick.h"
 #include "image.h"
 #include "things.h"
@@ -55,6 +55,9 @@ static linked_list_t drag_list_point;
 static float drag_item_x;
 static float drag_item_y;
 static uint32_t drag_input_type;
+
+// drawing
+static kge_sector_t *draw_into_sector;
 
 // planes
 static uint32_t plane_mode = 2;
@@ -497,7 +500,6 @@ static uint32_t e2d_create_sector()
 		ent = edit_list_draw_new.cur;
 	else
 		ent = edit_list_draw_new.top;
-
 	while(ent)
 	{
 		kge_vertex_t *vtx;
@@ -546,6 +548,92 @@ static uint32_t e2d_create_sector()
 	return 0;
 }
 
+static uint32_t e2d_create_sector_obj(kge_sector_t *sec, uint32_t closed)
+{
+	// NOTE: count is based on points not lines
+	// unclosed objects have one-less max count
+	link_entry_t *ent;
+	kge_vertex_t *vtx;
+	kge_line_t *line;
+	edit_sec_obj_t *obj;
+	int32_t dir = 0;
+
+	if(edit_list_draw_new.count < 2)
+		return 1;
+
+	if(edit_list_draw_new.count > EDIT_MAX_SOBJ_LINES)
+		return 2;
+
+	// area check
+	if(	closed &&
+		edit_list_draw_new.count > 2
+	){
+		dir = e2d_area_angle();
+		if(dir < 0)
+			return 1;
+		dir = !dir;
+	}
+
+	// create
+	obj = list_add_entry(&sec->objects, sizeof(edit_sec_obj_t));
+
+	// count
+	obj->count = edit_list_draw_new.count - !closed;
+
+	// pointers
+	line = obj->line;
+	vtx = obj->vtx;
+
+	// create lines
+	if(dir)
+		ent = edit_list_draw_new.cur;
+	else
+		ent = edit_list_draw_new.top;
+	while(ent)
+	{
+		kge_vertex_t *pt = (kge_vertex_t*)(ent + 1); // current point
+
+		// line
+
+		memset(line, 0, sizeof(kge_line_t));
+
+		line->vertex[0] = vtx + 0;
+		line->vertex[1] = vtx + 1;
+		line->frontsector = sec;
+		line->texture[0] = edit_line_default;
+		line->texture[1] = edit_empty_texture;
+		line->texture[2] = edit_empty_texture;
+		line->texture_split = INFINITY;
+		line->object = obj;
+
+		line++;
+
+		// vertex
+
+		vtx->x = pt->x;
+		vtx->y = pt->y;
+		vtx++;
+
+		// next
+		if(dir)
+			ent = ent->prev;
+		else
+			ent = ent->next;
+	}
+
+	if(closed)
+	{
+		// create loop
+		line--;
+		line->vertex[1] = obj->vtx;
+	}
+
+	// update shape
+	edit_update_object(obj);
+
+	return 0;
+}
+
 static void e2d_delete_sector(kge_sector_t *sec)
 {
 	link_entry_t *ent = tick_list_normal.top;
@@ -585,7 +673,10 @@ static void e2d_delete_sector(kge_sector_t *sec)
 		}
 
 		ent = ent->next;
-	}	
+	}
+
+	// delete objects
+	list_clear(&sec->objects);
 
 	// delete sector
 	list_del_entry(&edit_list_sector, LIST_ENTRY(sec));
@@ -1208,11 +1299,41 @@ static void draw_wall(kge_line_t *line, uint32_t color, float depth, uint32_t hi
 
 	// first vertex
 	draw_vertex(v0, intensity, EDITCOLOR_VERTEX, DEPTH_VERTEX);
+
+	// second vertex
+	if(highlight & 16)
+		draw_vertex(v1, intensity, EDITCOLOR_VERTEX, DEPTH_VERTEX);
+}
+
+static void draw_obj_origin(kge_vertex_t *vtx)
+{
+	const float radius = 24.0f;
+
+	apply_4f(shader_buffer.shading.color, editor_color[EDITCOLOR_THING].color);
+	shader_changed = 1;
+	shader_update();
+
+	gl_vertex_buf[0].x = vtx->x - radius;
+	gl_vertex_buf[0].y = vtx->y - radius;
+	gl_vertex_buf[0].z = DEPTH_WALL;
+	gl_vertex_buf[1].x = vtx->x + radius;
+	gl_vertex_buf[1].y = vtx->y + radius;
+	gl_vertex_buf[1].z = DEPTH_WALL;
+
+	gl_vertex_buf[2].x = vtx->x + radius;
+	gl_vertex_buf[2].y = vtx->y - radius;
+	gl_vertex_buf[2].z = DEPTH_WALL;
+	gl_vertex_buf[3].x = vtx->x - radius;
+	gl_vertex_buf[3].y = vtx->y + radius;
+	gl_vertex_buf[3].z = DEPTH_WALL;
+
+	glDrawArrays(GL_LINES, 0, 4);
 }
 
 static void draw_sector(kge_sector_t *sector)
 {
 	int32_t flat_color = -1;
+	link_entry_t *ent;
 
 	if(edit_is_sector_hidden(sector))
 		return;
@@ -1306,11 +1427,36 @@ static void draw_sector(kge_sector_t *sector)
 			if(kge_line_point_side(pine, line->vertex[1]->x, line->vertex[1]->y) < 0.0f)
 				highlight |= 4;
 
-			if(line->backsector && pine->backsector)
-				highlight |= 8;
+//			if(line->backsector && pine->backsector)
+//				highlight |= 8;
 		}
 
 		draw_wall(line, color, DEPTH_WALL, highlight);
+	}
+
+	// object draw
+	ent = sector->objects.top;
+	while(ent)
+	{
+		edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+		kge_line_t *line = obj->line;
+
+		draw_obj_origin(&obj->origin);
+
+		for(uint32_t i = 0; i < obj->count; i++, line++)
+		{
+			uint32_t highlight = 16;
+
+			if(!edit_list_draw_new.top)
+			{
+				if(line == edit_hit.line)
+					highlight |= 1;
+			}
+
+			draw_wall(line, EDITCOLOR_LINE_OBJ, DEPTH_WALL, highlight);
+		}
+
+		ent = ent->next;
 	}
 }
 
@@ -1409,6 +1555,8 @@ static void draw_things()
 static void draw_new_lines()
 {
 	link_entry_t *ent = edit_list_draw_new.top;
+	uint32_t color = draw_into_sector ? EDITCOLOR_LINE_OBJ : EDITCOLOR_LINE_NEW;
+
 	while(ent)
 	{
 		kge_vertex_t vvv;
@@ -1419,7 +1567,7 @@ static void draw_new_lines()
 		else
 			location_from_mouse(&vvv.x, &vvv.y, 1);
 
-		apply_4f(shader_buffer.shading.color, editor_color[EDITCOLOR_LINE_NEW].color);
+		apply_4f(shader_buffer.shading.color, editor_color[color].color);
 		shader_changed = 1;
 		shader_update();
 
@@ -1942,6 +2090,10 @@ static int32_t in2d_draw_start()
 {
 	float mx, my;
 	kge_vertex_t *vtx;
+	kge_sector_t *sec;
+
+	if(edit_list_draw_new.cur)
+		return 1;
 
 	if(!edit_grp_show && edit_subgrp_show)
 	{
@@ -1958,18 +2110,53 @@ static int32_t in2d_draw_start()
 		return 1;
 	}
 
+	sec = edit_find_sector_by_point(mx, my, NULL, 1);
+	if(sec)
+	{
+		uint32_t idx;
+
+		for(uint32_t i = 0; i < sec->line_count; i++)
+		{
+			kge_line_t *line = sec->line + i;
+
+			if(	line->vertex[0]->x == mx &&
+				line->vertex[0]->y == my
+			)
+				goto do_new;
+		}
+
+		idx = list_get_idx(&edit_list_sector, (link_entry_t*)sec - 1) + 1;
+
+		if(sec->objects.count >= MAX_SECTOR_OBJECTS)
+		{
+			edit_status_printf("Too many objects in sector #%u!", idx);
+			return 1;
+		}
+
+		edit_status_printf("Drawing object into sector #%u.", idx);
+
+		draw_into_sector = sec;
+
+		goto do_draw;
+	}
+
+do_new:
+	draw_into_sector = NULL;
+
+	if(edit_list_sector.count >= 255)
+	{
+		edit_status_printf("Too many sectors!");
+		return 1;
+	}
+
 	if(edit_grp_show)
 		edit_status_printf("Drawing sector to group \"%s / %s\".", edit_group[edit_grp_show].name, edit_group[edit_grp_show].sub[edit_subgrp_show].name);
 
-	if(!edit_list_draw_new.cur)
-	{
-		// new point
-		vtx = list_add_entry(&edit_list_draw_new, sizeof(kge_vertex_t));
-		vtx->x = mx;
-		vtx->y = my;
-
-		return 1;
-	}
+do_draw:
+	// new point
+	vtx = list_add_entry(&edit_list_draw_new, sizeof(kge_vertex_t));
+	vtx->x = mx;
+	vtx->y = my;
 
 	// drawing new lines
 
@@ -2202,6 +2389,7 @@ static int32_t in2d_draw_insert()
 {
 	kge_vertex_t *vtx;
 	float mx, my;
+	uint32_t closed = 0;
 
 	location_from_mouse(&mx, &my, 1);
 
@@ -2221,6 +2409,13 @@ static int32_t in2d_draw_insert()
 		if(vtx->x == mx && vtx->y == my)
 		{
 			// closed the loop
+
+			if(draw_into_sector)
+			{
+				closed = 1;
+				goto finish_extra;
+			}
+
 			switch(e2d_create_sector())
 			{
 				case 0:
@@ -2236,6 +2431,7 @@ static int32_t in2d_draw_insert()
 					edit_status_printf("Too many sectors!");
 				break;
 			}
+
 			// clear draw list
 			list_clear(&edit_list_draw_new);
 		} else
@@ -2249,6 +2445,26 @@ static int32_t in2d_draw_insert()
 			} else
 				edit_status_printf("Line limit hit! Close the sector now.");
 		}
+	} else
+	{
+		// stop at the same vertex
+finish_extra:
+		switch(e2d_create_sector_obj(draw_into_sector, closed))
+		{
+			case 0:
+				edit_status_printf("Sector object created.");
+			break;
+			case 1:
+				edit_status_printf("Invalid object shape!");
+			break;
+			case 2:
+				edit_status_printf("Too many lines for object!");
+			break;
+		}
+
+		// clear draw list
+		draw_into_sector = NULL;
+		list_clear(&edit_list_draw_new);
 	}
 
 	return 1;

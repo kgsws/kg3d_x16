@@ -1,8 +1,8 @@
 #include "inc.h"
 #include "defs.h"
+#include "list.h"
 #include "engine.h"
 #include "input.h"
-#include "list.h"
 #include "tick.h"
 
 uint32_t leveltime;

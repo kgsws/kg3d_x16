@@ -1,12 +1,12 @@
 #include "inc.h"
 #include "defs.h"
+#include "list.h"
 #include "engine.h"
 #include "system.h"
 #include "shader.h"
 #include "matrix.h"
 #include "render.h"
 #include "input.h"
-#include "list.h"
 #include "tick.h"
 #include "things.h"
 #include "x16g.h"
@@ -172,6 +172,7 @@ edit_color_t editor_color[EDITCOLOR__COUNT] =
 	[EDITCOLOR_LINE_SOLID] = {1.0f, 1.0f, 1.0f, 1.0f},
 	[EDITCOLOR_LINE_PORTAL] = {0.0f, 0.8f, 0.5f, 1.0f},
 	[EDITCOLOR_LINE_NEW] = {1.0f, 1.0f, 1.0f, 1.0f},
+	[EDITCOLOR_LINE_OBJ] = {1.0f, 1.0f, 0.0f, 1.0f},
 	[EDITCOLOR_LINE_BAD] = {1.0f, 0.0f, 0.0f, 1.0f},
 	[EDITCOLOR_VERTEX] = {0.0f, 0.8f, 0.0f, 1.0f},
 	[EDITCOLOR_VERTEX_NEW] = {0.8f, 0.8f, 0.0f, 1.0f},
@@ -3738,6 +3739,40 @@ void edit_update_thing_type(kge_thing_t *th)
 	x16g_set_sprite_texture(th);
 }
 
+static void obj_box_vtx(int32_t *box, kge_vertex_t *vtx)
+{
+	int32_t tmp;
+
+	tmp = vtx->x;
+	if(box[0] > tmp)
+		box[0] = tmp;
+	if(box[1] < tmp)
+		box[1] = tmp;
+
+	tmp = vtx->y;
+	if(box[2] > tmp)
+		box[2] = tmp;
+	if(box[3] < tmp)
+		box[3] = tmp;
+}
+
+void edit_update_object(edit_sec_obj_t *obj)
+{
+	int32_t box[4] = {32767, -32767, 32767, -32767};
+	int32_t tmp;
+
+	for(uint32_t i = 0; i < obj->count; i++)
+	{
+		kge_line_t *line = obj->line + i;
+		engine_update_line(line);
+		obj_box_vtx(box, line->vertex[0]);
+		obj_box_vtx(box, line->vertex[1]);
+	}
+
+	obj->origin.x = box[0] + (box[1] - box[0]) / 2;
+	obj->origin.y = box[2] + (box[3] - box[2]) / 2;
+}
+
 uint32_t edit_get_special_thing(const uint8_t *name)
 {
 	internal_thing_t *it = internal_thing;
@@ -3947,7 +3982,10 @@ void edit_highlight_changed()
 
 			ui_edit_highlight.base.disabled = 0;
 
-			sprintf(text, "Line #%u of Sector #%u", edit_hit.line - edit_hit.extra_sector->line, list_get_idx(&edit_list_sector, (link_entry_t*)edit_hit.extra_sector - 1) + 1);
+			if(edit_hit.line->object)
+				sprintf(text, "Line-object of Sector #%u", list_get_idx(&edit_list_sector, (link_entry_t*)edit_hit.extra_sector - 1) + 1);
+			else
+				sprintf(text, "Line #%u of Sector #%u", edit_hit.line - edit_hit.extra_sector->line, list_get_idx(&edit_list_sector, (link_entry_t*)edit_hit.extra_sector - 1) + 1);
 			glui_set_text(&ui_edit_highlight_title, text, glui_font_small_kfn, GLUI_ALIGN_CENTER_TOP);
 
 			ypos = 22;

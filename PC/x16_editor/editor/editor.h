@@ -26,6 +26,7 @@
 // TODO: move to config
 #define EDIT_EXPORT_BUFFER_SIZE	(16 * 1024 * 1024)
 #define EDIT_MAX_SECTOR_LINES	32
+#define EDIT_MAX_SOBJ_LINES	8
 #define EDIT_MAX_FILE_PATH	256
 #define EDIT_MAX_GROUPS	128
 #define EDIT_MAX_SUBGROUPS	16
@@ -49,6 +50,7 @@ enum
 	EDITCOLOR_LINE_SOLID,
 	EDITCOLOR_LINE_PORTAL,
 	EDITCOLOR_LINE_NEW,
+	EDITCOLOR_LINE_OBJ,
 	EDITCOLOR_LINE_BAD,
 	EDITCOLOR_VERTEX,
 	EDITCOLOR_VERTEX_NEW,
@@ -186,6 +188,17 @@ typedef struct
 	edit_subgroup_t sub[EDIT_MAX_SUBGROUPS];
 } edit_group_t;
 
+typedef struct edit_sec_obj_s
+{
+	struct edit_sec_obj_s *next;
+	struct edit_sec_obj_s *prev;
+	uint32_t count;
+	float dist;
+	kge_vertex_t origin;
+	kge_line_t line[EDIT_MAX_SOBJ_LINES];
+	kge_vertex_t vtx[EDIT_MAX_SOBJ_LINES];
+} edit_sec_obj_t;
+
 //
 
 struct kgcbor_gen_s;
@@ -275,6 +288,8 @@ void edit_fix_marked_things_z(uint32_t);
 
 void edit_update_thing_type(kge_thing_t *th);
 uint32_t edit_get_special_thing(const uint8_t *);
+
+void edit_update_object(edit_sec_obj_t*);
 
 uint32_t edit_is_sector_hidden(kge_sector_t*);
 
