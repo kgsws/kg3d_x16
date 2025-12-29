@@ -601,6 +601,9 @@ void render_scan_sector(kge_sector_t *sec, uint32_t recursion)
 
 		for(uint32_t i = 0; i < obj->count; i++, line++)
 		{
+			if(line->info.flags & WALLFLAG_SKIP)
+				continue;
+
 			if(kge_line_point_side(line, viewpos.x, viewpos.y) < 0.0f)
 				continue;
 
@@ -630,6 +633,9 @@ void render_scan_sector(kge_sector_t *sec, uint32_t recursion)
 	{
 		kge_line_t *line = sec->line + i;
 		uint32_t wflags = line->info.flags << 8;
+
+		if(line->info.flags & WALLFLAG_SKIP)
+			continue;
 
 		if(kge_line_point_side(line, viewpos.x, viewpos.y) < 0.0f)
 			continue;

@@ -685,14 +685,14 @@ static uint32_t e2d_create_sector_obj(kge_sector_t *sec, uint32_t closed)
 			dir < 0
 		)
 			return 1;
-		dir = !dir;
 	}
 
 	// create
 	obj = list_add_entry(&sec->objects, sizeof(edit_sec_obj_t));
+	memset(obj, 0, sizeof(edit_sec_obj_t));
 
 	// count
-	obj->count = edit_list_draw_new.count - !closed;
+	obj->count = edit_list_draw_new.count;
 
 	// pointers
 	line = obj->line;
@@ -709,10 +709,8 @@ static uint32_t e2d_create_sector_obj(kge_sector_t *sec, uint32_t closed)
 
 		// line
 
-		memset(line, 0, sizeof(kge_line_t));
-
-		line->vertex[0] = vtx + 0;
-		line->vertex[1] = vtx + 1;
+		line->vertex[0] = vtx + 1;
+		line->vertex[1] = vtx + 0;
 		line->frontsector = sec;
 		line->texture[0] = edit_line_default;
 		line->texture[1] = edit_empty_texture;
@@ -726,7 +724,6 @@ static uint32_t e2d_create_sector_obj(kge_sector_t *sec, uint32_t closed)
 
 		vtx->x = pt->x;
 		vtx->y = pt->y;
-		vtx->vc_editor = 0;
 		vtx++;
 
 		// next
@@ -736,12 +733,12 @@ static uint32_t e2d_create_sector_obj(kge_sector_t *sec, uint32_t closed)
 			ent = ent->next;
 	}
 
-	if(closed)
-	{
-		// create loop
-		line--;
-		line->vertex[1] = obj->vtx;
-	}
+	// create loop
+	line--;
+	line->vertex[0] = obj->vtx;
+
+	if(!closed)
+		line->info.flags = WALLFLAG_SKIP;
 
 	// update shape
 	edit_update_object(obj);
@@ -987,6 +984,7 @@ static uint32_t e2d_connect_lines(kge_sector_t *sec, kge_line_t *line)
 	line->texture[1] = edit_empty_texture;
 	line->texture[2] = edit_empty_texture;
 	line->texture_split = INFINITY;
+	line->info.flags &= ~WALLFLAG_SKIP;
 	line->info.blocking = 0;
 	line->info.blockmid = 0;
 
@@ -994,6 +992,7 @@ static uint32_t e2d_connect_lines(kge_sector_t *sec, kge_line_t *line)
 	ln->texture[1] = edit_empty_texture;
 	ln->texture[2] = edit_empty_texture;
 	ln->texture_split = INFINITY;
+	ln->info.flags &= ~WALLFLAG_SKIP;
 	ln->info.blocking = 0;
 	ln->info.blockmid = 0;
 
@@ -1113,7 +1112,6 @@ static uint32_t e2d_split_line(kge_sector_t *sec, kge_line_t *line, float x, flo
 		edit_sec_obj_t *obj = line->object;
 		kge_line_t *ln;
 		kge_vertex_t *vtx;
-		uint32_t closed;
 		int32_t idx, cnt;
 
 		// check vertexes
@@ -1125,8 +1123,6 @@ static uint32_t e2d_split_line(kge_sector_t *sec, kge_line_t *line, float x, flo
 		// prepare
 		ln = obj->line;
 		cnt = obj->count - 1;
-		closed = ln[0].vertex[0] == ln[cnt].vertex[1];
-		cnt += !closed;
 
 		// check limit
 		if(cnt >= EDIT_MAX_SOBJ_LINES - 1)
@@ -1381,23 +1377,28 @@ static void draw_line(kge_vertex_t *v0, kge_vertex_t *v1, float depth)
 
 static void draw_wall(kge_line_t *line, uint32_t color, float depth, uint32_t highlight)
 {
-	float intensity;
+	float bri_wall, bri_norm;
 	float *colf = editor_color[color].color;
 	kge_vertex_t *v0 = line->vertex[0];
 	kge_vertex_t *v1 = line->vertex[1];
 
 	if(edit_list_draw_new.top)
-		intensity = 0.4f;
+		bri_norm = 0.4f;
 	else
-		intensity = 1.0f;
+		bri_norm = 1.0f;
+
+	if(line->info.flags & WALLFLAG_SKIP)
+		bri_wall = 0.3f;
+	else
+		bri_wall = bri_norm;
 
 	// blocking
 	if(!highlight && (line->info.blocking || line->info.blockmid))
 	{
 		glLineWidth(EDIT_HIGHLIGHT_LINE_WIDTH);
-		shader_buffer.shading.color[0] = editor_color[EDITCOLOR_LINE_PORTAL].color[0] * intensity;
-		shader_buffer.shading.color[1] = editor_color[EDITCOLOR_LINE_PORTAL].color[1] * intensity;
-		shader_buffer.shading.color[2] = editor_color[EDITCOLOR_LINE_PORTAL].color[2] * intensity;
+		shader_buffer.shading.color[0] = editor_color[EDITCOLOR_LINE_PORTAL].color[0] * bri_norm;
+		shader_buffer.shading.color[1] = editor_color[EDITCOLOR_LINE_PORTAL].color[1] * bri_norm;
+		shader_buffer.shading.color[2] = editor_color[EDITCOLOR_LINE_PORTAL].color[2] * bri_norm;
 		shader_buffer.shading.color[3] = 0.2f;
 		shader_changed = 1;
 		shader_update();
@@ -1409,9 +1410,9 @@ static void draw_wall(kge_line_t *line, uint32_t color, float depth, uint32_t hi
 	if(highlight & 4)
 	{
 		glLineWidth(EDIT_HIGHLIGHT_LINE_WIDTH);
-		shader_buffer.shading.color[0] = editor_color[EDITCOLOR_LINE_BAD].color[0] * intensity;
-		shader_buffer.shading.color[1] = editor_color[EDITCOLOR_LINE_BAD].color[1] * intensity;
-		shader_buffer.shading.color[2] = editor_color[EDITCOLOR_LINE_BAD].color[2] * intensity;
+		shader_buffer.shading.color[0] = editor_color[EDITCOLOR_LINE_BAD].color[0] * bri_norm;
+		shader_buffer.shading.color[1] = editor_color[EDITCOLOR_LINE_BAD].color[1] * bri_norm;
+		shader_buffer.shading.color[2] = editor_color[EDITCOLOR_LINE_BAD].color[2] * bri_norm;
 		shader_buffer.shading.color[3] = edit_highlight_alpha + EDIT_HIGHLIGHT_ALPHA_OFFSET_BAD;
 		shader_changed = 1;
 		shader_update();
@@ -1419,9 +1420,9 @@ static void draw_wall(kge_line_t *line, uint32_t color, float depth, uint32_t hi
 		glLineWidth(1.0f);
 	}
 
-	shader_buffer.shading.color[0] = colf[0] * intensity;
-	shader_buffer.shading.color[1] = colf[1] * intensity;
-	shader_buffer.shading.color[2] = colf[2] * intensity;
+	shader_buffer.shading.color[0] = colf[0] * bri_norm;
+	shader_buffer.shading.color[1] = colf[1] * bri_norm;
+	shader_buffer.shading.color[2] = colf[2] * bri_norm;
 	shader_changed = 1;
 
 	// selected line
@@ -1444,6 +1445,9 @@ static void draw_wall(kge_line_t *line, uint32_t color, float depth, uint32_t hi
 		glLineWidth(1.0f);
 	}
 
+	shader_buffer.shading.color[0] = colf[0] * bri_wall;
+	shader_buffer.shading.color[1] = colf[1] * bri_wall;
+	shader_buffer.shading.color[2] = colf[2] * bri_wall;
 	shader_buffer.shading.color[3] = 1.0f;
 	shader_changed = 1;
 	shader_update();
@@ -1466,11 +1470,11 @@ static void draw_wall(kge_line_t *line, uint32_t color, float depth, uint32_t hi
 	draw_line(v0, v1, depth);
 
 	// first vertex
-	draw_vertex(v0, intensity, EDITCOLOR_VERTEX, DEPTH_VERTEX);
+	draw_vertex(v0, bri_norm, EDITCOLOR_VERTEX, DEPTH_VERTEX);
 
 	// second vertex
 	if(highlight & 16)
-		draw_vertex(v1, intensity, EDITCOLOR_VERTEX, DEPTH_VERTEX);
+		draw_vertex(v1, bri_norm, EDITCOLOR_VERTEX, DEPTH_VERTEX);
 }
 
 static void draw_obj_origin(kge_vertex_t *vtx)
@@ -2526,6 +2530,21 @@ static int32_t in2d_masked_line()
 	return 1;
 }
 
+static int32_t in2d_hide_line()
+{
+	if(!edit_hit.line)
+		return 1;
+
+	if(edit_hit.line->backsector)
+		return 1;
+
+	edit_hit.line->info.flags ^= WALLFLAG_SKIP;
+
+	edit_status_printf(edit_hit.line->info.flags & WALLFLAG_SKIP ? "Line is hidden." : "Line is visible.");
+
+	return 1;
+}
+
 static int32_t in2d_insert()
 {
 	float mx, my;
@@ -2719,6 +2738,7 @@ static const edit_input_func_t infunc_normal[] =
 	{INPUT_E2D_SECTOR_DISCONNECT, in2d_disconnect_sec},
 	{INPUT_E2D_BLOCKING, in2d_blocking},
 	{INPUT_E2D_MASKED_LINE, in2d_masked_line},
+	{INPUT_E2D_HIDE_LINE, in2d_hide_line},
 	{INPUT_EDITOR_INSERT, in2d_insert},
 	{INPUT_EDITOR_DELETE, in2d_delete},
 	// terminator

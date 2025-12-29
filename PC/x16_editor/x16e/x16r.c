@@ -1862,10 +1862,8 @@ static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 	while(obj_top)
 	{
 		for(uint32_t i = 0; i < obj_top->count; i++)
-		{
-			kge_line_t *line = &obj_top->line[obj_top->count - i - 1]; // reverse order
-			do_wall(line, sec, NULL);
-		}
+			if(!(obj_top->line[i].info.flags & WALLFLAG_SKIP))
+				do_wall(obj_top->line + i, sec, NULL);
 
 		did_object = 1;
 
@@ -1876,7 +1874,8 @@ static void do_sector(kge_sector_t *sec, kge_sector_t *origin)
 	for(uint32_t i = 0; i < sec->line_count; i++)
 	{
 		kge_line_t *line = &sec->line[sec->line_count - i - 1]; // reverse order
-		do_wall(line, sec, origin);
+		if(!(line->info.flags & WALLFLAG_SKIP))
+			do_wall(line, sec, origin);
 	}
 
 	// floor

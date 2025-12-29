@@ -19,6 +19,7 @@
 
 // wall flags
 #define WALLFLAG_PEG_X	1
+#define WALLFLAG_SKIP	2
 
 // sector flags
 #define SECFLAG_WATER	0x80	// forced by X16

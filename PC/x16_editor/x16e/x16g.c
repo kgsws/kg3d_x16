@@ -9343,7 +9343,7 @@ void x16g_export()
 
 void x16g_update_map()
 {
-	link_entry_t *ent;
+	link_entry_t *ent, *ont;
 
 	// sky
 	edit_sky_num = -1;
@@ -9378,6 +9378,18 @@ void x16g_update_map()
 			line->texture[0].idx = find_wall_texture(line->texture[0].name);
 			line->texture[1].idx = find_wall_texture(line->texture[1].name);
 			line->texture[2].idx = find_mask_texture(line->texture[2].name);
+		}
+
+		ont = sec->objects.top;
+		while(ont)
+		{
+			edit_sec_obj_t *obj = (edit_sec_obj_t*)(ont + 1);
+			kge_line_t *line = obj->line;
+
+			for(uint32_t i = 0; i < obj->count; i++, line++)
+				line->texture[0].idx = find_wall_texture(line->texture[0].name);
+
+			ont = ont->next;
 		}
 
 		ent = ent->next;

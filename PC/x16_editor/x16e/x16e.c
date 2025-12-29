@@ -25,6 +25,7 @@
 #define WALL_MARK_SWAP	0x8000
 #define WALL_MARK_EXTENDED	0x4000
 #define WALL_MARK_XORIGIN	0x2000
+#define WALL_MARK_SKIP	0x1000
 
 #define ERROR_TEXT_TITLE	"Map export failed!"
 #define ERROR_COMMON_TEXT	"Your map can not be exported!\nThe reason for failed export is:\n\n%s"
@@ -276,9 +277,11 @@ static int32_t mark_texture(uint32_t idx, uint32_t light)
 	editor_texture_t *et = editor_texture + idx;
 
 	if(idx == 1)
+		// sky
 		return 0xFF;
 
 	if(!idx)
+		// none
 		return MAX_TEXTURES;
 
 	marked_lights |= 1 << light;
@@ -604,43 +607,46 @@ void x16_export_map()
 			{
 				wfrst = i;
 
-				if(line->texture_split != INFINITY)
+				if(!(line->info.flags & WALLFLAG_SKIP))
 				{
-					aflags = WALL_MARK_EXTENDED;
-
-					ret = mark_texture(line->texture[1].idx, sec->light.idx);
-					if(ret < 0)
+					if(line->texture_split != INFINITY)
 					{
-						error_texture_count();
-						return;
+						aflags = WALL_MARK_EXTENDED;
+
+						ret = mark_texture(line->texture[1].idx, sec->light.idx);
+						if(ret < 0)
+						{
+							error_texture_count();
+							return;
+						}
+
+						wall->split = line->texture_split;
+
+						wall->bot.texture = ret;
+						wall->bot.ox = line->texture[1].ox;
+						wall->bot.oy = line->texture[1].oy;
+
+						wall->tflags |= line->texture[1].flags << 4;
 					}
 
-					wall->split = line->texture_split;
-
-					wall->bot.texture = ret;
-					wall->bot.ox = line->texture[1].ox;
-					wall->bot.oy = line->texture[1].oy;
-
-					wall->tflags |= line->texture[1].flags << 4;
-				}
-
-				if(line->texture[2].idx)
-				{
-					aflags = WALL_MARK_EXTENDED;
-
-					ret = mark_texture(line->texture[2].idx, sec->light.idx);
-					if(ret < 0)
+					if(line->texture[2].idx)
 					{
-						error_texture_count();
-						return;
+						aflags = WALL_MARK_EXTENDED;
+
+						ret = mark_texture(line->texture[2].idx, sec->light.idx);
+						if(ret < 0)
+						{
+							error_texture_count();
+							return;
+						}
+
+						wall->mid.texture = ret;
+						wall->mid.ox = line->texture[2].ox;
+						wall->mid.oy = line->texture[2].oy;
+
+						if(line->texture[2].flags & TEXFLAG_MIRROR_X)
+							wall->tflags |= 0b00001000;
 					}
-
-					wall->mid.texture = ret;
-					wall->mid.ox = line->texture[2].ox;
-					wall->mid.oy = line->texture[2].oy;
-
-					if(line->texture[2].flags & TEXFLAG_MIRROR_X)
-						wall->tflags |= 0b00001000;
 				}
 			}
 
@@ -664,11 +670,16 @@ void x16_export_map()
 				}
 			}
 
-			ret = mark_texture(line->texture[0].idx, sec->light.idx);
-			if(ret < 0)
+			if(line->info.flags & WALLFLAG_SKIP)
+				ret = mark_texture(0, 0);
+			else
 			{
-				error_texture_count();
-				return;
+				ret = mark_texture(line->texture[0].idx, sec->light.idx);
+				if(ret < 0)
+				{
+					error_texture_count();
+					return;
+				}
 			}
 
 			wall->top.texture = ret;
@@ -678,6 +689,9 @@ void x16_export_map()
 
 			if(line->info.flags & WALLFLAG_PEG_X)
 				aflags |= WALL_MARK_XORIGIN;
+
+			if(line->info.flags & WALLFLAG_SKIP)
+				aflags |= WALL_MARK_SKIP;
 
 			if(line->vc.x16port == validcount)
 				aflags |= WALL_MARK_SWAP;

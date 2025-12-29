@@ -213,6 +213,11 @@ input_t input_list[INPUT__COUNT] =
 		.key = 'm',
 		.type = INTYPE_KEY
 	},
+	[INPUT_E2D_HIDE_LINE] =
+	{
+		.key = 'h',
+		.type = INTYPE_KEY
+	},
 //
 // EDITOR: 3D
 //

@@ -103,6 +103,7 @@ enum
 	CBOR_SECTOR_CEILING,
 	CBOR_SECTOR_FLOOR,
 	CBOR_SECTOR_LINES,
+	CBOR_SECTOR_OBJECTS,
 	//
 	NUM_CBOR_SECTOR
 };
@@ -126,12 +127,24 @@ enum
 	CBOR_LINE_BLOCKING,
 	CBOR_LINE_BLOCKMID,
 	CBOR_LINE_PEG_X,
+	CBOR_LINE_SKIP,
 	CBOR_LINE_VTX,
 	CBOR_LINE_TOP,
 	CBOR_LINE_BOT,
 	CBOR_LINE_MID,
 	//
 	NUM_CBOR_LINE
+};
+
+enum
+{
+	CBOR_OBJLINE_PEG_X,
+	CBOR_OBJLINE_SKIP,
+	CBOR_OBJLINE_X,
+	CBOR_OBJLINE_Y,
+	CBOR_OBJLINE_TOP,
+	//
+	NUM_CBOR_OBJLINE
 };
 
 enum
@@ -579,6 +592,7 @@ static int32_t cbor_sector_group(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, 
 static int32_t cbor_sector_ceiling(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_sector_floor(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_sector_lines(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
+static int32_t cbor_sector_objects(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static const edit_cbor_obj_t cbor_sector[] =
 {
 	[CBOR_SECTOR_LIGHT] =
@@ -631,6 +645,13 @@ static const edit_cbor_obj_t cbor_sector[] =
 		.nlen = 5,
 		.type = EDIT_CBOR_TYPE_ARRAY,
 		.handler = cbor_sector_lines
+	},
+	[CBOR_SECTOR_OBJECTS] =
+	{
+		.name = "objects",
+		.nlen = 7,
+		.type = EDIT_CBOR_TYPE_ARRAY,
+		.handler = cbor_sector_objects
 	},
 	// terminator
 	[NUM_CBOR_SECTOR] = {}
@@ -691,7 +712,7 @@ static int32_t load_backsector;
 static float load_split;
 static uint8_t load_lblock;
 static uint8_t load_mblock;
-static uint8_t load_pegx;
+static uint8_t load_lnflags;
 static int32_t cbor_line_vtx(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_line_top(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
 static int32_t cbor_line_bot(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value);
@@ -730,8 +751,17 @@ static const edit_cbor_obj_t cbor_line[] =
 	{
 		.name = "peg x",
 		.nlen = 5,
-		.type = EDIT_CBOR_TYPE_U8,
-		.u8 = &load_pegx
+		.type = EDIT_CBOR_TYPE_FLAG8,
+		.extra = WALLFLAG_PEG_X,
+		.u8 = &load_lnflags
+	},
+	[CBOR_LINE_SKIP] =
+	{
+		.name = "skip",
+		.nlen = 4,
+		.type = EDIT_CBOR_TYPE_FLAG8,
+		.extra = WALLFLAG_SKIP,
+		.u8 = &load_lnflags
 	},
 	[CBOR_LINE_VTX] =
 	{
@@ -763,6 +793,48 @@ static const edit_cbor_obj_t cbor_line[] =
 	},
 	// terminator
 	[NUM_CBOR_LINE] = {}
+};
+
+static edit_sec_obj_t *load_object;
+static edit_cbor_obj_t cbor_objline[] =
+{
+	[CBOR_OBJLINE_PEG_X] =
+	{
+		.name = "peg x",
+		.nlen = 5,
+		.type = EDIT_CBOR_TYPE_FLAG8,
+		.extra = WALLFLAG_PEG_X,
+		.u8 = &load_lnflags
+	},
+	[CBOR_OBJLINE_SKIP] =
+	{
+		.name = "skip",
+		.nlen = 4,
+		.type = EDIT_CBOR_TYPE_FLAG8,
+		.extra = WALLFLAG_SKIP,
+		.u8 = &load_lnflags
+	},
+	[CBOR_OBJLINE_X] =
+	{
+		.name = "x",
+		.nlen = 1,
+		.type = EDIT_CBOR_TYPE_FLOAT,
+	},
+	[CBOR_OBJLINE_Y] =
+	{
+		.name = "y",
+		.nlen = 1,
+		.type = EDIT_CBOR_TYPE_FLOAT,
+	},
+	[CBOR_OBJLINE_TOP] =
+	{
+		.name = "top",
+		.nlen = 3,
+		.type = EDIT_CBOR_TYPE_OBJECT,
+		.handler = cbor_line_top
+	},
+	// terminator
+	[NUM_CBOR_OBJLINE] = {}
 };
 
 static kge_x16_tex_t load_linetex;
@@ -2276,6 +2348,20 @@ static int32_t group_select_subgroup(glui_element_t *elm, int32_t x, int32_t y)
 	return group_select_subgroup_now(elm, x, y);
 }
 
+static void clear_sectors()
+{
+	link_entry_t *ent = edit_list_sector.top;
+
+	while(ent)
+	{
+		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
+		list_clear(&sec->objects);
+		ent = ent->next;
+	}
+
+	list_clear(&edit_list_sector);
+}
+
 //
 // map loading
 
@@ -2370,8 +2456,14 @@ static int32_t cbor_sector_line_add(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t typ
 
 static int32_t cbor_sector_lines(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
 {
-	if(ctx->index >= EDIT_MAX_SECTOR_LINES - 1)
+	if(type == KGCBOR_TYPE_TERMINATOR_CB)
 		return 1;
+
+	if(ctx->count > EDIT_MAX_SECTOR_LINES)
+		return -1;
+
+	if(ctx->index >= EDIT_MAX_SECTOR_LINES)
+		return -1;
 
 	if(type == KGCBOR_TYPE_TERMINATOR)
 	{
@@ -2387,9 +2479,7 @@ static int32_t cbor_sector_lines(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, 
 		load_line->texture_split = load_split;
 		load_line->info.blocking = load_lblock;
 		load_line->info.blockmid = load_mblock;
-
-		if(load_pegx)
-			load_line->info.flags |= WALLFLAG_PEG_X;
+		load_line->info.flags = load_lnflags;
 
 		return 1;
 	}
@@ -2401,11 +2491,90 @@ static int32_t cbor_sector_lines(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, 
 
 	load_backsector = -1;
 	load_split = INFINITY;
-	load_pegx = 0;
+	load_lnflags = 0;
 	load_lblock = 0;
 	load_mblock = 0;
 
 	ctx->entry_cb = cbor_sector_line_add;
+
+	return 0;
+}
+
+static int32_t cbor_object_line(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
+{
+	void *func;
+
+	if(type == KGCBOR_TYPE_TERMINATOR_CB)
+	{
+		load_line->info.flags = load_lnflags;
+		load_line->texture[0] = load_linetex;
+		load_line->frontsector = load_sector;
+		load_line->object = load_object;
+		load_line->texture_split = INFINITY;
+
+		return 1;
+	}
+
+	func = edit_cbor_branch(cbor_objline, type, key, ctx->key_len, value, ctx->val_len);
+	if(func)
+	{
+		ctx->entry_cb = func;
+		return 0;
+	}
+
+	return 1;
+}
+
+static int32_t cbor_sector_object(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
+{
+	if(type != KGCBOR_TYPE_OBJECT)
+		return 1;
+
+	if(ctx->count > EDIT_MAX_SOBJ_LINES)
+		return -1;
+
+	if(ctx->index >= EDIT_MAX_SOBJ_LINES)
+		return -1;
+
+	load_lnflags = 0;
+
+	cbor_objline[CBOR_OBJLINE_X].f32 = &load_object->vtx[ctx->index].x;
+	cbor_objline[CBOR_OBJLINE_Y].f32 = &load_object->vtx[ctx->index].y;
+
+	load_line = load_object->line + ctx->index;
+
+	load_object->count = ctx->index + 1;
+
+	ctx->entry_cb = cbor_object_line;
+
+	return 0;
+}
+
+static int32_t cbor_sector_objects(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
+{
+	if(type == KGCBOR_TYPE_TERMINATOR_CB)
+		return 1;
+
+	if(type == KGCBOR_TYPE_TERMINATOR)
+	{
+		if(!load_object->count)
+			return -1;
+
+		load_object = NULL;
+
+		return 1;
+	}
+
+	if(type == KGCBOR_TYPE_ARRAY)
+	{
+		if(load_sector->objects.count > MAX_SECTOR_OBJECTS)
+			return -1;
+
+		load_object = list_add_entry(&load_sector->objects, sizeof(edit_sec_obj_t));
+		memset(load_object, 0, sizeof(edit_sec_obj_t));
+
+		ctx->entry_cb = cbor_sector_object;
+	}
 
 	return 0;
 }
@@ -2529,7 +2698,7 @@ static int32_t cbor_map_sectors(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, k
 		type != KGCBOR_TYPE_TERMINATOR &&
 		type != KGCBOR_TYPE_TERMINATOR_CB
 	)
-		list_clear(&edit_list_sector);
+		clear_sectors();
 
 	if(type != KGCBOR_TYPE_OBJECT)
 		return 1;
@@ -3778,20 +3947,15 @@ void edit_fix_object(edit_sec_obj_t *obj)
 {
 	kge_line_t *line = obj->line;
 	kge_vertex_t *vtx = obj->vtx;
-	uint32_t closed = line[0].vertex[0] == line[obj->count - 1].vertex[1];
 
 	for(uint32_t i = 0; i < obj->count; i++, line++, vtx++)
 	{
-		line->vertex[0] = vtx + 0;
-		line->vertex[1] = vtx + 1;
+		line->vertex[0] = vtx + 1;
+		line->vertex[1] = vtx + 0;
 	}
 
-	if(closed)
-	{
-		// create loop
-		line--;
-		line->vertex[1] = obj->vtx;
-	}
+	line--;
+	line->vertex[0] = obj->vtx;
 }
 
 uint32_t edit_get_special_thing(const uint8_t *name)
@@ -4260,7 +4424,7 @@ void edit_new_map()
 	tick_cleanup();
 	list_clear(&edit_list_draw_new);
 	list_clear(&edit_list_vertex);
-	list_clear(&edit_list_sector);
+	clear_sectors();
 	edit_sky_num = -1;
 
 	edit_num_groups = 1; // group 0 is dummy
@@ -4577,6 +4741,7 @@ void *edit_cbor_branch(const edit_cbor_obj_t *cbor_obj, uint32_t type, const uin
 						*cbor_obj->readlen = 0;
 				return NULL;
 			}
+
 			return cbor_obj->handler;
 		}
 		cbor_obj++;
@@ -4950,7 +5115,7 @@ const uint8_t *edit_map_save(const uint8_t *file)
 			load_split = line->texture_split;
 			load_lblock = line->info.blocking;
 			load_mblock = line->info.blockmid;
-			load_pegx = !!(line->info.flags & WALLFLAG_PEG_X);
+			load_lnflags = line->info.flags;
 
 			edit_cbor_export(cbor_line, NUM_CBOR_LINE, &gen);
 
@@ -4974,6 +5139,38 @@ const uint8_t *edit_map_save(const uint8_t *file)
 			kgcbor_put_string(&gen, cbor_line[CBOR_LINE_MID].name, cbor_line[CBOR_LINE_MID].nlen);
 			load_linetex = line->texture[2];
 			edit_cbor_export(cbor_linetex, NUM_CBOR_LINETEX, &gen);
+		}
+
+		// objects
+		{
+			link_entry_t *ent = sec->objects.top; // another
+
+			kgcbor_put_string(&gen, cbor_sector[CBOR_SECTOR_OBJECTS].name, cbor_sector[CBOR_SECTOR_OBJECTS].nlen);
+			kgcbor_put_array(&gen, sec->objects.count);
+
+			while(ent)
+			{
+				edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+				kge_line_t *line = obj->line;
+
+				// object
+				kgcbor_put_array(&gen, obj->count);
+
+				for(uint32_t i = 0; i < obj->count; i++, line++)
+				{
+					load_lnflags = line->info.flags;
+					cbor_objline[CBOR_OBJLINE_X].f32 = &line->vertex[1]->x;
+					cbor_objline[CBOR_OBJLINE_Y].f32 = &line->vertex[1]->y;
+					edit_cbor_export(cbor_objline, NUM_CBOR_OBJLINE, &gen);
+
+					// top
+					kgcbor_put_string(&gen, cbor_objline[CBOR_OBJLINE_TOP].name, cbor_objline[CBOR_OBJLINE_TOP].nlen);
+					load_linetex = line->texture[0];
+					edit_cbor_export(cbor_linetex, NUM_CBOR_LINETEX, &gen);
+				}
+
+				ent = ent->next;
+			}
 		}
 
 		ent = ent->next;
@@ -5037,7 +5234,7 @@ const uint8_t *edit_map_save(const uint8_t *file)
 
 const uint8_t *edit_map_load(const uint8_t *file)
 {
-	link_entry_t *ent;
+	link_entry_t *ent, *ont;
 	uint32_t size;
 	kgcbor_ctx_t gctx;
 	kge_sector_t *sec;
@@ -5114,6 +5311,22 @@ const uint8_t *edit_map_load(const uint8_t *file)
 			engine_update_line(line);
 		}
 
+		ont = sec->objects.top;
+		while(ont)
+		{
+			edit_sec_obj_t *obj = (edit_sec_obj_t*)(ont + 1);
+			kge_line_t *line = obj->line;
+
+			for(uint32_t i = 0; i < obj->count; i++, line++)
+				if(!line->object)
+					goto do_fail;
+
+			edit_fix_object(obj);
+			edit_update_object(obj);
+
+			ont = ont->next;
+		}
+
 		engine_update_sector(sec);
 
 		ent = ent->next;
@@ -5159,6 +5372,7 @@ const uint8_t *edit_map_load(const uint8_t *file)
 	x16t_update_map();
 
 	return edit_path_filename(map_path);
+
 do_fail:
 	edit_new_map();
 	edit_spawn_camera();
