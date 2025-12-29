@@ -830,6 +830,12 @@ static int32_t in3d_wall_split()
 		{
 			int32_t split;
 
+			if(edit_hit.line->object)
+			{
+				edit_status_printf("Object walls can't have split!");
+				return 1;
+			}
+
 			split = (edit_hit.extra_sector->plane[PLANE_TOP].height - edit_hit.extra_sector->plane[PLANE_BOT].height) * 0.5f;
 			split += edit_hit.extra_sector->plane[PLANE_BOT].height;
 			edit_hit.line->texture_split = split;

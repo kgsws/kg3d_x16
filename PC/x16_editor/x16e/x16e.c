@@ -52,6 +52,7 @@ typedef struct
 	uint8_t backsector; // $0B
 	uint8_t tflags; // $0C
 	tex_info_t top; // $0D
+	//
 	tex_info_t bot; // $10
 	tex_info_t mid; // $13
 	uint8_t blocking; // $16

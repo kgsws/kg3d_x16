@@ -123,6 +123,8 @@ static void location_from_mouse(float *x, float *y, int use_grid)
 
 static uint32_t is_vertex_in_sector(kge_sector_t *sec, kge_vertex_t *vtx)
 {
+	link_entry_t *ent;
+
 	for(uint32_t i = 0; i < sec->line_count; i++)
 	{
 		kge_line_t *line = sec->line + i;
@@ -132,6 +134,24 @@ static uint32_t is_vertex_in_sector(kge_sector_t *sec, kge_vertex_t *vtx)
 
 		if(line->vertex[1] == vtx)
 			return 1;
+	}
+
+	ent = sec->objects.top;
+	while(ent)
+	{
+		edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+		kge_line_t *line = obj->line;
+
+		for(uint32_t i = 0; i < obj->count; i++, line++)
+		{
+			if(line->vertex[0] == vtx)
+				return 1;
+
+			if(line->vertex[1] == vtx)
+				return 1;
+		}
+
+		ent = ent->next;
 	}
 
 	return 0;
@@ -162,6 +182,19 @@ static uint32_t is_vertex_visible(kge_vertex_t *vtx)
 	return 0;
 }
 
+static float cursor_vertex_check(kge_vertex_t *vtx, float mx, float my)
+{
+	float xx, yy;
+
+	xx = vtx->x - mx;
+	yy = vtx->y - my;
+
+	if(is_vertex_visible(vtx))
+		return xx * xx + yy * yy;
+
+	return NAN;
+}
+
 static kge_vertex_t *find_cursor_vertex(float *found_dist)
 {
 	link_entry_t *ent;
@@ -172,35 +205,119 @@ static kge_vertex_t *find_cursor_vertex(float *found_dist)
 
 	location_from_mouse(&mx, &my, 0);
 
+	// standard vertexes
 	ent = edit_list_vertex.top;
 	while(ent)
 	{
-		float xx, yy;
 		kge_vertex_t *vtx = (kge_vertex_t*)(ent + 1);
+		float dd = cursor_vertex_check(vtx, mx, my);
 
-		xx = vtx->x - mx;
-		yy = vtx->y - my;
-
-		if(is_vertex_visible(vtx))
+		if(dd < dist)
 		{
-			xx = xx * xx + yy * yy;
-			if(xx < dist)
+			dist = dd;
+			pick = vtx;
+		}
+
+		ent = ent->next;
+	}
+
+	// object vertexes
+	ent = edit_list_sector.top;
+	while(ent)
+	{
+		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
+
+		if(!edit_is_sector_hidden(sec))
+		{
+			link_entry_t *ent; // another
+
+			ent = sec->objects.top;
+			while(ent)
 			{
-				dist = xx;
-				pick = vtx;
+				edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+				kge_line_t *line = obj->line;
+
+				for(uint32_t i = 0; i < obj->count; i++, line++)
+				{
+					kge_vertex_t *vtx;
+					float dd;
+
+					vtx = line->vertex[0];
+					dd = cursor_vertex_check(vtx, mx, my);
+					if(dd < dist)
+					{
+						dist = dd;
+						pick = vtx;
+					}
+
+					vtx = line->vertex[1];
+					dd = cursor_vertex_check(vtx, mx, my);
+					if(dd < dist)
+					{
+						dist = dd;
+						pick = vtx;
+					}
+				}
+
+				ent = ent->next;
 			}
 		}
 
 		ent = ent->next;
 	}
 
+	//
 	if(dist > (float)eg * (float)eg)
 		pick = NULL;
 	else
-		if(found_dist)
-			*found_dist = sqrtf(dist) / (float)edit_grid;
+	if(found_dist)
+		*found_dist = sqrtf(dist) / (float)edit_grid;
 
 	return pick;
+}
+
+static float cursor_line_check(kge_sector_t *sec, kge_line_t *line, float mx, float my)
+{
+	kge_vertex_t *v0, *v1;
+	float dist, dx, dy;
+	int s0, s1;
+
+	v0 = line->vertex[0];
+	v1 = line->vertex[1];
+
+	if(v0->x < edge_x0 && v1->x < edge_x0)
+		return NAN;
+	if(v0->y < edge_y0 && v1->y < edge_y0)
+		return NAN;
+	if(v0->x > edge_x1 && v1->x > edge_x1)
+		return NAN;
+	if(v0->y > edge_y1 && v1->y > edge_y1)
+		return NAN;
+
+	dx = v1->x - v0->x;
+	dy = v1->y - v0->y;
+
+	// 'box' check
+	s0 = (-(v0->y - v1->y) * (my - v1->y) - (v0->x - v1->x) * (mx - v1->x)) > 0; // v0 side check
+	s1 = (-dy * (my - v0->y) - dx * (mx - v0->x)) > 0; // v1 side check
+	if(s0 != s1)
+		return NAN;
+
+	// side check
+	s0 = edit_is_point_in_sector(mx, my, sec, 0);
+
+	// double sided check
+	if(line->backsector && !s0)
+		return NAN; // only select side facing into the sector
+
+	// distance check
+	dist = fabs(dx * (v0->y - my) - (v0->x - mx) * dy) / sqrtf(dx*dx + dy*dy);
+
+	// single sided check
+	if(!line->backsector && !s0)
+		dist += 0.00001f; // add a tiny distance so other side, if any, is preffered
+
+	return dist;
 }
 
 static kge_line_t *find_cursor_line(kge_sector_t **sector)
@@ -221,53 +338,49 @@ static kge_line_t *find_cursor_line(kge_sector_t **sector)
 		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
 
 		if(!edit_is_sector_hidden(sec))
-		for(uint32_t i = 0; i < sec->line_count; i++)
 		{
-			kge_line_t *line = sec->line + i;
-			kge_vertex_t *v0, *v1;
-			float dist, dx, dy;
-			int s0, s1;
+			link_entry_t *ent; // another
 
-			v0 = line->vertex[0];
-			v1 = line->vertex[1];
-
-			if(v0->x < edge_x0 && v1->x < edge_x0)
-				continue;
-			if(v0->y < edge_y0 && v1->y < edge_y0)
-				continue;
-			if(v0->x > edge_x1 && v1->x > edge_x1)
-				continue;
-			if(v0->y > edge_y1 && v1->y > edge_y1)
-				continue;
-
-			dx = v1->x - v0->x;
-			dy = v1->y - v0->y;
-
-			// 'box' check
-			s0 = (-(v0->y - v1->y) * (my - v1->y) - (v0->x - v1->x) * (mx - v1->x)) > 0; // v0 side check
-			s1 = (-dy * (my - v0->y) - dx * (mx - v0->x)) > 0; // v1 side check
-			if(s0 != s1)
-				continue;
-
-			// side check
-			s0 = edit_is_point_in_sector(mx, my, sec, 0);
-
-			// double sided check
-			if(line->backsector && !s0)
-				continue; // only select side facing into the sector
-
-			// distance check
-			dist = fabs(dx * (v0->y - my) - (v0->x - mx) * dy) / sqrtf(dx*dx + dy*dy);
-
-			// single sided check
-			if(!line->backsector && !s0)
-				dist += 0.00001f; // add a tiny distance so other side, if any, is preffered
-
-			if(dist < dist_now)
+			// normal lines
+			for(uint32_t i = 0; i < sec->line_count; i++)
 			{
-				dist_now = dist;
-				ret = line;
-				ret_sec = sec;
+				kge_line_t *line = sec->line + i;
+				float dist = cursor_line_check(sec, line, mx, my);
+
+				if(isnan(dist))
+					continue;
+
+				if(dist < dist_now)
+				{
+					dist_now = dist;
+					ret = line;
+					ret_sec = sec;
+				}
+			}
+
+			// object lines
+			ent = sec->objects.top;
+			while(ent)
+			{
+				edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+				kge_line_t *line = obj->line;
+
+				for(uint32_t i = 0; i < obj->count; i++, line++)
+				{
+					float dist = cursor_line_check(sec, line, mx, my);
+
+					if(isnan(dist))
+						continue;
+
+					if(dist < dist_now)
+					{
+						dist_now = dist;
+						ret = line;
+						ret_sec = sec;
+					}
+				}
+
+				ent = ent->next;
 			}
 		}
 
@@ -565,11 +678,12 @@ static uint32_t e2d_create_sector_obj(kge_sector_t *sec, uint32_t closed)
 		return 2;
 
 	// area check
-	if(	closed &&
-		edit_list_draw_new.count > 2
-	){
+	if(edit_list_draw_new.count > 2)
+	{
 		dir = e2d_area_angle();
-		if(dir < 0)
+		if(	closed &&
+			dir < 0
+		)
 			return 1;
 		dir = !dir;
 	}
@@ -612,6 +726,7 @@ static uint32_t e2d_create_sector_obj(kge_sector_t *sec, uint32_t closed)
 
 		vtx->x = pt->x;
 		vtx->y = pt->y;
+		vtx->vc_editor = 0;
 		vtx++;
 
 		// next
@@ -848,6 +963,10 @@ static uint32_t e2d_connect_lines(kge_sector_t *sec, kge_line_t *line)
 	kge_sector_t *ss;
 	uint32_t ret;
 
+	// check object
+	if(line->object)
+		return 1;
+
 	// check limit
 	if(line->backsector)
 		return 1;
@@ -987,6 +1106,55 @@ static uint32_t e2d_split_line(kge_sector_t *sec, kge_line_t *line, float x, flo
 	/// split existing line (insert vertex)
 	kge_vertex_t *vtx;
 	uint32_t idx;
+
+	// check object
+	if(line->object)
+	{
+		edit_sec_obj_t *obj = line->object;
+		kge_line_t *ln;
+		kge_vertex_t *vtx;
+		uint32_t closed;
+		int32_t idx, cnt;
+
+		// check vertexes
+		if(	(line->vertex[0]->x == x && line->vertex[0]->y == y) ||
+			(line->vertex[1]->x == x && line->vertex[1]->y == y)
+		)
+			return 3;
+
+		// prepare
+		ln = obj->line;
+		cnt = obj->count - 1;
+		closed = ln[0].vertex[0] == ln[cnt].vertex[1];
+		cnt += !closed;
+
+		// check limit
+		if(cnt >= EDIT_MAX_SOBJ_LINES - 1)
+			return 1;
+
+		// check
+		vtx = obj->vtx;
+
+		// move
+		idx = line - obj->line;
+
+		for(int32_t i = cnt; i >= idx; i--)
+		{
+			ln[i + 1] = ln[i];
+			vtx[i + 1] = vtx[i];
+		}
+
+		// add
+		obj->count++;
+		vtx[idx+1].x = x;
+		vtx[idx+1].y = y;
+
+		// update
+		edit_fix_object(obj);
+		edit_update_object(obj);
+
+		return 0;
+	}
 
 	// check limit
 	if(sec->line_count >= EDIT_MAX_SECTOR_LINES)
@@ -1309,7 +1477,7 @@ static void draw_obj_origin(kge_vertex_t *vtx)
 {
 	const float radius = 24.0f;
 
-	apply_4f(shader_buffer.shading.color, editor_color[EDITCOLOR_THING].color);
+	apply_4f(shader_buffer.shading.color, editor_color[EDITCOLOR_OBJ_ORG].color);
 	shader_changed = 1;
 	shader_update();
 
@@ -1630,6 +1798,8 @@ static void drag_list_finish()
 
 		if(sec->vc.editor == vc_editor)
 		{
+			link_entry_t *ent; // another
+
 			// go trough lines
 			while(1)
 			{
@@ -1669,6 +1839,25 @@ static void drag_list_finish()
 
 				if(i >= sec->line_count)
 					break;
+			}
+
+			// go trough objects
+			ent = sec->objects.top;
+			while(ent)
+			{
+				edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+/*				kge_line_t *line = obj->line;
+
+				for(uint32_t i = 0; i < obj->count; i++, line++)
+				{
+					if(line->vc.editor != vc_editor)
+						continue;
+					engine_update_line(line);
+				}
+*/
+				edit_update_object(obj);
+
+				ent = ent->next;
 			}
 
 			engine_update_sector(sec);
@@ -1726,6 +1915,28 @@ static void drag_list_vertex(kge_vertex_t *vtx)
 			}
 		}
 
+		// go trough objects
+		{
+			link_entry_t *ent = sec->objects.top;
+			while(ent)
+			{
+				edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
+				kge_line_t *line = obj->line;
+
+				for(uint32_t i = 0; i < obj->count; i++, line++)
+				{
+					if(	line->vertex[0] == vtx ||
+						line->vertex[1] == vtx
+					){
+						changed = 1;
+						line->vc.editor = vc_editor;
+					}
+				}
+
+				ent = ent->next;
+			}
+		}
+
 		if(changed && sec->vc.editor != vc_editor)
 		{
 			sec->vc.editor = vc_editor;
@@ -1775,6 +1986,8 @@ static void drag_list_move(float x, float y)
 
 		if(sec->vc.editor == vc_editor)
 		{
+			link_entry_t *ent; // another
+
 			// go trough lines
 			for(uint32_t i = 0; i < sec->line_count; i++)
 			{
@@ -1784,6 +1997,14 @@ static void drag_list_move(float x, float y)
 					continue;
 
 				engine_update_line(line);
+			}
+
+			// go trough objects
+			ent = sec->objects.top;
+			while(ent)
+			{
+				edit_update_object((edit_sec_obj_t*)(ent + 1));
+				ent = ent->next;
 			}
 
 			engine_update_sector(sec);
@@ -2322,7 +2543,7 @@ static int32_t in2d_insert()
 				edit_status_printf("Line split.");
 			break;
 			case 1:
-				edit_status_printf("Too many lines in this sector!");
+				edit_status_printf("Too many lines!");
 			break;
 			case 2:
 				edit_status_printf("Can't split connected lines!");

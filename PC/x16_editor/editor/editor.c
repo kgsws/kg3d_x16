@@ -165,10 +165,11 @@ edit_color_t editor_color[EDITCOLOR__COUNT] =
 {
 	[EDITCOLOR_GRID] = {0.15f, 0.15f, 0.15f, 1.0f},
 	[EDITCOLOR_ORIGIN] = {0.3f, 0.3f, 0.3f, 1.0f},
-	[EDITCOLOR_CAMERA] = {0.2f, 0.2f, 1.0f, 1.0f},
+	[EDITCOLOR_CAMERA] = {0.5f, 0.1f, 1.0f, 1.0f},
 	[EDITCOLOR_CAMERA_BAD] = {1.0f, 0.2f, 0.2f, 1.0f},
 	[EDITCOLOR_THING] = {0.1f, 1.0f, 1.0f, 1.0f},
 	[EDITCOLOR_THING_BAD] = {1.0f, 0.2f, 0.2f, 1.0f},
+	[EDITCOLOR_OBJ_ORG] = {1.0f, 0.75f, 0.0f, 0.25f},
 	[EDITCOLOR_LINE_SOLID] = {1.0f, 1.0f, 1.0f, 1.0f},
 	[EDITCOLOR_LINE_PORTAL] = {0.0f, 0.8f, 0.5f, 1.0f},
 	[EDITCOLOR_LINE_NEW] = {1.0f, 1.0f, 1.0f, 1.0f},
@@ -3771,6 +3772,26 @@ void edit_update_object(edit_sec_obj_t *obj)
 
 	obj->origin.x = box[0] + (box[1] - box[0]) / 2;
 	obj->origin.y = box[2] + (box[3] - box[2]) / 2;
+}
+
+void edit_fix_object(edit_sec_obj_t *obj)
+{
+	kge_line_t *line = obj->line;
+	kge_vertex_t *vtx = obj->vtx;
+	uint32_t closed = line[0].vertex[0] == line[obj->count - 1].vertex[1];
+
+	for(uint32_t i = 0; i < obj->count; i++, line++, vtx++)
+	{
+		line->vertex[0] = vtx + 0;
+		line->vertex[1] = vtx + 1;
+	}
+
+	if(closed)
+	{
+		// create loop
+		line--;
+		line->vertex[1] = obj->vtx;
+	}
 }
 
 uint32_t edit_get_special_thing(const uint8_t *name)

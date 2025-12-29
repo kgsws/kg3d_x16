@@ -47,6 +47,7 @@ enum
 	EDITCOLOR_CAMERA_BAD,
 	EDITCOLOR_THING,
 	EDITCOLOR_THING_BAD,
+	EDITCOLOR_OBJ_ORG,
 	EDITCOLOR_LINE_SOLID,
 	EDITCOLOR_LINE_PORTAL,
 	EDITCOLOR_LINE_NEW,
@@ -290,6 +291,7 @@ void edit_update_thing_type(kge_thing_t *th);
 uint32_t edit_get_special_thing(const uint8_t *);
 
 void edit_update_object(edit_sec_obj_t*);
+void edit_fix_object(edit_sec_obj_t*);
 
 uint32_t edit_is_sector_hidden(kge_sector_t*);
 
