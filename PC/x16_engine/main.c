@@ -25,6 +25,8 @@
 #define MAX_DRAW_MASKED	16
 #define MAX_DRAW_PORTALS	64
 
+#define MAX_EXTRA_STORAGE	255
+
 #define TEXFLAG_PEG_Y	1
 #define TEXFLAG_MIRROR_X	2
 #define TEXFLAG_MIRROR_Y_SWAP_XY	4
@@ -228,27 +230,6 @@ typedef struct
 	uint16_t rot[8];
 	uint8_t rotate;
 } sprite_info_t;
-
-typedef struct
-{
-	uint64_t magic;
-	uint8_t version;
-	uint8_t flags;
-	//
-	uint8_t count_lights;
-	uint8_t count_ptex;
-	uint8_t count_wtex;
-	uint8_t count_textures;
-	uint8_t count_starts_normal;
-	uint8_t count_starts_coop;
-	uint8_t count_starts_dm;
-	uint8_t count_wbanks;
-	uint8_t count_things;
-	//
-	uint8_t unused[9];
-	//
-	uint32_t hash_sky;
-} map_head_t;
 
 typedef struct
 {
@@ -1019,10 +1000,18 @@ static void draw_aline(uint16_t angle, uint8_t type)
 	float aa = ANGLE_TO_RAD(angle);
 	float x, y, xe, ye;
 
-	if(type)
-		glColor3f(0.3f, 0.3f, 0.0f);
-	else
-		glColor3f(0.2f, 0.2f, 0.2f);
+	switch(type)
+	{
+		case 0:
+			glColor3f(0.2f, 0.2f, 0.2f);
+		break;
+		case 1:
+			glColor3f(0.3f, 0.3f, 0.0f);
+		break;
+		default:
+			glColor3f(0.0f, 0.0f, 0.4f);
+		break;
+	}
 
 	x = projection.x >> 8;
 	y = projection.y >> 8;
@@ -1890,10 +1879,10 @@ next:
 //
 // 3D
 
-static void do_walls(uint8_t idx)
+static void do_walls(uint8_t sdx, wall_t *walb, uint8_t wdx, uint8_t is_obj)
 {
-	sector_t *sec = map_sectors + idx;
-	wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
+	sector_t *sec = map_sectors + sdx;
+	wall_t *wall = walb + wdx;
 	wall_t *walf = wall;
 	uint16_t last_angle = 0x8000;
 
@@ -1901,7 +1890,7 @@ static void do_walls(uint8_t idx)
 
 	do
 	{
-		wall_t *waln = map_walls[sec->wall.bank] + wall->next;
+		wall_t *waln = walb + wall->next;
 		uint16_t a0, a1, ad;
 		vertex_t *v0, *v1;
 		vertex_t d0, d1, dc;
@@ -1912,6 +1901,10 @@ static void do_walls(uint8_t idx)
 		uint8_t do_left_clip = 0;
 		uint8_t do_right_clip = 0;
 		uint8_t inside = 0;
+
+		// skip check
+		if(wall->angle & WALL_MARK_SKIP)
+			goto do_next;
 
 		v0 = &wall->vtx;
 		v1 = &waln->vtx;
@@ -1932,7 +1925,7 @@ static void do_walls(uint8_t idx)
 		// get distance Y
 		ld.y = (d0.x * wall->dist.y - d0.y * wall->dist.x) >> 8;
 		if(	ld.y < 0 ||
-			(!ld.y && idx != projection.sector)
+			(!ld.y && sdx != projection.sector)
 		){
 			last_angle = 0x8000;
 			goto do_next;
@@ -1949,7 +1942,7 @@ static void do_walls(uint8_t idx)
 			p2a_coord.x = d0.x;
 			p2a_coord.y = d0.y;
 			a0 = point_to_angle();
-			draw_aline(a0, 0);
+			draw_aline(a0, 2 * is_obj);
 		}
 
 		// V1 diff
@@ -1960,7 +1953,7 @@ static void do_walls(uint8_t idx)
 		p2a_coord.x = d1.x;
 		p2a_coord.y = d1.y;
 		a1 = point_to_angle();
-		draw_aline(a1, 0);
+		draw_aline(a1, 2 * is_obj);
 		last_angle = a1;
 
 		// side check
@@ -2424,8 +2417,21 @@ static void do_sector(uint8_t idx)
 			prepare_sprite(tdx, sec);
 	}
 
+	// objects
+	if(sec->sobj_hi)
+	{
+		map_secobj_t *sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
+
+		while(!(sobj->bank & 0x80))
+		{
+			do_walls(idx, map_walls[sobj->bank], sobj->first, 1);
+//			printf("obj; bank %u first %u; %d x %d\n", sobj->bank, sobj->first, sobj->x, sobj->y);
+			sobj++;
+		}
+	}
+
 	// walls
-	do_walls(idx);
+	do_walls(idx, map_walls[sec->wall.bank], sec->wall.first, 0);
 
 	projection.fix = 0;
 
@@ -3729,8 +3735,9 @@ static void expand_walls(uint32_t idx)
 
 static uint32_t load_map()
 {
+	void *dst;
 	int32_t fd;
-	uint32_t temp;
+	uint32_t temp, esbase;
 	uint8_t text[64];
 	marked_texture_t mt;
 	marked_variant_t mv;
@@ -3778,12 +3785,15 @@ static uint32_t load_map()
 	if(temp >= MAX_PLAYER_STARTS)
 		goto error;
 
-	if(	!map_head.count_wbanks ||
-		map_head.count_wbanks > WALL_BANK_COUNT
+	if(	!map_head.count_wall_banks ||
+		map_head.count_wall_banks > WALL_BANK_COUNT
 	)
 		goto error;
 
 	if(!map_head.count_things)
+		goto error;
+
+	if(map_head.count_extra_storage > MAX_EXTRA_STORAGE)
 		goto error;
 
 	// logo
@@ -3857,7 +3867,7 @@ static uint32_t load_map()
 	expand_array(player_starts, sizeof(player_start_t), 0);
 
 	// wall banks
-	for(uint32_t i = 0; i < map_head.count_wbanks; i++)
+	for(uint32_t i = 0; i < map_head.count_wall_banks; i++)
 	{
 		if(read(fd, map_block_data, WALL_BANK_SIZE) != WALL_BANK_SIZE)
 			goto error;
@@ -3865,8 +3875,32 @@ static uint32_t load_map()
 	}
 
 	// expand walls
-	for(uint32_t i = 0; i < map_head.count_wbanks; i++)
+	for(uint32_t i = 0; i < map_head.count_wall_banks; i++)
 		expand_walls(i);
+
+	// extra storage
+	esbase = wram_used;
+	temp = map_head.count_extra_storage * 256;
+	dst = get_wram(temp);
+	if(!dst)
+		goto error;
+
+	if(temp && read(fd, dst, temp) != temp)
+		goto error;
+
+	// fix objects
+	for(uint32_t i = 1; i < 256; i++)
+	{
+		sector_t *sec = map_sectors + i;
+		uint32_t base;
+
+		if(!sec->sobj_hi)
+			continue;
+
+		base = esbase + sec->sobj_lo;
+		sec->sobj_lo = base;
+		sec->sobj_hi = (base >> 16) | 0x80;
+	}
 
 	// things
 	for(uint32_t i = 0; i < map_head.count_things; i++)

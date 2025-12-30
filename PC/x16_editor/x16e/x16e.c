@@ -10,12 +10,14 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	25
+#define MAP_VERSION	26
 #define MAP_MAGIC	0x36315870614D676B
 
 #define WALL_BANK_COUNT	16
 #define WALL_BANK_SIZE	4096
 #define WALL_BANK_WCNT	(WALL_BANK_SIZE / 16)
+
+#define MAX_EXTRA_STORAGE	255	// engine limit is 255
 
 #define MAX_LIGHTS	8	// engine limit is 8
 #define MAX_TEXTURES	128	// engine limit is 128
@@ -85,8 +87,10 @@ typedef struct
 	} wall;
 	uint8_t flags; // light, palette, underwater
 	uint8_t midheight;
+	uint16_t sobj_lo;
+	uint8_t sobj_hi;
 	//
-	uint8_t filler[9];
+	uint8_t filler[6];
 	// internal
 	uint8_t midhit;
 } __attribute__((packed)) sector_t;
@@ -124,10 +128,11 @@ typedef struct
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
-	uint8_t count_wbanks;
+	uint8_t count_wall_banks;
+	uint8_t count_extra_storage;
 	uint8_t count_things;
 	//
-	uint8_t unused[9];
+	uint8_t unused[8];
 	//
 	uint32_t hash_sky;
 } map_head_t;
@@ -146,16 +151,29 @@ typedef struct
 
 typedef struct
 {
+	uint8_t bank;
+	uint8_t first;
+	int16_t x, y;
+} map_secobj_t;
+
+typedef struct
+{
 	uint32_t used;
 	uint8_t data[WALL_BANK_SIZE];
 } wall_block_t;
+
+typedef struct
+{
+	uint32_t used;
+	uint8_t data[256];
+} extra_storage_t;
 
 //
 
 uint_fast8_t x16e_enable_logo;
 uint8_t x16e_logo_data[160 * 120];
 
-static uint8_t temp_data[160 * 120];
+static uint8_t temp_data[64 * 1024];
 
 static uint32_t validcount;
 
@@ -178,6 +196,8 @@ static sector_t map_sectors[255];
 static uint8_t map_block_data[8192];
 
 static wall_block_t wall_block[WALL_BANK_COUNT];
+
+static extra_storage_t extra_storage[MAX_EXTRA_STORAGE];
 
 static kge_thing_t *player_starts[3][MAX_PLAYER_STARTS];
 
@@ -208,8 +228,43 @@ static void error_light_count()
 	error_generic("Too many unique lights!");
 }
 
+static void error_wall_banks()
+{
+	error_generic("Out of space for walls!");
+}
+
+static void error_extra_storage()
+{
+	error_generic("Out of space extra data!");
+}
+
+static void error_internal()
+{
+	error_generic("Something failed!");
+}
+
 //
 // stuff
+
+static int32_t es_place_data(void *data, uint8_t size)
+{
+	for(uint32_t i = 0; i < MAX_EXTRA_STORAGE; i++)
+	{
+		extra_storage_t *es = extra_storage + i;
+
+		if(es->used + size <= 256)
+		{
+			uint32_t ret = es->used | (i << 8);
+
+			memcpy(es->data + es->used, data, size);
+			es->used += size;
+
+			return ret;
+		}
+	}
+
+	return -1;
+}
 
 static uint8_t convert_pitch(uint16_t pitch)
 {
@@ -375,6 +430,62 @@ static void write_player_starts(int32_t fd)
 	write(fd, map_block_data, 256 * 16);
 }
 
+static uint32_t fill_base_wall(kge_sector_t *sec, kge_line_t *line, wall_t *wall, uint32_t aflags)
+{
+	kge_vertex_t *v0, *v1;
+	float dist, xx, yy, dx, dy;
+	uint32_t ret;
+
+	v0 = line->vertex[1];
+	v1 = line->vertex[0];
+
+	wall->vtx.x = v0->x;
+	wall->vtx.y = v0->y;
+
+	if(line->info.flags & WALLFLAG_SKIP)
+		ret = mark_texture(0, 0);
+	else
+	{
+		ret = mark_texture(line->texture[0].idx, sec->light.idx);
+		if(ret < 0)
+		{
+			error_texture_count();
+			return 1;
+		}
+	}
+
+	wall->top.texture = ret;
+	wall->top.ox = line->texture[0].ox;
+	wall->top.oy = line->texture[0].oy;
+	wall->tflags |= line->texture[0].flags;
+
+	if(line->info.flags & WALLFLAG_PEG_X)
+		aflags |= WALL_MARK_XORIGIN;
+
+	if(line->info.flags & WALLFLAG_SKIP)
+		aflags |= WALL_MARK_SKIP;
+
+	if(line->vc.x16port == validcount)
+		aflags |= WALL_MARK_SWAP;
+
+	wall->special = 0;
+
+	xx = v0->x - v1->x;
+	yy = v0->y - v1->y;
+
+	dist = sqrtf(xx * xx + yy * yy) / 256.0f;
+
+	dx = xx / dist;
+	dy = yy / dist;
+
+	wall->dist.x = dx;
+	wall->dist.y = dy;
+
+	wall->angle = aflags | line->stuff.x16angle;
+
+	return 0;
+}
+
 //
 // API
 
@@ -405,12 +516,13 @@ uint32_t x16_init()
 void x16_export_map()
 {
 	sector_t *map_sector;
-	link_entry_t *ent;
+	link_entry_t *ent, *ont;
 	int32_t ret;
 	int32_t fd;
 	uint32_t count_walls = 0;
 	uint32_t count_things = 0;
-	uint32_t count_wbanks = 0;
+	uint32_t count_wall_banks = 0;
+	int32_t count_extra_storage = -1;
 	wall_t wall_tmp[EDIT_MAX_SECTOR_LINES];
 	uint8_t widx[EDIT_MAX_SECTOR_LINES];
 
@@ -436,6 +548,8 @@ void x16_export_map()
 
 	memset(wall_block, 0, sizeof(wall_block));
 	wall_block[0].used = 1; // very fist wall is used for hacks
+
+	memset(extra_storage, 0, sizeof(extra_storage));
 
 	memset(map_block_data, 0, sizeof(map_block_data));
 
@@ -519,11 +633,13 @@ void x16_export_map()
 	while(ent)
 	{
 		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
+		map_secobj_t *secobj = (map_secobj_t*)temp_data;
 		uint32_t mid_height = 0;
-		int32_t wall_bank = -1;
 		int32_t wall_first;
 		int32_t wfrst = -1;
+		int32_t wall_bank;
 		uint32_t wcnt;
+		wall_t *wall;
 
 		memset(wall_tmp, 0, sizeof(wall_tmp));
 
@@ -531,18 +647,10 @@ void x16_export_map()
 		for(uint32_t i = 0; i < sec->line_count; i++)
 		{
 			kge_line_t *line = &sec->line[i];
-			wall_t *wall = wall_tmp + i;
-			uint16_t aflags = 0;
-			kge_vertex_t *v0, *v1;
-			float dist, xx, yy, dx, dy;
+			uint32_t aflags = 0;
 
+			wall = wall_tmp + i;
 			count_walls++;
-
-			v0 = line->vertex[1];
-			v1 = line->vertex[0];
-
-			wall->vtx.x = v0->x;
-			wall->vtx.y = v0->y;
 
 			wall->mid.texture = 0xFF;
 			wall->split = -32768;
@@ -670,53 +778,15 @@ void x16_export_map()
 				}
 			}
 
-			if(line->info.flags & WALLFLAG_SKIP)
-				ret = mark_texture(0, 0);
-			else
-			{
-				ret = mark_texture(line->texture[0].idx, sec->light.idx);
-				if(ret < 0)
-				{
-					error_texture_count();
-					return;
-				}
-			}
-
-			wall->top.texture = ret;
-			wall->top.ox = line->texture[0].ox;
-			wall->top.oy = line->texture[0].oy;
-			wall->tflags |= line->texture[0].flags;
-
-			if(line->info.flags & WALLFLAG_PEG_X)
-				aflags |= WALL_MARK_XORIGIN;
-
-			if(line->info.flags & WALLFLAG_SKIP)
-				aflags |= WALL_MARK_SKIP;
-
-			if(line->vc.x16port == validcount)
-				aflags |= WALL_MARK_SWAP;
-
-			wall->special = 0;
-
-			xx = v0->x - v1->x;
-			yy = v0->y - v1->y;
-
-			dist = sqrtf(xx * xx + yy * yy) / 256.0f;
-
-			dx = xx / dist;
-			dy = yy / dist;
-
-			wall->dist.x = dx;
-			wall->dist.y = dy;
-
-			wall->angle = aflags | line->stuff.x16angle;
+			if(fill_base_wall(sec, line, wall, aflags))
+				return;
 		}
 
 		// index walls
 		wcnt = 0;
 		for(uint32_t i = 0; i < sec->line_count; i++)
 		{
-			wall_t *wall = wall_tmp + i;
+			wall = wall_tmp + i;
 
 			widx[i] = wcnt++;
 
@@ -727,14 +797,18 @@ void x16_export_map()
 		// link walls
 		for(uint32_t i = 0; i < sec->line_count; i++)
 		{
-			wall_t *wall = wall_tmp + i;
 			int32_t ii = i - 1;
+
+			wall = wall_tmp + i;
+
 			if(ii < 0)
 				ii = sec->line_count - 1;
+
 			wall->next = widx[ii];
 		}
 
 		// find wall bank
+		wall_bank = -1;
 		for(uint32_t i = 0; i < WALL_BANK_COUNT; i++)
 		{
 			wall_block_t *wb = wall_block + i;
@@ -744,15 +818,15 @@ void x16_export_map()
 			if(total > WALL_BANK_WCNT)
 				continue;
 
-			if(count_wbanks < i)
-				count_wbanks = i;
+			if(count_wall_banks < i)
+				count_wall_banks = i;
 
 			// fix base and expand
 			wall_bank = i;
 			idx = wb->used;
 			for(uint32_t i = 0; i < sec->line_count; i++)
 			{
-				wall_t *wall = wall_tmp + i;
+				wall = wall_tmp + i;
 
 				wall->next += wb->used;
 
@@ -769,10 +843,120 @@ void x16_export_map()
 			break;
 		}
 
+		// check
 		if(wall_bank < 0)
 		{
-			error_generic("Out of space for walls!");
+			error_wall_banks();
 			return;
+		}
+
+		// save walls
+		map_sector->wall.bank = wall_bank;
+		map_sector->wall.first = wall_first;
+
+		// go trough objects
+		wcnt = 0;
+		memset(wall_tmp, 0, sizeof(wall_tmp));
+		wall = wall_tmp;
+		ont = sec->objects.top;
+		while(ont)
+		{
+			edit_sec_obj_t *obj = (edit_sec_obj_t*)(ont + 1);
+			kge_line_t *line = obj->line;
+
+			secobj->first = wcnt;
+			secobj->x = obj->origin.x;
+			secobj->y = obj->origin.y;
+			secobj++;
+
+			for(uint32_t i = 0; i < obj->count; i++, line++)
+			{
+				wall->mid.texture = 0xFF;
+				wall->split = -32768;
+
+				if(fill_base_wall(sec, line, wall, 0))
+					return;
+
+				if(i + 1 == obj->count)
+					wall->next = wcnt;
+				else
+					wall->next = wcnt + i + 1;
+
+				wall++;
+			}
+
+			wcnt += obj->count;
+			if(wcnt >= 128)
+			{
+				// should never happen
+				error_wall_banks();
+				return;
+			}
+
+			ont = ont->next;
+		}
+
+		if(wcnt)
+		{
+			// terminator
+			secobj->bank = 0xFF;
+
+			// find wall bank
+			wall_bank = -1;
+			for(uint32_t i = 0; i < WALL_BANK_COUNT; i++)
+			{
+				wall_block_t *wb = wall_block + i;
+				uint32_t total = wb->used + wcnt;
+				uint32_t idx;
+
+				if(total > WALL_BANK_WCNT)
+					continue;
+
+				if(count_wall_banks < i)
+					count_wall_banks = i;
+
+				// fix base and expand
+				wall_bank = i;
+				idx = wb->used;
+				wfrst = wb->used;
+				for(uint32_t i = 0; i < wcnt; i++)
+				{
+					wall_t *wall = wall_tmp + i;
+					wall->next += wfrst;
+					place_struct(wb->data, idx++, wall, 16);
+				}
+
+				wb->used = total;
+
+				break;
+			}
+
+			// check
+			if(wall_bank < 0)
+			{
+				error_wall_banks();
+				return;
+			}
+
+			// fix objects
+			for(map_secobj_t *so = (map_secobj_t*)temp_data; so < secobj; so++)
+			{
+				so->bank = wall_bank;
+				so->first += wfrst;
+			}
+
+			// export objects
+			ret = (uint8_t*)secobj - temp_data;
+			ret = es_place_data(temp_data, ret + 1);
+			if(ret < 0)
+			{
+				error_extra_storage();
+				return;
+			}
+
+			// write to sector
+			map_sector->sobj_lo = ret;
+			map_sector->sobj_hi = 0xFF;
 		}
 
 		// export sector
@@ -806,9 +990,6 @@ void x16_export_map()
 		if(sec->plane[PLANE_TOP].link)
 			map_sector->ceiling.link = list_get_idx(&edit_list_sector, (link_entry_t*)sec->plane[PLANE_TOP].link - 1) + 1;
 
-		map_sector->wall.bank = wall_bank;
-		map_sector->wall.first = wall_first;
-
 		map_sector->midheight = mid_height;
 
 		// flags will be added later
@@ -818,7 +999,7 @@ void x16_export_map()
 		ent = ent->next;
 	}
 
-	count_wbanks++;
+	count_wall_banks++;
 
 	// count lights and make remap table
 	map_head.count_lights = 0;
@@ -855,6 +1036,12 @@ void x16_export_map()
 		ent = ent->next;
 	}
 
+	// count extra storage
+	for(uint32_t i = 0; i < MAX_EXTRA_STORAGE; i++)
+		if(extra_storage[i].used)
+			count_extra_storage = i;
+	count_extra_storage++;
+
 	// save map info
 	map_head.count_ptex = count_ptex;
 	map_head.count_wtex = count_wtex;
@@ -862,7 +1049,8 @@ void x16_export_map()
 	map_head.count_starts_normal = count_starts[0];
 	map_head.count_starts_coop = count_starts[1];
 	map_head.count_starts_dm = count_starts[2];
-	map_head.count_wbanks = count_wbanks;
+	map_head.count_wall_banks = count_wall_banks;
+	map_head.count_extra_storage = count_extra_storage;
 	map_head.count_things = count_things;
 	map_head.hash_sky = edit_sky_num < 0 ? 0 : editor_sky[edit_sky_num].hash;
 	map_head.flags = 0;
@@ -925,8 +1113,12 @@ void x16_export_map()
 	write_player_starts(fd);
 
 	// wall banks
-	for(uint32_t i = 0; i < count_wbanks; i++)
+	for(uint32_t i = 0; i < count_wall_banks; i++)
 		write(fd, wall_block[i].data, WALL_BANK_SIZE);
+
+	// extra storage
+	for(uint32_t i = 0; i < count_extra_storage; i++)
+		write(fd, extra_storage[i].data, 256);
 
 	// things
 	ent = tick_list_normal.top;
@@ -963,7 +1155,8 @@ void x16_export_map()
 	close(fd);
 
 	// export OK
-printf("EXPORTED OK; sec %u ln %u th %u wb %u\n", edit_list_sector.count, count_walls, count_things, count_wbanks);
+printf("EXPORTED OK; sec %u ln %u th %u wb %u es %u\n", edit_list_sector.count, count_walls, count_things, count_wall_banks, count_extra_storage);
+printf("sec %u wall %u th %u\n", sizeof(sector_t), sizeof(wall_t), sizeof(thing_t));
 /*
 	sprintf(edit_info_box_text,	"Sector count: %u\n"
 					"Wall count: %u\n"

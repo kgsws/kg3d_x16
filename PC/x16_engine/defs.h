@@ -1,5 +1,5 @@
 
-#define MAP_VERSION	25
+#define MAP_VERSION	26
 #define MAP_MAGIC	0x36315870614D676B
 #define MAX_LIGHTS	8
 #define MAX_X16_VARIANTS	16
@@ -12,8 +12,31 @@
 #define WALL_MARK_SWAP	0x8000
 #define WALL_MARK_EXTENDED	0x4000
 #define WALL_MARK_XORIGIN	0x2000
+#define WALL_MARK_SKIP	0x1000
 
 #define SECTOR_FLAG_WATER	0x80
+
+typedef struct
+{
+	uint64_t magic;
+	uint8_t version;
+	uint8_t flags;
+	//
+	uint8_t count_lights;
+	uint8_t count_ptex;
+	uint8_t count_wtex;
+	uint8_t count_textures;
+	uint8_t count_starts_normal;
+	uint8_t count_starts_coop;
+	uint8_t count_starts_dm;
+	uint8_t count_wall_banks;
+	uint8_t count_extra_storage;
+	uint8_t count_things;
+	//
+	uint8_t unused[8];
+	//
+	uint32_t hash_sky;
+} map_head_t;
 
 typedef struct
 {
@@ -92,11 +115,20 @@ typedef struct
 	} wall;
 	uint8_t flags; // light, palette, underwater
 	uint8_t midheight;
+	uint16_t sobj_lo;
+	uint8_t sobj_hi;
 	//
-	uint8_t filler[9];
+	uint8_t filler[6];
 	// internal
 	uint8_t midhit;
 } __attribute__((packed)) sector_t;
+
+typedef struct
+{
+	uint8_t bank;
+	uint8_t first;
+	int16_t x, y;
+} map_secobj_t;
 
 typedef struct
 {

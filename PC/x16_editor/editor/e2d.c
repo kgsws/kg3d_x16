@@ -433,14 +433,17 @@ static kge_thing_t *find_cursor_thing()
 			float xx, yy;
 			kge_thing_t *th = (kge_thing_t*)tickable->data;
 
-			xx = th->pos.x - mx;
-			yy = th->pos.y - my;
-
-			xx = xx * xx + yy * yy;
-			if(xx < dist)
+			if(!edit_is_sector_hidden(th->pos.sector))
 			{
-				dist = xx;
-				pick = th;
+				xx = th->pos.x - mx;
+				yy = th->pos.y - my;
+
+				xx = xx * xx + yy * yy;
+				if(xx < dist)
+				{
+					dist = xx;
+					pick = th;
+				}
 			}
 		}
 
@@ -1850,15 +1853,39 @@ static void drag_list_finish()
 			while(ent)
 			{
 				edit_sec_obj_t *obj = (edit_sec_obj_t*)(ent + 1);
-/*				kge_line_t *line = obj->line;
+				kge_line_t *line = obj->line;
 
-				for(uint32_t i = 0; i < obj->count; i++, line++)
+				if(obj->count > 2)
 				{
-					if(line->vc.editor != vc_editor)
-						continue;
-					engine_update_line(line);
+					for(uint32_t i = 0; i < obj->count; i++, line++)
+					{
+						kge_vertex_t *v0;
+						kge_vertex_t *v1;
+						uint32_t left;
+
+						if(line->vc.editor != vc_editor)
+							continue;
+
+						v0 = line->vertex[0];
+						v1 = line->vertex[1];
+
+						if(	v0->x != v1->x ||
+							v0->y != v1->y
+						)
+							continue;
+
+						obj->count--;
+						left = obj->count - i;
+						memcpy(line, line + 1, left * sizeof(kge_line_t));
+						memcpy(obj->vtx + i, obj->vtx + i + 1, left * sizeof(kge_vertex_t));
+
+						line_del++;
+
+						break;
+					}
 				}
-*/
+
+				edit_fix_object(obj);
 				edit_update_object(obj);
 
 				ent = ent->next;
@@ -2599,6 +2626,23 @@ static int32_t in2d_delete()
 {
 	switch(select_mode)
 	{
+		case EDIT_MODE_LINE:
+			if(!edit_hit.line)
+				break;
+
+			if(!edit_hit.extra_sector)
+				break;
+
+			if(!edit_hit.line->object)
+				break;
+
+			if(input_ctrl)
+			{
+				list_del_entry(&edit_hit.extra_sector->objects, LIST_ENTRY(edit_hit.line->object));
+				edit_clear_hit(1);
+			} else
+				edit_status_printf("Hold CTRL to delete objects.");
+		break;
 		case EDIT_MODE_THING:
 			if(!edit_hit.thing)
 				break;
