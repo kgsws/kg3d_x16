@@ -115,7 +115,7 @@ MAP_TEMP_PLANE8_EFFECT = $B000
 ;;;
 
 MAP_HEAD__SIZE = $20
-MAP_HEAD__VERSION = 25
+MAP_HEAD__VERSION = 26
 MAP_CMAP__SIZE = 4
 MAP_PLANE__SIZE = 5
 MAP_WALL__SIZE = 5
@@ -148,6 +148,7 @@ MAP_TEMP_SPR_IDX = TICK_CMD_BITS_L
 MAP_TEMP_WPN_IDX = BACKSEC_PTR_I
 MAP_TEMP_TH_TYPE = TICK_CMD_BITS_H
 MAP_TEMP_COUNT_THING = TICK_CMD_ANGLE
+MAP_TEMP_COUNT_EBLOCKS = G_LEVEL_TICK_M
 MAP_TEMP_COUNT_LIGHTS = TICK_CMD_PITCH
 MAP_TEMP_START_COUNT = G_TICKER_IDX
 MAP_LOAD_WRAM_L = FUNC_ARG_L
@@ -428,6 +429,10 @@ ex_map_load:
 	beq	@verify_error
 	cmp	#17
 	bcs	@verify_error
+
+	; copy extra storage size
+	lda	MAP_HEAD_COUNT_EBLOCKS
+	sta	MAP_TEMP_COUNT_EBLOCKS
 
 	; check thing count
 	lda	MAP_HEAD_COUNT_THINGS
@@ -868,6 +873,83 @@ ex_map_load:
 	bne	@loop_wdat
 
 	;;;;
+	; extra storage
+
+	lda	MAP_TEMP_COUNT_EBLOCKS
+	beq	@no_extra
+
+	; check WRAM space
+	clc
+	lda	MAP_LOAD_WRAM_L
+	sta	MAP_LOAD_TMP_L
+	adc	MAP_TEMP_COUNT_EBLOCKS
+	lda	MAP_LOAD_WRAM_H
+	sta	MAP_LOAD_TMP_H
+	adc	#0
+	cmp	#$20
+	bcc	:+
+
+	; error
+	lda	#12
+	jmp	load_error
+:
+	; advance WRAM pointer
+	clc
+	lda	MAP_TEMP_COUNT_EBLOCKS
+	adc	MAP_LOAD_WRAM_L
+	sta	MAP_LOAD_WRAM_L
+	bcc	:+
+	inc	MAP_LOAD_WRAM_H
+:
+	; get destination pointer
+	lda	MAP_LOAD_TMP_H
+	asl
+	asl
+	asl
+	ldx	MAP_LOAD_TMP_L
+	ora	TAB_BANK,x
+	sta	REG_RAM_BANK
+	txa
+	and	#$1F
+	ora	#$A0
+	sta	TAB_FILE_DEST+1
+
+	; load extra data
+	stz	TAB_FILE_DEST+0
+	stz	TAB_FILE_BUF_SIZE+0
+	lda	MAP_TEMP_COUNT_EBLOCKS
+	sta	TAB_FILE_BUF_SIZE+1
+	jsr	file_read_16_wram
+
+@no_extra:
+
+	;;;;
+	; fix objects
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; go trough sectors
+	ldx	#1
+@loop_sobj_fix:
+	lda	SECTOR_STRUCT_OBJ_H,x
+	beq	:+
+
+	; fix pointer
+	clc
+	lda	MAP_LOAD_TMP_L
+	adc	SECTOR_STRUCT_OBJ_L,x
+	sta	SECTOR_STRUCT_OBJ_L,x
+	lda	MAP_LOAD_TMP_H
+	adc	#$80
+	sta	SECTOR_STRUCT_OBJ_H,x
+:
+	; next
+	inx
+	bne	@loop_sobj_fix
+
+	;;;;
 	; things
 
 	; enable math
@@ -893,7 +975,7 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#12
+	lda	#13
 	jmp	load_error
 :
 	; thing bank
@@ -923,7 +1005,7 @@ ex_map_load:
 	bpl	@loop_thing_type
 
 	; error
-	lda	#13
+	lda	#14
 	jmp	load_error
 
 @do_thing_spawn:

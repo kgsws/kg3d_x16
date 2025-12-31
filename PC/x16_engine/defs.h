@@ -118,9 +118,7 @@ typedef struct
 	uint16_t sobj_lo;
 	uint8_t sobj_hi;
 	//
-	uint8_t filler[6];
-	// internal
-	uint8_t midhit;
+	uint8_t filler[7];
 } __attribute__((packed)) sector_t;
 
 typedef struct

@@ -24,6 +24,7 @@
 #define MAX_DRAW_SPRITES	32
 #define MAX_DRAW_MASKED	16
 #define MAX_DRAW_PORTALS	64
+#define MAX_SOBJ	8
 
 #define MAX_EXTRA_STORAGE	255
 
@@ -1290,6 +1291,12 @@ static void dr_textured_strip(uint8_t x0, uint8_t x1, int32_t top_now, int32_t t
 		int32_t tnow;
 		int16_t clipdiff;
 
+		if(clip_top[x0] & 0x80)
+		{
+			xx += 2;
+			goto skip;
+		}
+
 		sim24bit(&top_now);
 		sim24bit(&bot_now);
 
@@ -1353,6 +1360,7 @@ go_next:
 		if(flags & 4)
 			clip_top[x0] = 0xF0;
 
+skip:
 		top_now += top_step;
 		bot_now += bot_step;
 	}
@@ -1363,6 +1371,9 @@ static void dr_mark_top(uint8_t x0, uint8_t x1, int32_t now, int32_t step)
 	for( ; x0 < x1; x0++)
 	{
 		int32_t y0;
+
+		if(clip_top[x0] & 0x80)
+			goto skip;
 
 		sim24bit(&now);
 
@@ -1385,6 +1396,7 @@ go_next:
 
 		clip_top[x0] = y0;
 
+skip:
 		now += step;
 	}
 }
@@ -1394,6 +1406,9 @@ static void dr_mark_bot(uint8_t x0, uint8_t x1, int32_t now, int32_t step)
 	for( ; x0 < x1; x0++)
 	{
 		int32_t y1;
+
+		if(clip_top[x0] & 0x80)
+			goto skip;
 
 		sim24bit(&now);
 
@@ -1416,6 +1431,7 @@ go_next:
 
 		clip_bot[x0] = y1;
 
+skip:
 		now += step;
 	}
 }
@@ -1458,7 +1474,8 @@ static void dr_wall(sector_t *sec, wall_t *wall, vertex_t *ld, uint32_t x0, uint
 
 	for( ; x0 < x1; x0++)
 	{
-		tmap_scale[x0] = tex_scale[top_now >> 8];
+		if(!(clip_top[x0] & 0x80))
+			tmap_scale[x0] = tex_scale[top_now >> 8];
 		top_now += top_step;
 	}
 
@@ -1904,7 +1921,10 @@ static void do_walls(uint8_t sdx, wall_t *walb, uint8_t wdx, uint8_t is_obj)
 
 		// skip check
 		if(wall->angle & WALL_MARK_SKIP)
+		{
+			last_angle = 0x8000;
 			goto do_next;
+		}
 
 		v0 = &wall->vtx;
 		v1 = &waln->vtx;
@@ -2399,6 +2419,9 @@ static uint8_t handle_plane_effect(texture_info_t *ti, uint8_t ang)
 static void do_sector(uint8_t idx)
 {
 	sector_t *sec = map_sectors + idx;
+	uint32_t did_object = 0;
+	map_secobj_t *sobjlist[MAX_SOBJ];
+	uint32_t sobjdist[MAX_SOBJ];
 
 	// fix plane clip
 	plc_top[projection.x0] = 0xF0;
@@ -2422,11 +2445,37 @@ static void do_sector(uint8_t idx)
 	{
 		map_secobj_t *sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
 
-		while(!(sobj->bank & 0x80))
+//		printf("addr 0x%02X%04X\n", sec->sobj_hi & 0x7F, sec->sobj_lo);
+		for(uint32_t i = 0; i < MAX_SOBJ && !(sobj->bank & 0x80); i++, sobj++)
 		{
+			uint32_t dist;
+			uint32_t pick;
+
+			p2a_coord.x = sobj->x - (projection.x >> 8);
+			p2a_coord.y = sobj->y - (projection.y >> 8);
+			dist = point_to_dist();
+
+			for(pick = 0; pick < did_object; pick++)
+				if(sobjdist[pick] < dist)
+					break;
+
+			for(int32_t j = did_object; j > pick; j--)
+			{
+				sobjlist[j] = sobjlist[j-1];
+				sobjdist[j] = sobjdist[j-1];
+			}
+
+			sobjlist[pick] = sobj;
+			sobjdist[pick] = dist;
+
+			did_object++;
+		}
+
+		for(int32_t i = did_object-1; i >= 0; i--)
+		{
+			map_secobj_t *sobj = sobjlist[i];
 			do_walls(idx, map_walls[sobj->bank], sobj->first, 1);
 //			printf("obj; bank %u first %u; %d x %d\n", sobj->bank, sobj->first, sobj->x, sobj->y);
-			sobj++;
 		}
 	}
 
@@ -2479,6 +2528,19 @@ static void do_sector(uint8_t idx)
 		projection.pl_cos = tab_cos[ang];
 
 		dr_plane(projection.z - sec->ceiling.height, plc_top, plc_bot);
+	}
+
+	// object cleanup
+	if(did_object)
+	{
+		for(uint32_t x0 = projection.x0; x0 < projection.x1; x0++)
+		{
+			if(clip_top[x0] & 0x80)
+			{
+				plc_top[x0] = 0xF0;
+				plf_top[x0] = 0xF0;
+			}
+		}
 	}
 
 	// finish sprites
@@ -3937,7 +3999,7 @@ error:
 
 static uint32_t precache()
 {
-	wram_used = 2048;
+	wram_used = 37 * 8192;
 	num_sprites = 0;
 	num_sframes = 0;
 	num_wframes = 0;

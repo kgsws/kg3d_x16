@@ -37,16 +37,17 @@ MASKED_FIRST_PROP = $F0
 ; specific interleaving of plane and clipping arrays is crucial
 ; plane ranges are 0 to 79, but -1 (= 255) is also used
 
-RENDER_PLF_TOP = TAB_TEMP_DATA + $0000
-RENDER_CLIP_BOT = TAB_TEMP_DATA + $0058
-RENDER_TEXSCALE_L = TAB_TEMP_DATA + $00A8
-RENDER_PLF_BOT = TAB_TEMP_DATA + $0100
-RENDER_CLIP_TOP = TAB_TEMP_DATA + $0158
-RENDER_TEXSCALE_H = TAB_TEMP_DATA + $01A8
-RENDER_PLC_TOP = TAB_TEMP_DATA + $0200
-RENDER_PLANE_X = TAB_TEMP_DATA + $0258
-RENDER_PLC_BOT = TAB_TEMP_DATA + $0300
-RENDER_TEXTURE_X = TAB_TEMP_DATA + $0358
+RENDER_PLF_TOP = TAB_TEMP_DATA + $0000	; 80 bytes
+RENDER_CLIP_BOT = TAB_TEMP_DATA + $0058	; 80 bytes
+RENDER_TEXSCALE_L = TAB_TEMP_DATA + $00A8	; 80 bytes
+RENDER_PLF_BOT = TAB_TEMP_DATA + $0100	; 80 bytes
+RENDER_CLIP_TOP = TAB_TEMP_DATA + $0158	; 80 bytes
+RENDER_TEXSCALE_H = TAB_TEMP_DATA + $01A8	; 80 bytes
+RENDER_PLC_TOP = TAB_TEMP_DATA + $0200	; 80 bytes
+RENDER_PLANE_X = TAB_TEMP_DATA + $0258	; 120 bytes
+RENDER_SOBJ_SORT = TAB_TEMP_DATA + $2D8	; 8 bytes
+RENDER_PLC_BOT = TAB_TEMP_DATA + $0300	; 80 bytes
+RENDER_TEXTURE_X = TAB_TEMP_DATA + $0358	; 160 bytes
 
 ;;;
 ; CODE
@@ -692,11 +693,167 @@ render_sector:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
-	;; WALLS
+	;; OBJECTS
 
-	; last_angle = 'invalid'
-	lda	#$80
-	sta	WALL_LAST_ANGLE_H
+	lda	SECTOR_STRUCT_OBJ_H,y
+	bne	:+
+	jmp	@skip_objects
+:
+	; get pointer
+	and	#$7F
+	asl
+	asl
+	asl
+	ldx	SECTOR_STRUCT_OBJ_L,y
+	ora	TAB_BANK,x
+	sta	TMP_PTR_I
+	txa
+	and	#$1F
+	ora	#$A0
+	sta	TMP_PTR_H
+	lda	SECTOR_STRUCT_OBJ_S,y
+	sta	TMP_PTR_L
+
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; reset
+	stz	SOBJ_SORT_COUNT
+
+	; sort objects
+@loop_sobj_sort:
+	; p2a_coord.x = sobj->x - (projection.x >> 8)
+	sec
+	ldy	#SECOBJ_STRUCT_X_L
+	lda	(TMP_PTR_L),y
+	sbc	PROJECTION_X_L
+	sta	MATH_P2A_X_L
+	iny
+	lda	(TMP_PTR_L),y
+	sbc	PROJECTION_X_H
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = sobj->y - (projection.y >> 8)
+	sec
+	iny
+	lda	(TMP_PTR_L),y
+	sbc	PROJECTION_Y_L
+	sta	MATH_P2A_Y_L
+	iny
+	lda	(TMP_PTR_L),y
+	sbc	PROJECTION_Y_H
+	sta	MATH_P2A_Y_H
+
+	; dist = point_to_dist()
+	jsr	math_p2d
+
+	; for(pick = 0; pick < did_object; pick++)
+	ldx	#0
+@loop_sobj_pick:
+	cpx	SOBJ_SORT_COUNT
+	bcs	@done_sobj_pick
+
+	; if(sobjdist[pick] < dist)
+	sec
+	lda	SOBJ_SORT_DIST_L,x
+	sbc	MATH_VAR_L
+	lda	SOBJ_SORT_DIST_H,x
+	sbc	MATH_VAR_H
+	bmi	@done_sobj_pick
+
+	; next
+	inx
+	bra	@loop_sobj_pick
+
+@done_sobj_pick:
+	stx	SOBJ_SORT_PICK
+
+	; for(int32_t j = did_object; j > pick; j--)
+	ldx	SOBJ_SORT_COUNT
+@loop_sobj_move:
+	cpx	SOBJ_SORT_PICK
+	beq	@done_sobj_move
+	bcc	@done_sobj_move
+
+	; sobjlist[j] = sobjlist[j-1]
+	lda	RENDER_SOBJ_SORT-1,x
+	sta	RENDER_SOBJ_SORT,x
+
+	; sobjdist[j] = sobjdist[j-1]
+	lda	SOBJ_SORT_DIST_L-1,x
+	sta	SOBJ_SORT_DIST_L,x
+	lda	SOBJ_SORT_DIST_H-1,x
+	sta	SOBJ_SORT_DIST_H,x
+
+	; next
+	dex
+	bra	@loop_sobj_move
+
+@done_sobj_move:
+	ldx	SOBJ_SORT_PICK
+
+	; sobjlist[pick] = sobj
+	lda	TMP_PTR_L
+	sta	RENDER_SOBJ_SORT,x
+
+	; sobjdist[pick] = dist
+	lda	MATH_VAR_L
+	sta	SOBJ_SORT_DIST_L,x
+	lda	MATH_VAR_H
+	sta	SOBJ_SORT_DIST_H,x
+
+	; did_object++
+	inc	SOBJ_SORT_COUNT
+
+	; advance
+	clc
+	lda	TMP_PTR_L
+	adc	#SECOBJ_STRUCT_SIZE
+	sta	TMP_PTR_L
+
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; next
+	lda	(TMP_PTR_L)
+	bpl	@loop_sobj_sort
+
+	; render objects
+	ldx	SOBJ_SORT_COUNT
+@loop_sobj_render:
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; get object
+	lda	RENDER_SOBJ_SORT-1,x
+	sta	TMP_PTR_L
+
+	; wall loop
+	phx
+	lda	(TMP_PTR_L)
+	ora	#BANK_MAPWALLS
+	sta	WALL_BANK
+	ldy	#SECOBJ_STRUCT_FIRST
+	lda	(TMP_PTR_L),y
+	sta	WALL_FIRST
+	jsr	loop_walls
+
+	; next
+	plx
+	dex
+	bne	@loop_sobj_render
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+@skip_objects:
+	pha	; <did_object>
+
+	;; SECTOR WALLS
 
 	; wall info
 	ldy	SECTOR_PTR_I
@@ -706,25 +863,8 @@ render_sector:
 	lda	SECTOR_STRUCT_WALL_FIRST,y
 	sta	WALL_FIRST
 
-@loop_walls:
-	sta	WALL_NOW
-	tax
-
-	; enable math
-	jsr	math_setup_vera
-
-	; WALL
-	jsr	render_wall
-
-	; wall bank
-	lda	WALL_BANK
-	sta	REG_RAM_BANK
-
-	; next
-	ldx	WALL_NOW
-	lda	WALL_STRUCT_NEXT,x
-	cmp	WALL_FIRST
-	bne	@loop_walls
+	; wall loop
+	jsr	loop_walls
 
 	;; PLANES
 
@@ -875,10 +1015,22 @@ render_sector:
 
 	;; OBJECT CLEANUP
 
+	pla	; <did_object>
+	beq	@no_objclean
 
-;;; TODO
+	; TODO: use unrolled loop
+	ldx	PROJECTION_X0
+@loop_objclr:
+	lda	RENDER_CLIP_TOP,x
+	bpl	:+
+	sta	RENDER_PLC_TOP,x
+	sta	RENDER_PLF_TOP,x
+:
+	inx
+	cpx	PROJECTION_X1
+	bne	@loop_objclr
 
-
+@no_objclean:
 	;; FINISH SPRITES
 
 	; sprite bank
@@ -969,6 +1121,37 @@ render_sector:
 	sta	MEM_PORTALS_SPRITE,y
 
 	; done
+	rts
+
+;;;
+; render wall loop
+;;;
+
+loop_walls:
+	; last_angle = 'invalid'
+	ldx	#$80
+	stx	WALL_LAST_ANGLE_H
+
+@loop:
+	sta	WALL_NOW
+	tax
+
+	; enable math
+	jsr	math_setup_vera
+
+	; WALL
+	jsr	render_wall
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; next
+	ldx	WALL_NOW
+	lda	WALL_STRUCT_NEXT,x
+	cmp	WALL_FIRST
+	bne	@loop
+
 	rts
 
 ;;;
@@ -1447,6 +1630,11 @@ render_wall:
 	; wall bank
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
+
+	;; skip check
+	lda	WALL_STRUCT_ANGLE_H,x
+	and	#WALL_MARK_SKIP
+	bne	@invalidate
 
 	;; V0 diff
 
@@ -2956,6 +3144,7 @@ v1diff_opcode:
 	; get top clip
 	ldx	WALL_X0
 	lda	RENDER_CLIP_TOP,x
+	bmi	@do_top_skip
 	sta	WALL_CLIP_TOP
 
 	; get bot clip
@@ -3012,6 +3201,7 @@ v1diff_opcode:
 	lda	WALL_Y0
 	sta	RENDER_CLIP_TOP,x
 
+@do_top_skip:
 	; top_now += top_step
 	clc
 	lda	WALL_TOP_NOW_L
@@ -3188,6 +3378,7 @@ v1diff_opcode:
 	; get top clip
 	ldx	WALL_X0
 	lda	RENDER_CLIP_TOP,x
+	bmi	@do_bot_skip
 	sta	WALL_CLIP_TOP
 
 	; get bot clip
@@ -3248,6 +3439,7 @@ v1diff_opcode:
 	lda	WALL_Y1
 	sta	RENDER_CLIP_BOT,x
 
+@do_bot_skip:
 	; bot_now += bot_step
 	clc
 	lda	WALL_BOT_NOW_L
@@ -3649,6 +3841,7 @@ wall_render_loop:
 	; get top clip
 	ldx	WALL_X0
 	lda	RENDER_CLIP_TOP,x
+	bmi	wall_render_done
 	sta	WALL_CLIP_TOP
 
 	; get bot clip
