@@ -13,12 +13,12 @@
 #define THING_IFLAG_BLOCKED	0x01
 #define THING_IFLAG_GOTHIT	0x02
 #define THING_IFLAG_CORPSE	0x04
+#define THING_IFLAG_ALTRADIUS	0x08
 #define THING_IFLAG_USED	0x20
 #define THING_IFLAG_JUMPED	0x40
 #define THING_IFLAG_HEIGHTCHECK	0x80
 
 #define THING_EFLAG_PROJECTILE	0x80
-#define THING_EFLAG_CLIMBABLE	0x40
 #define THING_EFLAG_SPRCLIP	0x20
 #define THING_EFLAG_NORADIUS	0x10
 #define THING_EFLAG_WATERSPEC	0x04
@@ -53,9 +53,19 @@ enum
 	ANIM_LOWER = ANIM_INACTIVE,
 };
 
+enum
+{
+	THMODE_PASSIVE,
+	THMODE_ANIMATE,
+	THMODE_MOVE,
+	THMODE_ACTIVE,
+};
+
 typedef struct
 {
 	uint8_t spawn[THING_MAX_SPAWN_TYPES];
+	//
+	uint8_t mode;
 	//
 	uint8_t radius;
 	uint8_t height;
@@ -184,8 +194,10 @@ uint32_t thing_init(const char *file);
 int32_t thing_find_type(uint32_t hash);
 
 void thing_clear();
-void thing_tick();
-void thing_tick_plr();
+void thing_tick_full();
+void thing_tick_move();
+void thing_tick_anim();
+void thing_tick_plyr();
 
 uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t type, uint8_t origin);
 void thing_spawn_player();

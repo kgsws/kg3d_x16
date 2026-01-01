@@ -452,7 +452,7 @@ static uint8_t *colormap;
 
 static uint32_t wram_used;
 static uint32_t wram_used_pc;
-static uint8_t wram[0x200000];
+uint8_t wram[0x200000];
 
 static uint32_t sky_base;
 
@@ -2475,7 +2475,7 @@ static void do_sector(uint8_t idx)
 		{
 			map_secobj_t *sobj = sobjlist[i];
 			do_walls(idx, map_walls[sobj->bank], sobj->first, 1);
-//			printf("obj; bank %u first %u; %d x %d\n", sobj->bank, sobj->first, sobj->x, sobj->y);
+//			printf("obj 0x%06X; bank %u first %u; %d x %d\n", (uint8_t*)sobj - wram, sobj->bank, sobj->first, sobj->x, sobj->y);
 		}
 	}
 

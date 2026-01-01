@@ -3,9 +3,12 @@
 
 enum
 {
-	TFUNC_DUMMY = 0,
-	TFUNC_THING = 2,
-	TFUNC_PLAYER = 4,
+	// this is direct map to THMODE_*
+	TICKER_FUNC_DUMMY = 0,
+	TICKER_FUNC_ANIM = 2,
+	TICKER_FUNC_MOVE = 4,
+	TICKER_FUNC_THING = 6,
+	TICKER_FUNC_PLAYER = 8,
 	//
 	TFUNC_FREE_SLOT = 0xFF,
 };

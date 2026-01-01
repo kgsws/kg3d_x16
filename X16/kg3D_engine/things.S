@@ -24,8 +24,10 @@
 .export thing_actdone
 .export thing_actnext
 
-.export thing_tick
-.export thing_plyr
+.export thing_tick_full
+.export thing_tick_move
+.export thing_tick_anim
+.export thing_tick_plyr
 
 ;;;
 ; CODE
@@ -75,6 +77,10 @@ thing_spawn_org:
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
+
+	; thing mode
+	lda	THTYPE_STRUCT_MODE,y
+	sta	@opcode_mode+1
 
 	; <eflags>
 	lda	THTYPE_STRUCT_EFLAGS,y
@@ -142,9 +148,7 @@ thing_spawn_org:
 	sta	REG_RAM_BANK
 
 	; ticker
-	ldx	RET_THING_IDX
-	lda	#TICKER_FUNC_THING
-	sta	TICKER_STRUCT_FUNC,x
+	ldx     RET_THING_IDX
 
 	; type
 	lda	ARG_THING_TYPE
@@ -266,6 +270,25 @@ thing_spawn_org:
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
+@finish:
+	ldx	RET_THING_IDX
+
+@opcode_mode:
+	; mode
+	lda	#$00	; modified value
+
+	; if(ti->mode & 0x80)
+	bpl	:+
+
+	; th->iflags = THING_IFLAG_ALTRADIUS
+	lda	#THING_IFLAG_ALTRADIUS
+	sta	THING_STRUCT_IFLAGS,x
+:
+	; th->ticker.func = (ti->mode & 3) << 1
+	and	#3
+	asl
+	sta	TICKER_STRUCT_FUNC,x
+
 	; DONE
 	ldx	RET_THING_IDX
 	rts
@@ -332,8 +355,7 @@ thing_spawn_org:
 	sta	THING_STRUCT_CEILS,x
 
 	; DONE
-	ldx	RET_THING_IDX
-	rts
+	bra	@finish
 
 ;;;
 ; thing clear
@@ -484,6 +506,15 @@ thing_damage:
 	sta	THING_STRUCT_HEALTH_L,y
 	sta	THING_STRUCT_HEALTH_H,y
 
+	; if(th->ticker.func < TICKER_FUNC_THING)
+	lda	TICKER_STRUCT_FUNC,y
+	cmp	#TICKER_FUNC_THING
+	bcs	:+
+
+	; th->ticker.func |= TICKER_FUNC_ANIM
+	ora	#TICKER_FUNC_ANIM
+	sta	TICKER_STRUCT_FUNC,y
+:
 	; thing type
 	ldx	TICKER_STRUCT_TYPE,y
 
@@ -1999,7 +2030,7 @@ prepare_pos_check:
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
-	; poscheck.water_height = thing_type[th->ticker.type].water_height
+	; poscheck.water_height = info->water_height
 	lda	THTYPE_STRUCT_WATER_HEIGHT,y
 	sta	THMOVE_WATER_HEIGHT
 
@@ -2073,7 +2104,7 @@ prepare_pos_check:
 :
 	stz	MATH_VAR_U
 :
-	; poscheck.th_sh = nz + thing_type[th->ticker.type].step_height
+	; poscheck.th_sh = nz + info->step_height
 	clc
 	lda	MATH_VAR_U
 	adc	ARG_THING_Z_L
@@ -2309,9 +2340,37 @@ check_things:
 	and	THMOVE_BLOCKEDBY
 	beq	@next_slot_ex
 
-	; radius = ht->radius + poscheck.radius
+	; for addition
 	clc
+
+	; if(ht->iflags & THING_IFLAG_ALTRADIUS)
+	lda	THING_STRUCT_IFLAGS,x
+	and	#THING_IFLAG_ALTRADIUS
+	beq	@normal_radius
+
+	; type
+	phy
+	ldy	TICKER_STRUCT_TYPE,x
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; alt_radius
+	lda	THTYPE_STRUCT_ALT_RADIUS,y
+
+	; ticker structure bank
+	ldy	#BANK_TICKER_STRUCT
+	sty	REG_RAM_BANK
+
+	; restore
+	ply
+	bra	@alt_radius
+
+@normal_radius:
+	; radius = ht->radius + poscheck.radius
 	lda	THING_STRUCT_RADIUS,x
+@alt_radius:
 	adc	THMOVE_RADIUS
 	sta	THMOVE_RADIUS_L
 	stz	THMOVE_RADIUS_H
@@ -2986,6 +3045,11 @@ projectile_death:
 	and	#<~THING_IFLAG_HEIGHTCHECK
 	sta	THING_STRUCT_IFLAGS,x
 
+	; th->ticker.func |= TICKER_FUNC_ANIM
+	lda	TICKER_STRUCT_FUNC,x
+	ora	#TICKER_FUNC_ANIM
+	sta	TICKER_STRUCT_FUNC,x
+
 	; thing type
 	ldy	TICKER_STRUCT_TYPE,x
 
@@ -3029,7 +3093,7 @@ projectile_death:
 
 	; hit nothing
 	ldy	RET_THING_IDX
-	jmp	thing_anim
+	rts
 :
 	bmi	:+
 	jmp	@not_thing
@@ -3430,7 +3494,7 @@ projectile_death:
 
 	; hit sky
 	ldy	RET_THING_IDX
-	jmp	thing_anim
+	rts
 :
 	; check new position
 	stz	ARG_THING_SECTOR
@@ -3479,13 +3543,21 @@ projectile_death:
 @no_damage:
 	; animate
 	ldy	RET_THING_IDX
-	jmp	thing_anim
+	rts
 
 ;;;
-; thing ticker
+; thing ticker (normal)
 ;;;
 
-thing_tick:
+thing_tick_full:
+	jsr	thing_tick_move
+	jmp	thing_tick_anim
+
+;;;
+; thing ticker (movement)
+;;;
+
+thing_tick_move:
 	sty	RET_THING_IDX
 
 	;; camera
@@ -4442,15 +4514,13 @@ thing_tick:
 	dec	THTICK_REPEAT
 	jmp	@try_xy_move
 :
+	rts
 
 ;;;
-; thing animation
+; thing ticker (animation)
 ;;;
 
-thing_anim:
-	; backup
-	sty	THTICK_ACTION_TDX
-
+thing_tick_anim:
 	; if(!th->ticks)
 	lda	THING_STRUCT_TICKS,y
 	bne	:+
@@ -4473,7 +4543,7 @@ thing_actnext:
 	stz	TMP_ACTION_TICKADD
 
 	; restore
-	ldy	THTICK_ACTION_TDX
+	ldy	G_TICKER_IDX
 
 	; check for STOP
 	and	#$07
@@ -4506,8 +4576,6 @@ thing_actnext:
 thing_actdone:
 	; restore
 	ldx	THTICK_ACTION_ST_IDX
-	ldy	THTICK_ACTION_TDX
-	sty	RET_THING_IDX
 
 	; thing states bank
 	lda	THTICK_ACTION_ST_BNK
@@ -4550,7 +4618,7 @@ thing_actdone:
 	sta	REG_RAM_BANK
 
 	; ticker
-	ldy	RET_THING_IDX
+	ldy	G_TICKER_IDX
 
 	; <ticks>
 	pla
@@ -4571,10 +4639,10 @@ thing_actdone:
 	rts
 
 ;;;
-; player ticker
+; thing ticker (player)
 ;;;
 
-thing_plyr:
+thing_tick_plyr:
 	; ntype = THING_TYPE_PLAYER_N
 	lda	#THING_TYPE_PLAYER_N
 	sta	PLTICK_NTYPE
@@ -4888,11 +4956,11 @@ thing_plyr:
 	sta	TICKER_STRUCT_TYPE,y
 
 @no_change:
-	; thing tick
-	jsr	thing_tick
+	; movement and animation
+	jsr	thing_tick_full
 
 	; weapon
 	ldy	#0
-	sty	RET_THING_IDX
-	jmp	thing_anim
+	sty	G_TICKER_IDX
+	jmp	thing_tick_anim
 

@@ -94,8 +94,10 @@ tick_run:
 
 @ticker_list:
 	.word	@dummy
-	.word	thing_tick
-	.word	thing_plyr
+	.word	thing_tick_anim
+	.word	thing_tick_move
+	.word	thing_tick_full
+	.word	thing_tick_plyr
 
 ;;;
 ; create ticker

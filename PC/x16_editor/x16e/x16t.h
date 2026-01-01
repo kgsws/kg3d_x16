@@ -18,7 +18,7 @@
 #define LEN_X16_THING_NAME	16
 
 #define THING_EFLAG_PROJECTILE	0x80
-#define THING_EFLAG_CLIMBABLE	0x40
+//#define THING_EFLAG_CLIMBABLE	0x40
 #define THING_EFLAG_SPRCLIP	0x20
 #define THING_EFLAG_NORADIUS	0x10
 #define THING_EFLAG_WATERSPEC	0x04
@@ -41,9 +41,29 @@ enum
 	NUM_THING_ANIMS // 8 is engine limit
 };
 
+enum
+{
+	// this is a bitmap
+	THMODE_PASSIVE,
+	THMODE_ANIMATE,
+	THMODE_MOVE,
+	THMODE_ACTIVE,
+	//
+	THMODE_PASSIVE_ALT,
+	THMODE_ANIMATE_ALT,
+	// count
+	NUM_THING_MODES,
+	// bits
+	THMODB_ANIM = 1,
+	THMODB_MOVE = 2,
+	THMODB_ALTR = 4,
+};
+
 typedef struct
 {
 	uint8_t spawn[THING_MAX_SPAWN_TYPES];
+	//
+	uint8_t mode;
 	//
 	uint8_t radius;
 	uint8_t height;

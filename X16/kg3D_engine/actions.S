@@ -704,6 +704,160 @@ act_die_radius:
 	jmp	thing_actdone
 
 ;;;
+; HAX
+;;;
+
+hax_slide_door:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	lda	G_LEVEL_TICK_L
+	ldx	THING_STRUCT_ANGLE,y
+	bpl	:+
+	asl
+:
+	tax
+
+	;; FRAME
+
+	and	#31
+	sta	MATH_VAR_L
+	txa
+	and	#32
+	beq	:+
+	lda	MATH_VAR_L
+	eor	#31
+	sta	MATH_VAR_L
+:
+	sec
+	lda	MATH_VAR_L
+	sbc	#10
+	sta	MATH_VAR_L
+	bpl	@pos
+	lda	#0
+	bra	@pass
+@pos:
+	cmp	#15
+	bcc	@pass
+	lda	#14
+@pass:
+	asl
+	asl
+	asl
+	sec
+	sbc	#48
+	sta	MATH_VAR_L
+	tax
+	lda	TAB_SIGN_EXT,x
+	sta	MATH_VAR_H
+
+	;; SECTOR
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing sector
+	ldx	$B000,y
+	sta	ARG_THING_SECTOR
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	;; OBJECTS
+
+	lda	SECTOR_STRUCT_OBJ_H,x
+	and	#$7F
+	asl
+	asl
+	asl
+	ldy	SECTOR_STRUCT_OBJ_L,x
+	ora	TAB_BANK,y
+	sta	TMP_PTR_I
+	tya
+	and	#$1F
+	ora	#$A0
+	sta	TMP_PTR_H
+	lda	SECTOR_STRUCT_OBJ_S,x
+	sta	TMP_PTR_L
+
+	; first
+	jsr	@slide_door_hack
+
+	; flip
+	lda	MATH_VAR_L
+	eor	#$FF
+	ina
+	sta	MATH_VAR_L
+	tax
+	lda	TAB_SIGN_EXT,x
+	sta	MATH_VAR_H
+
+	; next
+	clc
+	lda	TMP_PTR_L
+	adc	#SECOBJ_STRUCT_SIZE
+	sta	TMP_PTR_L
+
+	; second
+	jsr	@slide_door_hack
+
+	; done
+	jmp	thing_actdone
+
+@slide_door_hack:
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; walls
+	lda	(TMP_PTR_L)
+	ora	#BANK_MAPWALLS
+	sta	WALL_BANK
+	ldy	#SECOBJ_STRUCT_FIRST
+	lda	(TMP_PTR_L),y
+	pha
+	ldy	#SECOBJ_STRUCT_Y_L
+	lda	(TMP_PTR_L),y
+	sta	WALL_D0_Y_L
+	iny
+	lda	(TMP_PTR_L),y
+	sta	WALL_D0_Y_H
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; skip
+	ply
+	ldx	WALL_STRUCT_NEXT,y
+
+	; move
+	clc
+	lda	WALL_D0_Y_L
+	adc	MATH_VAR_L
+	sta	WALL_STRUCT_VTX_Y_L,x
+	lda	WALL_D0_Y_H
+	adc	MATH_VAR_H
+	sta	WALL_STRUCT_VTX_Y_H,x
+
+	; next
+	ldy	WALL_STRUCT_NEXT,x
+
+	; move
+	clc
+	lda	WALL_D0_Y_L
+	adc	MATH_VAR_L
+	sta	WALL_STRUCT_VTX_Y_L,y
+	lda	WALL_D0_Y_H
+	adc	MATH_VAR_H
+	sta	WALL_STRUCT_VTX_Y_H,y
+
+	rts
+
+;;;
 ; state action table
 ;;;
 
@@ -717,6 +871,8 @@ action_table:
 	.word	act_tick_add
 	.word	act_die_simple
 	.word	act_die_radius
+; HAX
+	.word	hax_slide_door
 
 ;;;
 ; extra tables

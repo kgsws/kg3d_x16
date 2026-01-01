@@ -20,7 +20,7 @@
 #include "glui.h"
 #include "ui_def.h"
 
-#define NUM_SHOW_ATTRS	(sizeof(thing_attr) / sizeof(thing_edit_attr_t))
+#define NUM_THING_ATTRS	(sizeof(thing_attr) / sizeof(thing_edit_attr_t))
 #define NUM_SHOW_FLAGS	(sizeof(thing_flag) / sizeof(thing_edit_flag_t))
 #define NUM_SHOW_ANIMS	NUM_THING_ANIMS
 #define NUM_STATE_COLS	9
@@ -40,6 +40,7 @@
 
 enum
 {
+	ATTR_TYPE_HIDDEN,
 	ATTR_TYPE_U8,
 	ATTR_TYPE_U16,
 	ATTR_TYPE_CHANCE,
@@ -206,6 +207,7 @@ static const int16_t *arg_lim;
 // default player
 static const export_type_t default_player_info =
 {
+	.mode = THMODE_PASSIVE,
 	.radius = 31,
 	.height = 144, // 0.5x for crouching / swimming
 	.blocking = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN),
@@ -226,6 +228,7 @@ static const export_type_t default_player_info =
 // default thing
 static const export_type_t default_thing_info =
 {
+	.mode = THMODE_PASSIVE,
 	.radius = 15,
 	.height = 32,
 	.gravity = 128,
@@ -258,13 +261,15 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("spawn B", spawn[1]), ATTR_TYPE_TT},
 	{THING_ATTR("spawn C", spawn[2]), ATTR_TYPE_TT},
 	{THING_ATTR("spawn D", spawn[3]), ATTR_TYPE_TT},
+	// hidden must be last
+	{THING_ATTR("mode", mode), ATTR_TYPE_HIDDEN},
 };
 
 // editable flags
 static const thing_edit_flag_t thing_flag[] =
 {
 	{FLAG_STR("projectile"), THING_EFLAG_PROJECTILE},
-	{FLAG_STR("climbable"), THING_EFLAG_CLIMBABLE},
+//	{FLAG_STR("climbable"), THING_EFLAG_CLIMBABLE},
 	{FLAG_STR("spriteclip"), THING_EFLAG_SPRCLIP},
 	{FLAG_STR("noradius"), THING_EFLAG_NORADIUS},
 	{FLAG_STR("waterspec"), THING_EFLAG_WATERSPEC},
@@ -461,6 +466,11 @@ const state_action_def_t state_action_def[] =
 			.lim = {0, 255}
 		}
 	},
+	/// DEMO HAX
+	{
+		.name = "slide door hax",
+		.flags = AFLG_THING
+	},
 	// terminator
 	{}
 };
@@ -472,6 +482,29 @@ static const uint8_t *block_req_text[] =
 	"Bits which this thing will block. (alt)",
 	"Bits by which this thing is blocked.",
 	"Bits by which this thing is blocked. (alt)",
+};
+
+static const uint8_t *mode_btn_text[] =
+{
+	[THMODE_PASSIVE] = "Mode: passive",
+	[THMODE_ANIMATE] = "Mode: animate",
+	[THMODE_MOVE] = "Mode: moving",
+	[THMODE_ACTIVE] = "Mode: active",
+	//
+	[THMODE_PASSIVE_ALT] = "Mode: passive (alt)",
+	[THMODE_ANIMATE_ALT] = "Mode: animate (alt)",
+};
+
+static const uint8_t *mode_move_txt[] =
+{
+	"- momentnum ignored",
+	"- apply momentnum",
+};
+
+static const uint8_t *mode_anim_txt[] =
+{
+	"- no animation",
+	"- animating",
 };
 
 // state argument type parsers
@@ -718,7 +751,7 @@ static int32_t cbor_cb_attrs(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 	if(type != KGCBOR_TYPE_VALUE)
 		return 1;
 
-	for(uint32_t i = 0; i < NUM_SHOW_ATTRS; i++)
+	for(uint32_t i = 0; i < NUM_THING_ATTRS; i++)
 	{
 		const thing_edit_attr_t *ta = thing_attr + i;
 
@@ -1083,6 +1116,7 @@ void x16t_update_thing_view(uint32_t force_show_state)
 	ui_thing_state_preview.base.disabled = 1;
 	ui_thing_state_origin.base.disabled = 1;
 	ui_thing_state_bbox.base.disabled = 1;
+	ui_thing_mode_box.base.disabled = 1;
 
 	if(force_show_state)
 	{
@@ -1100,6 +1134,35 @@ void x16t_update_thing_view(uint32_t force_show_state)
 	glui_set_text(&ui_thing_idx, text, glui_font_huge_kfn, GLUI_ALIGN_CENTER_CENTER);
 
 	glui_set_text(&ui_thing_title, ti->name.text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+
+	// mode
+	if(show_thing < THING_TYPE_PLAYER_F)
+	{
+		uint32_t color;
+
+		ui_thing_mode_box.base.disabled = 0;
+
+		if(ti->info.mode >= NUM_THING_MODES)
+			ti->info.mode = 0;
+		glui_set_text(&ui_thing_mode, mode_btn_text[ti->info.mode], glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+
+		i = !!(ti->info.mode & THMODB_MOVE);
+		glui_set_text(&ui_thing_mode_move, mode_move_txt[i], glui_font_medium_kfn, GLUI_ALIGN_LEFT);
+		color = i ? 0xFF30C030 : 0xFF3030C0;
+		ui_thing_mode_move.color[0] = color;
+		ui_thing_mode_move.color[1] = color;
+
+		i = !!(ti->info.mode & THMODB_ANIM);
+		glui_set_text(&ui_thing_mode_anim, mode_anim_txt[i], glui_font_medium_kfn, GLUI_ALIGN_LEFT);
+		color = i ? 0xFF30C030 : 0xFF3030C0;
+		ui_thing_mode_anim.color[0] = color;
+		ui_thing_mode_anim.color[1] = color;
+
+		if(ti->info.mode & THMODB_ALTR)
+			ui_thing_mode_altr.base.disabled = 0;
+		 else
+			ui_thing_mode_altr.base.disabled = 1;
+	}
 
 	// animation
 	if(ta->count < 0)
@@ -1120,7 +1183,7 @@ void x16t_update_thing_view(uint32_t force_show_state)
 
 	// attributes
 	txt = text_attribute;
-	for(i = 0; i < NUM_SHOW_ATTRS; i++)
+	for(i = 0; i < NUM_THING_ATTRS; i++)
 	{
 		const thing_edit_attr_t *ta = thing_attr + i;
 		union
@@ -1128,6 +1191,9 @@ void x16t_update_thing_view(uint32_t force_show_state)
 			uint8_t u8;
 			uint16_t u16;
 		} *src = (void*)&ti->info + ta->offs;
+
+		if(!ta->type)
+			break;
 
 		switch(ta->type)
 		{
@@ -1857,6 +1923,16 @@ int32_t uin_thing_rename(glui_element_t *elm, int32_t x, int32_t y)
 	return 1;
 }
 
+int32_t uin_thing_mode(glui_element_t *elm, int32_t x, int32_t y)
+{
+	uint32_t mode = thing_info[show_thing].info.mode + 1;
+	if(mode >= NUM_THING_MODES)
+		mode = 0;
+	thing_info[show_thing].info.mode = mode;
+	x16t_update_thing_view(0);
+	return 1;
+}
+
 int32_t uin_thing_attr(glui_element_t *elm, int32_t x, int32_t y)
 {
 	uint8_t text[64];
@@ -2410,9 +2486,9 @@ const uint8_t *x16t_save(const uint8_t *file)
 
 		/// attributes
 		kgcbor_put_string(&gen, cbor_thing[CBOR_THING_ATTRIBUTES].name, cbor_thing[CBOR_THING_ATTRIBUTES].nlen);
-		kgcbor_put_object(&gen, NUM_SHOW_ATTRS);
+		kgcbor_put_object(&gen, NUM_THING_ATTRS);
 
-		for(uint32_t j = 0; j < NUM_SHOW_ATTRS; j++)
+		for(uint32_t j = 0; j < NUM_THING_ATTRS; j++)
 		{
 			const thing_edit_attr_t *ta = thing_attr + j;
 			union
@@ -2537,6 +2613,7 @@ uint32_t x16t_init()
 	glui_text_t *txt;
 	uint32_t size;
 	uint32_t tcnt;
+	uint32_t attr_cnt;
 
 	sprintf(thing_path, X16_PATH_DEFS PATH_SPLIT_STR "%s.thdef", X16_DEFAULT_NAME);
 
@@ -2551,8 +2628,13 @@ uint32_t x16t_init()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
 
+	// count visible attributes
+	for(attr_cnt = 0; attr_cnt < NUM_THING_ATTRS; attr_cnt++)
+		if(thing_attr[attr_cnt].type == ATTR_TYPE_HIDDEN)
+			break;
+
 	// UI
-	tcnt = (NUM_SHOW_ATTRS + NUM_SHOW_FLAGS + NUM_SHOW_ANIMS + 3) * 2;
+	tcnt = (attr_cnt + NUM_SHOW_FLAGS + NUM_SHOW_ANIMS + 3) * 2;
 	tcnt += NUM_STATE_COLS * NUM_STATE_ROWS;
 
 	size = sizeof(glui_container_t) * 4; // attributes, flags, animations, states
@@ -2579,13 +2661,13 @@ uint32_t x16t_init()
 	// attributes
 	cont = ptr;
 	ui_thing_attrs.elements[0] = ptr;
-	ptr += sizeof(glui_container_t) + (NUM_SHOW_ATTRS * 2 + 1) * sizeof(glui_text_t*);
+	ptr += sizeof(glui_container_t) + (attr_cnt * 2 + 1) * sizeof(glui_text_t*);
 	cont->base.draw = glui_df_container;
-	cont->count = (NUM_SHOW_ATTRS * 2 + 1);
+	cont->count = (attr_cnt * 2 + 1);
 
 	text_attribute = ptr;
 
-	for(uint32_t i = 0; i < NUM_SHOW_ATTRS * 2; i++)
+	for(uint32_t i = 0; i < attr_cnt * 2; i++)
 	{
 		uint32_t ii = i / 2;
 
@@ -2637,7 +2719,7 @@ uint32_t x16t_init()
 	txt = ptr;
 	ptr += sizeof(glui_text_t);
 
-	cont->elements[NUM_SHOW_ATTRS * 2] = (glui_element_t*)txt;
+	cont->elements[attr_cnt * 2] = (glui_element_t*)txt;
 
 	txt->base.draw = glui_df_text;
 	txt->base.width = ui_thing_attrs.base.width;
@@ -2828,7 +2910,7 @@ uint32_t x16t_init()
 
 	free(ttex);
 
-	ui_thing_attrs.base.height = NUM_SHOW_ATTRS * UI_ATTR_HEIGHT + (UI_ATTR_HEIGHT / 4) + UI_TITLE_HEIGHT;
+	ui_thing_attrs.base.height = attr_cnt * UI_ATTR_HEIGHT + (UI_ATTR_HEIGHT / 4) + UI_TITLE_HEIGHT;
 
 	ui_thing_flags.base.y = ui_thing_attrs.base.y + ui_thing_attrs.base.height + UI_SPACE_HEIGHT;
 	ui_thing_flags.base.height = NUM_SHOW_FLAGS * UI_ATTR_HEIGHT + (UI_ATTR_HEIGHT / 4) + UI_TITLE_HEIGHT;
@@ -3012,6 +3094,24 @@ void x16t_export()
 		uint8_t *tsrc = (uint8_t*)&info;
 		uint32_t base_state;
 		uint32_t base_bright;
+
+		if(!(info.mode & THMODB_MOVE))
+		{
+			if(info.eflags & THING_EFLAG_PROJECTILE)
+				edit_status_printf("Thing #%u is projectile without moving mode!", i);
+			else
+			if(info.eflags & THING_EFLAG_PUSHABLE)
+				edit_status_printf("Thing #%u is pushable without moving mode!", i);
+			else
+			if(info.eflags & THING_EFLAG_WATERSPEC)
+				edit_status_printf("Thing #%u has waterSpec without moving mode!", i);
+		}
+
+		if(info.mode & THMODB_ALTR)
+		{
+			info.eflags |= THING_EFLAG_NORADIUS;
+			info.mode |= 0x80;
+		}
 
 		thsh[0 * 256] = ti->name.hash;
 		thsh[1 * 256] = ti->name.hash >> 8;

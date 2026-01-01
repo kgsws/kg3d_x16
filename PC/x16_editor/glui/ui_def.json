@@ -32,7 +32,8 @@
 			"btn_text_s": [192, 192, 192],
 			"btn_text_u": [64, 64, 64],
 			"fs_border": [0, 192, 192],
-			"state_bbox": [0, 255, 0]
+			"state_bbox": [0, 255, 0],
+			"thmode_altradius": [192, 192, 48]
 		},
 		"fonts":
 		[
@@ -2070,6 +2071,49 @@
 								"font": "huge",
 								"color": ["bright", "white"],
 								"text align": "center center"
+							},
+							{
+								"name": "ui_thing_mode_box",
+								"elements":
+								[
+									{
+										"name": "ui_thing_mode",
+										"click": "uin_thing_mode",
+										"x": 8,
+										"y": 8,
+										"width": 192,
+										"height": 28,
+										"background": ["back", "btnbg"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"name": "ui_thing_mode_move",
+										"x": 8,
+										"y": 44,
+										"width": 192,
+										"height": 28,
+										"text": true
+									},
+									{
+										"name": "ui_thing_mode_anim",
+										"x": 8,
+										"y": 72,
+										"width": 192,
+										"height": 28,
+										"text": true
+									},
+									{
+										"name": "ui_thing_mode_altr",
+										"x": 8,
+										"y": 100,
+										"width": 192,
+										"height": 28,
+										"text": "- use alt radius",
+										"font": "medium",
+										"color": "thmode_altradius"
+									}
+								]
 							},
 							{
 								"name": "ui_thing_attrs",

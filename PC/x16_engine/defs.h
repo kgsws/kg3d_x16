@@ -149,6 +149,8 @@ extern p2a_t p2a_coord;
 
 extern projection_t projection;
 
+extern uint8_t wram[0x200000];
+
 extern sector_t map_sectors[256];
 extern wall_t map_walls[WALL_BANK_COUNT][256];
 

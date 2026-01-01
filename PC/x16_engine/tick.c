@@ -45,11 +45,17 @@ void tick_run()
 		uint32_t next = ticker[tick_idx].base.next;
 		switch(ticker[tick_idx].base.func)
 		{
-			case TFUNC_THING:
-				thing_tick();
+			case TICKER_FUNC_ANIM:
+				thing_tick_anim();
 			break;
-			case TFUNC_PLAYER:
-				thing_tick_plr();
+			case TICKER_FUNC_MOVE:
+				thing_tick_move();
+			break;
+			case TICKER_FUNC_THING:
+				thing_tick_full();
+			break;
+			case TICKER_FUNC_PLAYER:
+				thing_tick_plyr();
 			break;
 		}
 		tick_idx = next;
@@ -69,7 +75,7 @@ uint32_t tick_add()
 	if(i >= NUM_TICKERS)
 		return 0;
 
-	ticker[i].base.func = TFUNC_DUMMY;
+	ticker[i].base.func = TICKER_FUNC_DUMMY;
 	ticker[i].base.prev = cur;
 	ticker[i].base.next = 0;
 	ticker[cur].base.next = i; // writing to ZERO is ignored

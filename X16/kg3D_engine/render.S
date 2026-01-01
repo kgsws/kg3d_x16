@@ -7418,15 +7418,15 @@ texture_set:
 	; get light index
 	lda	#>TEXINFO_STRUCT_W_DATA_LH
 	ora	PROJECTION_LIGHT
-	sta	TMP_PTR_H
-	stz	TMP_PTR_L
+	sta	FUNC_ARG_H
+	stz	FUNC_ARG_L
 
 	; get data WRAM pointer
-	lda	(TMP_PTR_L),y
+	lda	(FUNC_ARG_L),y
 	sta	TEXTURE_PTR_L
 	lda	#$80
-	sta	TMP_PTR_L
-	lda	(TMP_PTR_L),y
+	sta	FUNC_ARG_L
+	lda	(FUNC_ARG_L),y
 	sta	TEXTURE_PTR_H
 
 	; set to 'wall' type

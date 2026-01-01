@@ -38,6 +38,19 @@ void check_weapon_th(thing_t **ptr)
 }
 
 //
+// HACK
+
+static void slide_door_hack(sector_t *sec, map_secobj_t *so, int16_t pos)
+{
+	wall_t *wall = map_walls[so->bank] + so->first;
+
+	wall = map_walls[so->bank] + wall->next;
+	wall->vtx.y = so->y + pos;
+	wall = map_walls[so->bank] + wall->next;
+	wall->vtx.y = so->y + pos;
+}
+
+//
 // run actions
 
 uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
@@ -191,6 +204,39 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 
 			if(thing_check_pos(tdx, th->x / 256, th->y / 256, th->z / 256, 0))
 				thing_apply_pos();
+		}
+		break;
+		// HACKS
+		case 10:
+		{
+			sector_t *sec = map_sectors + thingsec[tdx][0];
+			map_secobj_t *sobj;
+			int32_t pos, ppp;
+
+			if(!sec->sobj_hi)
+				break;
+
+			sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
+
+			ppp = level_tick;
+			if(th->angle & 0x80)
+				ppp <<= 1;
+
+			pos = ppp & 31;
+			if(ppp & 32)
+				pos ^= 31;
+			pos -= 10;
+			if(pos < 0)
+				pos = 0;
+			else
+			if(pos > 14)
+				pos = 14;
+
+			pos *= 8;
+			pos -= 48;
+
+			slide_door_hack(sec, sobj + 0, +pos);
+			slide_door_hack(sec, sobj + 1, -pos);
 		}
 		break;
 	}

@@ -150,6 +150,7 @@ static int32_t mlimit(int32_t val)
 static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz, uint32_t sflags)
 {
 	thing_t *th = thing_ptr(tdx);
+	thing_type_t *info = thing_type + th->ticker.type;
 
 	poscheck.thing = tdx;
 
@@ -161,14 +162,14 @@ static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz, u
 
 	poscheck.th_sh = nz;
 	if(	mz >= 0 &&
-		fz - nz + thing_type[th->ticker.type].step_height >= 0
+		fz - nz + info->step_height >= 0
 	)
-		poscheck.th_sh += thing_type[th->ticker.type].step_height;
+		poscheck.th_sh += info->step_height;
 
 	if(	!(sflags & SECTOR_FLAG_WATER) &&
 		th->mz / 256 > -32
 	)
-		poscheck.water_height = thing_type[th->ticker.type].water_height;
+		poscheck.water_height = info->water_height;
 	else
 		poscheck.water_height = 0xFF;
 
@@ -341,7 +342,10 @@ static uint32_t check_things(uint8_t tdx, uint8_t sdx, int32_t nx, int32_t ny)
 		if(!(poscheck.blockedby & ht->blocking))
 			continue;
 
-		radius = ht->radius + poscheck.radius;
+		if(ht->iflags & THING_IFLAG_ALTRADIUS)
+			radius = thing_type[odx].alt_radius + poscheck.radius;
+		else
+			radius = ht->radius + poscheck.radius;
 
 		dist = nx - ht->x / 256;
 		p2a_coord.x = dist;
@@ -860,8 +864,6 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 
 	ti = thing_type + type;
 
-	th->ticker.func = TFUNC_THING;
-
 	th->eflags = ti->eflags;
 	th->radius = ti->radius;
 	th->height = ti->height;
@@ -921,6 +923,11 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	} else
 		thing_apply_pos();
 
+	th->ticker.func = (ti->mode & 3) << 1;
+
+	if(ti->mode & 0x80)
+		th->iflags = THING_IFLAG_ALTRADIUS;
+
 	return tdx;
 }
 
@@ -928,11 +935,13 @@ void thing_spawn_player()
 {
 	thing_t *th;
 
+//	printf("plr 0x%04X 0x%04X 0x%04X 0x%02X\n", player_starts[0].x & 0xFFFF, player_starts[0].y & 0xFFFF, player_starts[0].z & 0xFFFF, player_starts[0].sector);
+
 	player_thing = thing_spawn((int32_t)player_starts[0].x << 8, (int32_t)player_starts[0].y << 8, (int32_t)player_starts[0].z << 8, (int32_t)player_starts[0].sector, THING_TYPE_PLAYER_N, 0);
 	camera_thing = player_thing;
 	th = thing_ptr(player_thing);
 
-	th->ticker.func = TFUNC_PLAYER;
+	th->ticker.func = TICKER_FUNC_PLAYER;
 	th->angle = player_starts[0].angle;
 	ticcmd.angle = player_starts[0].angle;
 	ticcmd.pitch = player_starts[0].pitch;
@@ -991,6 +1000,8 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 		hp = th->health - damage;
 		if(hp <= 0)
 		{
+			if(th->ticker.func < TICKER_FUNC_THING)
+				th->ticker.func |= TICKER_FUNC_ANIM;
 			th->health = 0;
 			th->next_state = thing_anim[th->ticker.type][ANIM_DEATH].state;
 			th->ticks = 1;
@@ -1053,6 +1064,8 @@ static void projectile_death(uint8_t tdx)
 	th->eflags |= THING_EFLAG_NORADIUS;
 
 	th->iflags &= ~THING_IFLAG_HEIGHTCHECK;
+
+	th->ticker.func |= TICKER_FUNC_ANIM;
 
 	th->ticks = 1;
 	th->next_state = thing_anim[type][ANIM_DEATH].state;
@@ -1253,7 +1266,7 @@ uint32_t thing_init(const char *file)
 //
 //
 
-void thing_frame()
+void thing_tick_anim()
 {
 	thing_t *th = thing_ptr(tick_idx);
 	thing_state_t *st;
@@ -1294,7 +1307,13 @@ repeat:
 		th->sprite = sprite_remap[st->sprite] + (st->frm_nxt & 0x1F);
 }
 
-void thing_tick()
+void thing_tick_full()
+{
+	thing_tick_move();
+	thing_tick_anim();
+}
+
+void thing_tick_move()
 {
 	thing_t *th = thing_ptr(tick_idx);
 	uint32_t repeat = 0;
@@ -1411,7 +1430,7 @@ apply_pos:
 
 				if(thing_check_pos(tick_idx, nx / 256, ny / 256, th->z / 256, 0))
 				{
-					if(th->ticker.func == TFUNC_PLAYER)
+					if(th->ticker.func == TICKER_FUNC_PLAYER)
 					{
 						th->mx = vect.x;
 						th->my = vect.y;
@@ -1610,13 +1629,11 @@ skip_z_friction:
 	}
 
 do_animation:
-
-	//
-	// animation
-	thing_frame();
+	// DONE
+	return;
 }
 
-void thing_tick_plr()
+void thing_tick_plyr()
 {
 	sector_t *sec = map_sectors + thingsec[tick_idx][0];
 	thing_t *th = thing_ptr(tick_idx);
@@ -1717,11 +1734,12 @@ void thing_tick_plr()
 		}
 	}
 
-	thing_tick();
+	// movement and animation
+	thing_tick_full();
 
-	// weapon
+	// weapon animation
 	tick_idx = 0;
-	thing_frame();
+	thing_tick_anim();
 	tick_idx = bkup;
 }
 
