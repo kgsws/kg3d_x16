@@ -9,6 +9,7 @@
 .include "engine.inc"
 .include "video.inc"
 .include "things.inc"
+.include "hitscan.inc"
 
 .export render_init
 .export render_view
@@ -36,6 +37,7 @@ MASKED_FIRST_PROP = $F0
 ;;;
 ; specific interleaving of plane and clipping arrays is crucial
 ; plane ranges are 0 to 79, but -1 (= 255) is also used
+; this also overlaps with sector object sorting tables
 
 RENDER_PLF_TOP = TAB_TEMP_DATA + $0000	; 80 bytes
 RENDER_CLIP_BOT = TAB_TEMP_DATA + $0058	; 80 bytes
@@ -45,7 +47,6 @@ RENDER_CLIP_TOP = TAB_TEMP_DATA + $0158	; 80 bytes
 RENDER_TEXSCALE_H = TAB_TEMP_DATA + $01A8	; 80 bytes
 RENDER_PLC_TOP = TAB_TEMP_DATA + $0200	; 80 bytes
 RENDER_PLANE_X = TAB_TEMP_DATA + $0258	; 120 bytes
-RENDER_SOBJ_SORT = TAB_TEMP_DATA + $2D8	; 8 bytes
 RENDER_PLC_BOT = TAB_TEMP_DATA + $0300	; 80 bytes
 RENDER_TEXTURE_X = TAB_TEMP_DATA + $0358	; 160 bytes
 
@@ -695,143 +696,36 @@ render_sector:
 
 	;; OBJECTS
 
-	lda	SECTOR_STRUCT_OBJ_H,y
+	ldx	SECTOR_STRUCT_OBJ_H,y
 	bne	:+
 	jmp	@skip_objects
 :
-	; get pointer
-	and	#$7F
-	asl
-	asl
-	asl
-	ldx	SECTOR_STRUCT_OBJ_L,y
-	ora	TAB_BANK,x
-	sta	TMP_PTR_I
-	txa
-	and	#$1F
-	ora	#$A0
-	sta	TMP_PTR_H
-	lda	SECTOR_STRUCT_OBJ_S,y
-	sta	TMP_PTR_L
-
-	; data bank
-	lda	TMP_PTR_I
-	sta	REG_RAM_BANK
-
 	; enable math
 	jsr	math_setup_vera
 
-	; reset
-	stz	SOBJ_SORT_COUNT
+	; position
+	lda	PROJECTION_X_L
+	sta	ARG_THING_X_L
+	lda	PROJECTION_X_H
+	sta	ARG_THING_X_H
+	lda	PROJECTION_Y_L
+	sta	ARG_THING_Y_L
+	lda	PROJECTION_Y_H
+	sta	ARG_THING_Y_H
 
 	; sort objects
-@loop_sobj_sort:
-	; p2a_coord.x = sobj->x - (projection.x >> 8)
-	sec
-	ldy	#SECOBJ_STRUCT_X_L
-	lda	(TMP_PTR_L),y
-	sbc	PROJECTION_X_L
-	sta	MATH_P2A_X_L
-	iny
-	lda	(TMP_PTR_L),y
-	sbc	PROJECTION_X_H
-	sta	MATH_P2A_X_H
-
-	; p2a_coord.y = sobj->y - (projection.y >> 8)
-	sec
-	iny
-	lda	(TMP_PTR_L),y
-	sbc	PROJECTION_Y_L
-	sta	MATH_P2A_Y_L
-	iny
-	lda	(TMP_PTR_L),y
-	sbc	PROJECTION_Y_H
-	sta	MATH_P2A_Y_H
-
-	; dist = point_to_dist()
-	jsr	math_p2d
-
-	; for(pick = 0; pick < did_object; pick++)
-	ldx	#0
-@loop_sobj_pick:
-	cpx	SOBJ_SORT_COUNT
-	bcs	@done_sobj_pick
-
-	; if(sobjdist[pick] < dist)
-	sec
-	lda	SOBJ_SORT_DIST_L,x
-	sbc	MATH_VAR_L
-	lda	SOBJ_SORT_DIST_H,x
-	sbc	MATH_VAR_H
-	bmi	@done_sobj_pick
-
-	; next
-	inx
-	bra	@loop_sobj_pick
-
-@done_sobj_pick:
-	stx	SOBJ_SORT_PICK
-
-	; for(int32_t j = did_object; j > pick; j--)
-	ldx	SOBJ_SORT_COUNT
-@loop_sobj_move:
-	cpx	SOBJ_SORT_PICK
-	beq	@done_sobj_move
-	bcc	@done_sobj_move
-
-	; sobjlist[j] = sobjlist[j-1]
-	lda	RENDER_SOBJ_SORT-1,x
-	sta	RENDER_SOBJ_SORT,x
-
-	; sobjdist[j] = sobjdist[j-1]
-	lda	SOBJ_SORT_DIST_L-1,x
-	sta	SOBJ_SORT_DIST_L,x
-	lda	SOBJ_SORT_DIST_H-1,x
-	sta	SOBJ_SORT_DIST_H,x
-
-	; next
-	dex
-	bra	@loop_sobj_move
-
-@done_sobj_move:
-	ldx	SOBJ_SORT_PICK
-
-	; sobjlist[pick] = sobj
-	lda	TMP_PTR_L
-	sta	RENDER_SOBJ_SORT,x
-
-	; sobjdist[pick] = dist
-	lda	MATH_VAR_L
-	sta	SOBJ_SORT_DIST_L,x
-	lda	MATH_VAR_H
-	sta	SOBJ_SORT_DIST_H,x
-
-	; did_object++
-	inc	SOBJ_SORT_COUNT
-
-	; advance
-	clc
-	lda	TMP_PTR_L
-	adc	#SECOBJ_STRUCT_SIZE
-	sta	TMP_PTR_L
-
-	; data bank
-	lda	TMP_PTR_I
-	sta	REG_RAM_BANK
-
-	; next
-	lda	(TMP_PTR_L)
-	bpl	@loop_sobj_sort
+	txa
+	jsr	hitscan_sobj_sort
 
 	; render objects
-	ldx	SOBJ_SORT_COUNT
+	ldx	TAB_SOBJ_SORT_COUNT
 @loop_sobj_render:
 	; data bank
 	lda	TMP_PTR_I
 	sta	REG_RAM_BANK
 
 	; get object
-	lda	RENDER_SOBJ_SORT-1,x
+	lda	TAB_SOBJ_SORT-1,x
 	sta	TMP_PTR_L
 
 	; wall loop

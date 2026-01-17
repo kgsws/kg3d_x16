@@ -6,3 +6,4 @@
 .import hitscan_wall_pos
 .import hitscan_thing_dd
 .import hitscan_thing_dt
+.import hitscan_sobj_sort

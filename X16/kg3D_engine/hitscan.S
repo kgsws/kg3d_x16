@@ -15,6 +15,7 @@
 .export hitscan_wall_pos
 .export hitscan_thing_dd
 .export hitscan_thing_dt
+.export hitscan_sobj_sort
 
 ;;;
 ; NOTES: hitscan callback
@@ -808,6 +809,13 @@ hs_sector_loop:
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
 
+	; if(sec->sobj_hi)
+	lda	SECTOR_STRUCT_OBJ_H,x
+	beq	hs_skip_sobj
+
+	jmp	hs_check_sobj
+
+hs_skip_sobj:
 	; walls
 	lda	SECTOR_STRUCT_WALL_BANK,x
 	ora	#BANK_MAPWALLS
@@ -894,6 +902,104 @@ hitscan_cb_wall:
 	sta	HITSCAN_SECTOR_TABLE,x
 	sta	ARG_THING_SECTOR
 	jmp	hs_sector_loop
+
+hs_check_sobj:
+	; sort objects
+	ldy	ARG_THING_SECTOR
+	jsr	hitscan_sobj_sort
+
+	; check objects
+@loop_sobj_check:
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; get object
+	ldx	TAB_SOBJ_SORT_COUNT
+	lda	TAB_SOBJ_SORT-1,x
+	sta	TMP_PTR_L
+
+	; bank
+	lda	(TMP_PTR_L)
+	ora	#BANK_MAPWALLS
+	sta	WALL_BANK
+
+	; first
+	ldy	#SECOBJ_STRUCT_FIRST
+	lda	(TMP_PTR_L),y
+	sta	WALL_FIRST
+	tay
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; first angle
+	jsr	get_angle
+	sta	HITSCAN_LAST_ANGLE
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; the loop
+	ldx	WALL_FIRST
+@loop_sobj_wall:
+	; this wall
+	stx	WALL_NOW
+
+	; next wall
+	ldy	WALL_STRUCT_NEXT,x
+
+	; angle
+	jsr	get_angle
+	sta	HITSCAN_NEW_ANGLE
+
+	; hit = angle - thang
+	sec
+	sbc	ARG_HITSCAN_ANGLE
+	sta	HITSCAN_HIT_ANGLE
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; hit |= thang - last_angle
+	sec
+	lda	ARG_HITSCAN_ANGLE
+	sbc	HITSCAN_LAST_ANGLE
+	ora	HITSCAN_HIT_ANGLE
+
+	; check for hit
+	bpl	hitscan_cb_wall
+
+	; last_angle = angle
+	lda	HITSCAN_NEW_ANGLE
+	sta	HITSCAN_LAST_ANGLE
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; next wall
+	ldy	WALL_NOW
+	ldx	WALL_STRUCT_NEXT,y
+	cpx	WALL_FIRST
+	bne	@loop_sobj_wall
+
+@next_sobj:
+	; next
+	dec	TAB_SOBJ_SORT_COUNT
+	bne	@loop_sobj_check
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; restore
+	ldx	ARG_THING_SECTOR
+
+	jmp	hs_skip_sobj
 
 ;;;
 ; bullet attack
@@ -1450,3 +1556,134 @@ hitscan_thing_dt:
 	stz	VERA_DATA0
 
 	rts
+
+;;;
+; sort sector objects
+;;;
+; uses XY position H and L
+; Y = the sector
+
+hitscan_sobj_sort:
+	; get pointer
+	and	#$7F
+	asl
+	asl
+	asl
+	ldx	SECTOR_STRUCT_OBJ_L,y
+	ora	TAB_BANK,x
+	sta	TMP_PTR_I
+	txa
+	and	#$1F
+	ora	#$A0
+	sta	TMP_PTR_H
+	lda	SECTOR_STRUCT_OBJ_S,y
+	sta	TMP_PTR_L
+
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; reset
+	stz	TAB_SOBJ_SORT_COUNT
+
+	; sort objects
+@loop_sobj_sort:
+	; p2a_coord.x = sobj->x - (projection.x >> 8)
+	sec
+	ldy	#SECOBJ_STRUCT_X_L
+	lda	(TMP_PTR_L),y
+	sbc	ARG_THING_X_L
+	sta	MATH_P2A_X_L
+	iny
+	lda	(TMP_PTR_L),y
+	sbc	ARG_THING_X_H
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = sobj->y - (projection.y >> 8)
+	sec
+	iny
+	lda	(TMP_PTR_L),y
+	sbc	ARG_THING_Y_L
+	sta	MATH_P2A_Y_L
+	iny
+	lda	(TMP_PTR_L),y
+	sbc	ARG_THING_Y_H
+	sta	MATH_P2A_Y_H
+
+	; dist = point_to_dist()
+	jsr	math_p2d
+
+	; for(pick = 0; pick < did_object; pick++)
+	ldx	#0
+@loop_sobj_pick:
+	cpx	TAB_SOBJ_SORT_COUNT
+	bcs	@done_sobj_pick
+
+	; if(sobjdist[pick] < dist)
+	sec
+	lda	TAB_SOBJ_SORT_DIST_L,x
+	sbc	MATH_VAR_L
+	lda	TAB_SOBJ_SORT_DIST_H,x
+	sbc	MATH_VAR_H
+	bmi	@done_sobj_pick
+
+	; next
+	inx
+	bra	@loop_sobj_pick
+
+@done_sobj_pick:
+	stx	TAB_SOBJ_SORT_PICK
+
+	; for(int32_t j = did_object; j > pick; j--)
+	ldx	TAB_SOBJ_SORT_COUNT
+@loop_sobj_move:
+	cpx	TAB_SOBJ_SORT_PICK
+	beq	@done_sobj_move
+	bcc	@done_sobj_move
+
+	; sobjlist[j] = sobjlist[j-1]
+	lda	TAB_SOBJ_SORT-1,x
+	sta	TAB_SOBJ_SORT,x
+
+	; sobjdist[j] = sobjdist[j-1]
+	lda	TAB_SOBJ_SORT_DIST_L-1,x
+	sta	TAB_SOBJ_SORT_DIST_L,x
+	lda	TAB_SOBJ_SORT_DIST_H-1,x
+	sta	TAB_SOBJ_SORT_DIST_H,x
+
+	; next
+	dex
+	bra	@loop_sobj_move
+
+@done_sobj_move:
+	ldx	TAB_SOBJ_SORT_PICK
+
+	; sobjlist[pick] = sobj
+	lda	TMP_PTR_L
+	sta	TAB_SOBJ_SORT,x
+
+	; sobjdist[pick] = dist
+	lda	MATH_VAR_L
+	sta	TAB_SOBJ_SORT_DIST_L,x
+	lda	MATH_VAR_H
+	sta	TAB_SOBJ_SORT_DIST_H,x
+
+	; did_object++
+	inc	TAB_SOBJ_SORT_COUNT
+
+	; advance
+	clc
+	lda	TMP_PTR_L
+	adc	#SECOBJ_STRUCT_SIZE
+	sta	TMP_PTR_L
+
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; next
+	lda	(TMP_PTR_L)
+	bpl	@loop_sobj_sort
+
+	rts
+

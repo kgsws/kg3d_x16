@@ -17,6 +17,21 @@ static uint8_t thing_list[256];
 static uint8_t thing_idx;
 
 //
+// stuff
+
+static uint32_t get_angle(wall_t *wall, int32_t x, int32_t y)
+{
+	vertex_t *vtx;
+
+	// V0 diff
+	vtx = &wall->vtx;
+	p2a_coord.x = vtx->x - x;
+	p2a_coord.y = vtx->y - y;
+
+	// point angle
+	return point_to_angle() >> 4;
+}
+//
 // thing scan
 
 static uint32_t in_thing_list(uint8_t tdx)
@@ -259,35 +274,54 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 	while(1)
 	{
 		sector_t *sec = map_sectors + sdx;
-		wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
-		wall_t *walf = wall;
+		wall_t *wall;
+		wall_t *walf;
 		uint8_t last_angle;
 
+		if(sec->sobj_hi)
 		{
-			vertex_t *vtx;
+			map_secobj_t *sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
 
-			// V0 diff
-			vtx = &wall->vtx;
-			p2a_coord.x = vtx->x - x;
-			p2a_coord.y = vtx->y - y;
+			for(uint32_t i = 0; i < MAX_SOBJ && !(sobj->bank & 0x80); i++, sobj++)
+			{
+				wall = map_walls[sobj->bank] + sobj->first;
+				walf = wall;
+				last_angle = get_angle(wall, x, y);
 
-			// point angle
-			last_angle = point_to_angle() >> 4;
+				do
+				{
+					wall_t *waln = map_walls[sobj->bank] + wall->next;
+					uint8_t angle, hit;
+
+					angle = get_angle(waln, x, y);
+
+					hit = angle - hang;
+					hit |= hang - last_angle;
+
+					if(!(hit & 0x80))
+					{
+						hitscan.sector = sdx;
+						cb(wall);
+						return;
+					}
+
+					last_angle = angle;
+					wall = waln;
+
+				} while(wall != walf);
+			}
 		}
+
+		wall = map_walls[sec->wall.bank] + sec->wall.first;
+		walf = wall;
+		last_angle = get_angle(wall, x, y);
 
 		while(1)
 		{
 			wall_t *waln = map_walls[sec->wall.bank] + wall->next;
-			vertex_t *vtx;
 			uint8_t angle, hit;
 
-			// V0 diff
-			vtx = &waln->vtx;
-			p2a_coord.x = vtx->x - x;
-			p2a_coord.y = vtx->y - y;
-
-			// point angle
-			angle = point_to_angle() >> 4;
+			angle = get_angle(waln, x, y);
 
 			hit = angle - hang;
 			hit |= hang - last_angle;

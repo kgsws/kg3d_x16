@@ -1,6 +1,4 @@
 
-; available: 0x22 -> 0x7F and 0xA9 -> 0xFF
-
 ; banks
 REG_RAM_BANK = $00
 REG_ROM_BANK = $01
@@ -602,12 +600,6 @@ WALL_LAST_ANGLE_H = FUNC_ARG_H
 WALL_Y1 = VIDEO_DRAW_Y
 WALL_SCALE_NOW_M = WALL_P0_Y_L
 WALL_SCALE_NOW_H = WALL_P0_Y_H
-
-; sector object sorting - up to 8 objects
-SOBJ_SORT_DIST_L = $B0
-SOBJ_SORT_DIST_H = $B8
-SOBJ_SORT_COUNT = $C0
-SOBJ_SORT_PICK = $C1
 
 ; texturing info
 RENDER_TEXTURE_INFO_IDX = $DC
