@@ -718,6 +718,9 @@ render_sector:
 	lda	TMP_PTR_I
 	sta	REG_RAM_BANK
 
+	; enable math
+	jsr	math_setup_vera
+
 	; reset
 	stz	SOBJ_SORT_COUNT
 

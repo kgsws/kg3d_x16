@@ -33,6 +33,7 @@ typedef struct
 	uint8_t water_height;
 	uint8_t blockedby;
 	uint8_t noradius;
+	uint8_t moving;
 	uint8_t radius, height;
 	uint8_t sector, slot;
 	uint8_t islink;
@@ -540,6 +541,9 @@ uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_
 	if(!sdx)
 		sdx = thingsec[tdx][0];
 
+	// movement
+	poscheck.moving = th->mx || th->my;
+
 failsafe:
 	// prepare
 	prepare_pos_check(tdx, nz, th->floorz, th->mz, map_sectors[sdx].flags);
@@ -570,10 +574,83 @@ failsafe:
 
 		if(!poscheck.islink)
 		{
-			wall_t *wall = map_walls[sec->wall.bank] + sec->wall.first;
-			wall_t *walf = wall;
-			uint8_t inside = 1;
+			wall_t *wall;
+			wall_t *walf;
+			uint8_t inside;
 
+			if(	sec->sobj_hi &&
+				!poscheck.noradius
+			){
+				map_secobj_t *sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
+
+				for(uint32_t i = 0; i < MAX_SOBJ && !(sobj->bank & 0x80); i++, sobj++)
+				{
+					wall_t *walh = (void*)1;
+
+					wall = map_walls[sobj->bank] + sobj->first;
+					walf = wall;
+
+					do
+					{
+						wall_t *waln = map_walls[sobj->bank] + wall->next;
+						vertex_t *vtx = &wall->vtx;
+						int32_t dist;
+						vertex_t dd;
+
+						// V0 diff
+						dd.x = vtx->x - nx;
+						dd.y = vtx->y - ny;
+
+						// get distance
+						dist = (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8;
+
+						// check
+						if(dist >= poscheck.radius)
+						{
+							walh = NULL;
+							break;
+						}
+
+						// speed check
+						if(poscheck.moving)
+						{
+							// V0 diff
+							dd.x = vtx->x - (th->x / 256);
+							dd.y = vtx->y - (th->y / 256);
+
+							// get distance
+							dist = (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8;
+
+							// check
+							if(dist >= poscheck.radius)
+								// hit this wall
+								walh = wall;
+						}
+
+						// next
+						wall = waln;
+					} while(wall != walf);
+
+					if(walh)
+					{
+						if(walh != (void*)1)
+						{
+							// solid wall
+							poscheck.htype = sobj->bank | 0x10;
+							poscheck.hidx = walh - map_walls[sobj->bank];
+							poscheck.hitang = walh->angle >> 4;
+						} else
+							// nothing
+							poscheck.htype = 0;
+
+						return 0;
+					}
+				}
+			}
+
+			wall = map_walls[sec->wall.bank] + sec->wall.first;
+			walf = wall;
+			inside = 1;
 			poscheck.pthit = 0;
 
 			do
@@ -774,10 +851,7 @@ radpass:
 
 	if(	!poscheck.sector &&
 		!hitfix &&
-		(
-			th->mx ||
-			th->my
-		)
+		poscheck.moving
 	){
 		p2a_coord.x = th->mx;
 		p2a_coord.y = th->my;

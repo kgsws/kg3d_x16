@@ -260,6 +260,7 @@ thing_spawn_org:
 	sta	THING_STRUCT_FLOORZ_H,x
 
 	; check position
+	stz	THMOVE_MOVING
 	jsr	thing_check_spawn
 	beq	@pos_fail
 
@@ -1015,6 +1016,17 @@ thing_check_pos:
 	lda	$B000,x
 	sta	ARG_THING_SECTOR
 :
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; move check
+	lda	THING_STRUCT_MX_S,x
+	ora	THING_STRUCT_MX_L,x
+	ora	THING_STRUCT_MY_S,x
+	ora	THING_STRUCT_MY_L,x
+	sta	THMOVE_MOVING
+
 thing_check_spawn:
 	; reset
 	stz	THMOVE_HITFIX
@@ -1073,13 +1085,6 @@ thing_check_spawn:
 
 	; while(poscheck.portal_rd < poscheck.portal_wr)
 @loop_sec:
-	; inside = any non-zero number
-	lda	#$FF
-	sta	THMOVE_INSIDE
-
-	; poscheck.pthit = 0
-	stz	THMOVE_PTHIT
-
 	; sector bank
 	lda	#BANK_SECTORS
 	sta	REG_RAM_BANK
@@ -1095,6 +1100,24 @@ thing_check_spawn:
 	; skip walls
 	jmp	@next_sector
 :
+	; !poscheck.noradius
+	lda	THMOVE_NORADIUS
+	bne	@skip_sobj
+
+	; sec->sobj_hi
+	lda	SECTOR_STRUCT_OBJ_H,x
+	beq	@skip_sobj
+
+	jmp	@check_sobj
+
+@skip_sobj:
+	; inside = any non-zero number
+	lda	#$FF
+	sta	THMOVE_INSIDE
+
+	; poscheck.pthit = 0
+	stz	THMOVE_PTHIT
+
 	; walls
 	lda	SECTOR_STRUCT_WALL_BANK,x
 	ora	#BANK_MAPWALLS
@@ -1375,6 +1398,7 @@ thing_check_spawn:
 	lda	THMOVE_NORADIUS
 	bne	@next_wall
 
+@do_block_wall:
 	; save
 	lda	WALL_BANK
 	sta	THMOVE_HTYPE
@@ -1673,6 +1697,10 @@ thing_check_spawn:
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
+	; poscheck.moving
+	lda	THMOVE_MOVING
+	beq	@pass
+
 	; fill p2a_coord
 	lda	THING_STRUCT_MX_S,y
 	sta	MATH_P2A_X_L
@@ -1682,12 +1710,6 @@ thing_check_spawn:
 	sta	MATH_P2A_Y_L
 	lda	THING_STRUCT_MY_L,y
 	sta	MATH_P2A_Y_H
-
-	; th->mx || th->my
-	ora	MATH_P2A_Y_L
-	ora	MATH_P2A_X_H
-	ora	MATH_P2A_X_L
-	beq	@pass
 
 	; point_to_angle
 	jsr	math_p2a
@@ -1815,6 +1837,222 @@ thing_check_spawn:
 	lda	#0
 	sta	THMOVE_SECTOR
 	rts
+
+@check_sobj:
+	; get pointer
+	and	#$7F
+	asl
+	asl
+	asl
+	ldy	SECTOR_STRUCT_OBJ_L,x
+	ora	TAB_BANK,y
+	sta	TMP_PTR_I
+	tya
+	and	#$1F
+	ora	#$A0
+	sta	TMP_PTR_H
+	lda	SECTOR_STRUCT_OBJ_S,x
+	sta	TMP_PTR_L
+
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; loop
+	lda	(TMP_PTR_L)
+@loop_sobj:
+	; bank
+	ora	#BANK_MAPWALLS
+	sta	WALL_BANK
+
+	; wall hit info
+	stz	THMOVE_SOBJ_HIT
+
+	; first
+	ldy	#SECOBJ_STRUCT_FIRST
+	lda	(TMP_PTR_L),y
+	sta	WALL_FIRST
+
+@loop_sobj_wall:
+	sta	WALL_NOW
+	tay
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	;; dist = (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dd.x
+	jsr	v0_diff_x
+
+	; wall->dist.y
+	lda	WALL_STRUCT_DIST_Y_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_Y_H,y
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; -dd.y
+	sec
+	lda	ARG_THING_Y_L
+	sbc	WALL_STRUCT_VTX_Y_L,y
+	sta	VERA_FX_CACHE_L
+	lda	ARG_THING_Y_H
+	sbc	WALL_STRUCT_VTX_Y_H,y
+	sta	VERA_FX_CACHE_M
+
+	; wall->dist.x
+	lda	WALL_STRUCT_DIST_X_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_X_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; if(dist >= poscheck.radius)
+	sec
+	lda	VERA_DATA0
+	sbc	THMOVE_RADIUS
+	lda	VERA_DATA0
+	sbc	#0
+	bpl	@next_sobj
+
+	; if(poscheck.moving)
+	lda	THMOVE_MOVING
+	bne	@check_cross
+
+@next_sobj_wall:
+	; next wall
+	lda	WALL_STRUCT_NEXT,y
+	cmp	WALL_FIRST
+	bne	@loop_sobj_wall
+
+	;; STOP - FAILED
+
+	; poscheck.htype = 0
+	stz	THMOVE_HTYPE
+	stz	THMOVE_SECTOR
+
+	; check wall hit
+	lda	THMOVE_SOBJ_HIT
+	bne	:+
+
+	; zero flag is set
+	rts
+:
+	ldy	THMOVE_SOBJ_WALL
+	jmp	@do_block_wall
+
+@next_sobj:
+	; advance
+	clc
+	lda	TMP_PTR_L
+	adc	#SECOBJ_STRUCT_SIZE
+	sta	TMP_PTR_L
+
+	; data bank
+	lda	TMP_PTR_I
+	sta	REG_RAM_BANK
+
+	; next
+	lda	(TMP_PTR_L)
+	bpl	@loop_sobj
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; restore
+	ldx	ARG_THING_SECTOR
+
+	jmp	@skip_sobj
+
+@check_cross:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; the thing
+	ldx	RET_THING_IDX
+
+	; X
+	lda	THING_STRUCT_X_L,x
+	sta	MATH_VAR_L
+	lda	THING_STRUCT_X_H,x
+	sta	MATH_VAR_H
+
+	; <Y>
+	lda	THING_STRUCT_Y_H,x
+	pha
+	lda	THING_STRUCT_Y_L,x
+	pha
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	;; dist = (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; -dd.y
+	sec
+	pla
+	sbc	WALL_STRUCT_VTX_Y_L,y
+	sta	VERA_FX_CACHE_L
+	pla
+	sbc	WALL_STRUCT_VTX_Y_H,y
+	sta	VERA_FX_CACHE_M
+
+	; wall->dist.x is already set
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; dd.x
+	sec
+	lda	WALL_STRUCT_VTX_X_L,y
+	sbc	MATH_VAR_L
+	sta	VERA_FX_CACHE_L
+	lda	WALL_STRUCT_VTX_X_H,y
+	sbc	MATH_VAR_H
+	sta	VERA_FX_CACHE_M
+
+	; wall->dist.y
+	lda	WALL_STRUCT_DIST_Y_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_Y_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; if(dist >= poscheck.radius)
+	sec
+	lda	VERA_DATA0
+	sbc	THMOVE_RADIUS
+	lda	VERA_DATA0
+	sbc	#0
+	bmi	:+
+
+	; save hit
+	lda	#$FF
+	sta	THMOVE_SOBJ_HIT
+
+	; save the wall
+	sty	THMOVE_SOBJ_WALL
+:
+	jmp	@next_sobj_wall
 
 ;;;
 ; thing position apply

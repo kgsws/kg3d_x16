@@ -294,7 +294,7 @@ ex_precache:
 	lda	MAP_LOAD_WRAM_H
 	sta	TAB_PRELOAD_WRAM+1
 
-	; show WRAM usage
+	; show WRAM usage (preload)
 ;	lda	MAP_LOAD_WRAM_L
 ;	sta	DBG_BYTE0
 ;	lda	MAP_LOAD_WRAM_H

@@ -24,7 +24,6 @@
 #define MAX_DRAW_SPRITES	32
 #define MAX_DRAW_MASKED	16
 #define MAX_DRAW_PORTALS	64
-#define MAX_SOBJ	8
 
 #define MAX_EXTRA_STORAGE	255
 

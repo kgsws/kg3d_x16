@@ -3905,7 +3905,10 @@ void edit_update_thing_type(kge_thing_t *th)
 		th->prop.radius = 1;
 
 	thing_update_sector(th, 1);
-	edit_fix_thing_z(th, 0);
+
+	if(th->pos.sector)
+		edit_fix_thing_z(th, 0);
+
 	x16g_set_sprite_texture(th);
 }
 

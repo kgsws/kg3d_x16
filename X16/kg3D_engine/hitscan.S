@@ -1369,10 +1369,39 @@ hitscan_thing_dd:
 	sbc	HITSCAN_TSID_H
 	sta	HITSCAN_TSID_H
 :
+	; th->radius
+	lda	THING_STRUCT_RADIUS,y
+	sta	MATH_VAR_L
+
+	; if(th->iflags & THING_IFLAG_ALTRADIUS)
+	lda	THING_STRUCT_IFLAGS,y
+	and	#THING_IFLAG_ALTRADIUS
+	beq	@normal_radius
+
+	phx
+
+	; type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; alt_radius
+	lda	THTYPE_STRUCT_ALT_RADIUS,x
+	sta	MATH_VAR_L
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	plx
+
+@normal_radius:
 	; dd -= th->radius
 	sec
 	lda	HITSCAN_TSID_L
-	sbc	THING_STRUCT_RADIUS,y
+	sbc	MATH_VAR_L
 	sta	HITSCAN_TSID_L
 	lda	HITSCAN_TSID_H
 	sbc	#0

@@ -437,7 +437,10 @@ int32_t hitscan_thing_dd(thing_t *th, vertex_t *d1)
 	if(dd < 0)
 		dd = -dd;
 
-	dd -= th->radius;
+	if(th->iflags & THING_IFLAG_ALTRADIUS)
+		dd -= thing_type[th->ticker.type].alt_radius;
+	else
+		dd -= th->radius;
 
 	return dd;
 }
