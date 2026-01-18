@@ -10,6 +10,7 @@
 #include "defs.h"
 #include "tick.h"
 #include "things.h"
+#include "hitscan.h"
 
 #define VRAM_TEXTURE_START	0x0A000
 #define VRAM_TEXTURE_END	0x1C000
@@ -2420,7 +2421,6 @@ static void do_sector(uint8_t idx)
 	sector_t *sec = map_sectors + idx;
 	uint32_t did_object = 0;
 	map_secobj_t *sobjlist[MAX_SOBJ];
-	uint32_t sobjdist[MAX_SOBJ];
 
 	// fix plane clip
 	plc_top[projection.x0] = 0xF0;
@@ -2442,33 +2442,7 @@ static void do_sector(uint8_t idx)
 	// objects
 	if(sec->sobj_hi)
 	{
-		map_secobj_t *sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
-
-//		printf("addr 0x%02X%04X\n", sec->sobj_hi & 0x7F, sec->sobj_lo);
-		for(uint32_t i = 0; i < MAX_SOBJ && !(sobj->bank & 0x80); i++, sobj++)
-		{
-			uint32_t dist;
-			uint32_t pick;
-
-			p2a_coord.x = sobj->x - (projection.x >> 8);
-			p2a_coord.y = sobj->y - (projection.y >> 8);
-			dist = point_to_dist();
-
-			for(pick = 0; pick < did_object; pick++)
-				if(sobjdist[pick] < dist)
-					break;
-
-			for(int32_t j = did_object; j > pick; j--)
-			{
-				sobjlist[j] = sobjlist[j-1];
-				sobjdist[j] = sobjdist[j-1];
-			}
-
-			sobjlist[pick] = sobj;
-			sobjdist[pick] = dist;
-
-			did_object++;
-		}
+		did_object = hitscan_sobj_sort(sec, sobjlist, projection.x / 256, projection.y / 256);
 
 		for(int32_t i = did_object-1; i >= 0; i--)
 		{
@@ -3986,6 +3960,10 @@ static uint32_t load_map()
 
 	// done
 	close(fd);
+
+	// stats
+	printf("%u sinfo; %u sfrm; %u wfrm\nWRAM %u / %u\nVRAM %u / %u\n", num_sprites, num_sframes, num_wframes, wram_used / 256, sizeof(wram) / 256, ((VRAM_TEXTURE_END - VRAM_TEXTURE_START) - vram_8bpp - vram_4bpp) / 2048, (VRAM_TEXTURE_END - VRAM_TEXTURE_START) / 2048);
+
 	return 0;
 
 error:
@@ -4023,7 +4001,7 @@ static uint32_t precache()
 	num_sframes_pc = num_sframes;
 	num_wframes_pc = num_wframes;
 
-	printf("precache: %u sinfo; %u sfrm; %u wfrm; %u RAM\n", num_sprites, num_sframes, num_wframes, wram_used);
+	printf("precache: %u sinfo; %u sfrm; %u wfrm; %u WRAM\n", num_sprites, num_sframes, num_wframes, wram_used / 256);
 
 	return 0;
 }

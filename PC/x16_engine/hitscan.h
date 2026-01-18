@@ -39,3 +39,4 @@ void hitscan_angles(uint8_t hang, uint8_t halfpitch);
 int32_t hitscan_wall_pos(wall_t *wall, vertex_t *d0, int32_t *dout);
 int32_t hitscan_thing_dd(thing_t *th, vertex_t *d1);
 int32_t hitscan_thing_dt(thing_t *th, vertex_t *d1);
+uint32_t hitscan_sobj_sort(sector_t *sec, map_secobj_t **sobjlist, int32_t x, int32_t y);

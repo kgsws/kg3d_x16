@@ -280,10 +280,13 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 
 		if(sec->sobj_hi)
 		{
-			map_secobj_t *sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
+			map_secobj_t *sobjlist[MAX_SOBJ];
+			uint32_t count = hitscan_sobj_sort(sec, sobjlist, th->x / 256, th->y / 256);
 
-			for(uint32_t i = 0; i < MAX_SOBJ && !(sobj->bank & 0x80); i++, sobj++)
+			for(int32_t i = count-1; i >= 0; i--)
 			{
+				map_secobj_t *sobj = sobjlist[i];
+
 				wall = map_walls[sobj->bank] + sobj->first;
 				walf = wall;
 				last_angle = get_angle(wall, x, y);
@@ -483,3 +486,39 @@ int32_t hitscan_thing_dt(thing_t *th, vertex_t *d1)
 {
 	return (d1->y * hitscan.cos + d1->x * hitscan.sin) >> 8;
 }
+
+uint32_t hitscan_sobj_sort(sector_t *sec, map_secobj_t **sobjlist, int32_t x, int32_t y)
+{
+	map_secobj_t *sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
+	uint32_t sobjdist[MAX_SOBJ];
+	uint32_t count = 0;
+
+//	printf("addr 0x%02X%04X\n", sec->sobj_hi & 0x7F, sec->sobj_lo);
+	for(uint32_t i = 0; i < MAX_SOBJ && !(sobj->bank & 0x80); i++, sobj++)
+	{
+		uint32_t dist;
+		uint32_t pick;
+
+		p2a_coord.x = sobj->x - x;
+		p2a_coord.y = sobj->y - y;
+		dist = point_to_dist();
+
+		for(pick = 0; pick < count; pick++)
+			if(sobjdist[pick] < dist)
+				break;
+
+		for(int32_t j = count; j > pick; j--)
+		{
+			sobjlist[j] = sobjlist[j-1];
+			sobjdist[j] = sobjdist[j-1];
+		}
+
+		sobjlist[pick] = sobj;
+		sobjdist[pick] = dist;
+
+		count++;
+	}
+
+	return count;
+}
+
