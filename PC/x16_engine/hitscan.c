@@ -186,7 +186,13 @@ hit_plane:
 
 			// blocking
 			if(!(wall->blocking & hitscan.blockedby))
+			{
+				if(	hitscan.range &&
+					dist > hitscan.range
+				)
+					goto do_hit;
 				return 0;
+			}
 
 			texture = 0x80;
 		} else
@@ -217,6 +223,11 @@ do_hit:
 		{
 			thing_type_t *info = thing_type + thing_ptr(hitscan.thing_pick)->ticker.type;
 
+			if(	hitscan.range &&
+				hitscan.dist > hitscan.range
+			)
+				return 1;
+
 			hitscan.sector = hitscan.thing_sdx;
 
 			d0.x = (hitscan.sin * (int32_t)hitscan.dist) >> 8;
@@ -235,6 +246,11 @@ do_hit:
 		}
 	} else
 		hitscan.thing_pick = 0;
+
+	if(	hitscan.range &&
+		hitscan.dist > hitscan.range
+	)
+		return 1;
 
 	// check texture
 	if(texture == 0xFF)
@@ -369,11 +385,12 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 //
 // hitscan bullet attack
 
-void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, uint8_t type)
+void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, uint8_t type, uint8_t range)
 {
 	thing_t *th = thing_ptr(tdx);
 	thing_type_t *info = thing_type + type;
 
+	hitscan.range = range;
 	hitscan.origin = tdx;
 
 	hitscan.radius = info->alt_radius + 1;

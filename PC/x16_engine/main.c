@@ -11,6 +11,7 @@
 #include "tick.h"
 #include "things.h"
 #include "hitscan.h"
+#include "hud.h"
 
 #define VRAM_TEXTURE_START	0x0A000
 #define VRAM_TEXTURE_END	0x1C000
@@ -192,13 +193,6 @@ typedef struct
 
 typedef struct
 {
-	uint16_t addr;
-	int16_t x, y;
-	uint8_t ia, ib;
-} x16_sprite_t;
-
-typedef struct
-{
 	uint16_t start;
 	uint8_t nsz;
 	uint8_t bsz;
@@ -308,7 +302,7 @@ vertex_t display_wall[2];
 
 static uint32_t texture[2];
 static uint8_t framebuffer[160 * 120];
-static uint8_t sprbuffer[160 * 120];
+static uint32_t spritebuffer[256 * 384];
 
 static uint8_t *tex_data;
 static uint8_t *tex_map;
@@ -441,7 +435,7 @@ wall_t map_walls[WALL_BANK_COUNT][256];
 static uint8_t font_info[512];
 
 // texture stuff
-static uint8_t vram[128 * 1024];
+uint8_t vram[128 * 1024];
 static uint8_t vram_4bpp;
 static uint8_t vram_8bpp;
 
@@ -821,7 +815,7 @@ int32_t spec_inv_div(int16_t n, int16_t d)
 //
 // texture
 
-static uint32_t color_lookup(uint32_t col)
+static uint32_t color_lookup(uint8_t col)
 {
 	uint32_t color = 0xFF000000;
 	uint8_t *pal = palette + col * 3;
@@ -862,14 +856,13 @@ static void update_texture(float x0, float y0, float x1, float y1)
 
 static void update_sprites(float x0, float y0, float x1, float y1)
 {
-	uint32_t data[256 * 384];
 	x16_sprite_t *spr = (x16_sprite_t*)&vram[sizeof(vram)];
 	const float s0 = 48.0f / 256.0f;
 	const float s1 = 208.0f / 256.0f;
 	const float t0 = 68.0f / 384.0f;
 	const float t1 = 188.0f / 384.0f;
 
-	memset(data, 0, sizeof(data));
+	memset(spritebuffer, 0, sizeof(spritebuffer));
 
 	for(uint32_t i = 0; i < 128; i++)
 	{
@@ -887,33 +880,57 @@ static void update_sprites(float x0, float y0, float x1, float y1)
 
 		src = vram + ((spr->addr * 32) & 0x1FFFF);
 
-		if(spr->ia & 1)
+		if(spr->addr & 0x8000)
 		{
-			for(uint32_t y = 0; y < height; y++)
+			if(spr->ia & 1)
 			{
-				uint32_t *dst = data + (spr->y + y + 68) * 256 + 48 + spr->x;
-				dst += width;
-
-				for(uint32_t x = 0; x < width; x++)
+				for(uint32_t y = 0; y < height; y++)
 				{
-					uint8_t in = *src++;
-					dst--;
-					if(in)
-						*dst = color_lookup(in);
+					uint32_t *dst = spritebuffer + (spr->y + y + 68) * 256 + 48 + spr->x;
+					dst += width;
+
+					for(uint32_t x = 0; x < width; x++)
+					{
+						uint8_t in = *src++;
+						dst--;
+						if(in)
+							*dst = color_lookup(in);
+					}
+					dst += width * 2;
 				}
-				dst += width * 2;
+			} else
+			{
+				for(uint32_t y = 0; y < height; y++)
+				{
+					uint32_t *dst = spritebuffer + (spr->y + y + 68) * 256 + 48 + spr->x;
+
+					for(uint32_t x = 0; x < width; x++)
+					{
+						uint8_t in = *src++;
+						if(in)
+							*dst = color_lookup(in);
+						dst++;
+					}
+				}
 			}
 		} else
 		{
+			uint32_t pal = spr->ib << 4;
+
 			for(uint32_t y = 0; y < height; y++)
 			{
-				uint32_t *dst = data + (spr->y + y + 68) * 256 + 48 + spr->x;
+				uint32_t *dst = spritebuffer + (spr->y + y + 68) * 256 + 48 + spr->x;
 
-				for(uint32_t x = 0; x < width; x++)
+				for(uint32_t x = 0; x < width / 2; x++)
 				{
 					uint8_t in = *src++;
-					if(in)
-						*dst = color_lookup(in);
+
+					if(in & 0xF0)
+						*dst = color_lookup((in >> 4) | pal);
+					dst++;
+
+					if(in & 0x0F)
+						*dst = color_lookup((in & 15) | pal);
 					dst++;
 				}
 			}
@@ -921,7 +938,7 @@ static void update_sprites(float x0, float y0, float x1, float y1)
 	}
 
 	glBindTexture(GL_TEXTURE_2D, texture[1]);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 384, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 384, 0, GL_RGBA, GL_UNSIGNED_BYTE, spritebuffer);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -2531,10 +2548,9 @@ static void do_sector(uint8_t idx)
 	portal_rd->first_sprite = proj_spr_first;
 }
 
-static void do_3d()
+static void do_3D()
 {
 	thing_t *th = thing_ptr(camera_thing);
-	show_wpn_t show_wpn;
 	sector_t *sec;
 	uint32_t pidx;
 
@@ -2626,6 +2642,11 @@ static void do_3d()
 		if(portal_rd == portals)
 			break;
 	}
+}
+
+static void do_2D()
+{
+	show_wpn_t show_wpn;
 
 	// weapon
 	show_wpn.idx = 0xFF;
@@ -2677,7 +2698,7 @@ static void do_3d()
 
 	// update parts, always
 	{
-		x16_sprite_t *spr = (x16_sprite_t*)&vram[sizeof(vram) - (12 + 15) * sizeof(x16_sprite_t)];
+		x16_sprite_t *spr = (x16_sprite_t*)&vram[0x1FC00 + 106 * sizeof(x16_sprite_t)];
 		uint32_t i = 0;
 
 		show_wpn_now.idx = show_wpn.idx;
@@ -2740,6 +2761,9 @@ static void do_3d()
 		for( ; i < 15; i++, spr++)
 			spr->ia = 0;
 	}
+
+	// HUD
+	hud_draw();
 }
 
 //
@@ -2808,7 +2832,8 @@ static void render()
 	//
 	// do 3D now
 
-	do_3d();
+	do_3D();
+	do_2D();
 
 	//
 	// camera

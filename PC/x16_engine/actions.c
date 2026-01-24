@@ -161,11 +161,24 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 			for(uint32_t i = 0; i < st->arg[2]; i++)
 			{
 				aim_rng(th, aim, st->arg[1]);
-				hitscan_attack(tdx, thing_type[th->ticker.type].atk_height, aim[0], aim[1], type);
+				hitscan_attack(tdx, thing_type[th->ticker.type].atk_height, aim[0], aim[1], type, 0);
 			}
 		}
 		break;
-		case 6: // effect: blood splat
+		case 6: // attack: melee
+		{
+			uint32_t tdx;
+			uint32_t type = thing_type[th->ticker.type].spawn[st->arg[0]];
+			uint8_t aim[2];
+
+			check_weapon_th(&th);
+			tdx = ticker_idx(th);
+
+			aim_rng(th, aim, st->arg[1]);
+			hitscan_attack(tdx, thing_type[th->ticker.type].atk_height, aim[0], aim[1], type, st->arg[2]);
+		}
+		break;
+		case 7: // effect: blood splat
 		{
 			uint8_t tmp = rng_get();
 
@@ -184,11 +197,11 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				th->mz = st->arg[1] << 8;
 		}
 		break;
-		case 7: // ticks: add
+		case 8: // ticks: add
 			th->ticks += rng_val(st->arg[0]);
 		break;
-		case 8: // death: simple
-		case 9: // death: radius
+		case 9: // death: simple
+		case 10: // death: radius
 		{
 			th->gravity = st->arg[0];
 			th->blocking = st->arg[1];
@@ -204,39 +217,6 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 
 			if(thing_check_pos(tdx, th->x / 256, th->y / 256, th->z / 256, 0))
 				thing_apply_pos();
-		}
-		break;
-		// HACKS
-		case 10:
-		{
-			sector_t *sec = map_sectors + thingsec[tdx][0];
-			map_secobj_t *sobj;
-			int32_t pos, ppp;
-
-			if(!sec->sobj_hi)
-				break;
-
-			sobj = (map_secobj_t*)(wram + sec->sobj_lo + (sec->sobj_hi & 0x7F) * 65536);
-
-			ppp = level_tick;
-			if(th->angle & 0x80)
-				ppp <<= 1;
-
-			pos = ppp & 31;
-			if(ppp & 32)
-				pos ^= 31;
-			pos -= 10;
-			if(pos < 0)
-				pos = 0;
-			else
-			if(pos > 14)
-				pos = 14;
-
-			pos *= 8;
-			pos -= 48;
-
-			slide_door_hack(sec, sobj + 0, +pos);
-			slide_door_hack(sec, sobj + 1, -pos);
 		}
 		break;
 	}

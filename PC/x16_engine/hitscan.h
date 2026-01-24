@@ -5,6 +5,7 @@ typedef struct
 	uint8_t origin;
 	uint8_t sector;
 	uint8_t angle;
+	uint8_t range;
 	uint8_t type;
 	uint8_t axis;
 	uint8_t link;
@@ -33,7 +34,7 @@ extern hitscan_t hitscan;
 //
 
 void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*));
-void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, uint8_t type);
+void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, uint8_t type, uint8_t range);
 
 void hitscan_angles(uint8_t hang, uint8_t halfpitch);
 int32_t hitscan_wall_pos(wall_t *wall, vertex_t *d0, int32_t *dout);

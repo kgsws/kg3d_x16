@@ -374,7 +374,22 @@ cb_attack:
 	lda	MATH_TEMP
 	bne	@do_wall
 
-	; no hit detected
+	; hitscan.range
+	lda	ARG_HITSCAN_RANGE
+	beq	:+
+
+	; hitscan.dist > hitscan.range
+	sec
+	lda	ARG_HITSCAN_RANGE
+	sbc	HITSCAN_DIST_L
+	lda	#0
+	sbc	HITSCAN_DIST_H
+	bpl	:+
+
+	; no hit detected; check things
+	jmp	@do_hit
+:
+	; out of range
 	clc
 	rts
 
@@ -445,9 +460,27 @@ cb_attack:
 
 	; if(hitscan.thing_pick)
 	lda	HITSCAN_PICK_TDX
-	beq	@no_things
+	bne	:+
+	jmp	@no_things
+:
 	tay
 
+	; hitscan.range
+	lda	ARG_HITSCAN_RANGE
+	beq	:+
+
+	; hitscan.dist > hitscan.range
+	sec
+	lda	ARG_HITSCAN_RANGE
+	sbc	HITSCAN_DIST_L
+	lda	#0
+	sbc	HITSCAN_DIST_H
+	bpl	:+
+
+	; out of range
+	sec
+	rts
+:
 	; hitscan.sector = hitscan.thing_sdx
 	lda	HITSCAN_PICK_SDX
 	sta	ARG_THING_SECTOR
@@ -539,6 +572,22 @@ cb_attack:
 	bra	@do_spawn
 
 @no_things:
+	; hitscan.range
+	lda	ARG_HITSCAN_RANGE
+	beq	:+
+
+	; hitscan.dist > hitscan.range
+	sec
+	lda	ARG_HITSCAN_RANGE
+	sbc	HITSCAN_DIST_L
+	lda	#0
+	sbc	HITSCAN_DIST_H
+	bpl	:+
+
+	; out of range
+	sec
+	rts
+:
 	; check sky texture
 	lda	HITSCAN_TEXTURE
 	ina

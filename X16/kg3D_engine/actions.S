@@ -151,6 +151,65 @@ get_spread_arg:
 	rts
 
 ;;;
+; hitscan action base
+;;;
+
+prepare_hitscan:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; type
+	lda	THSTATE_STRUCT_ARG0,x
+	ora	#>THTYPE_STRUCT_SPAWN_A
+	sta	@opcode_spawn+2
+
+	; count
+	lda	THSTATE_STRUCT_ARG2,x
+	sta	THTICK_ACTION_COUNT
+
+	; spread
+	jsr	get_spread_arg
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; th->ticker.type
+	lda	TICKER_STRUCT_TYPE,y
+	sta	@opcode_spawn+1
+
+	; check_weapon_th
+	tya
+	bne	:+
+	ldy	G_PLAYER_THING
+:
+	sty	THTICK_ACTION_ORIGIN
+
+	; th->ticker.type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; type = thing_type[th->ticker.type].spawn[st->arg[0]]
+@opcode_spawn:
+	lda	THTYPE_STRUCT_SPAWN_A	; modified address
+	sta	THTICK_ACTION_TEMP
+
+	; attack Z
+	lda	THTYPE_STRUCT_ATK_HEIGHT,x
+	sta	ARG_HITSCAN_ATK_Z
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; angles
+	jsr	prepare_spread
+
+	rts
+
+;;;
 ; death action base
 ;;;
 
@@ -299,6 +358,12 @@ act_wpn_ready:
 ; can be run only from local weapon
 
 act_wpn_raise:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; argument
+	lda	THSTATE_STRUCT_ARG0,x
+	sta	MATH_TEMP_A
+
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
@@ -306,7 +371,7 @@ act_wpn_raise:
 	; raise
 	sec
 	lda	THING_STRUCT_HEIGHT
-	sbc	#8
+	sbc	MATH_TEMP_A
 	bcs	:+
 	lda	#0
 :
@@ -336,6 +401,12 @@ act_wpn_raise:
 ; can be run only from local weapon
 
 act_wpn_lower:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; argument
+	lda	THSTATE_STRUCT_ARG0,x
+	sta	MATH_TEMP_A
+
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
@@ -343,7 +414,7 @@ act_wpn_lower:
 	; lower
 	clc
 	lda	THING_STRUCT_HEIGHT
-	adc	#8
+	adc	MATH_TEMP_A
 	sta	THING_STRUCT_HEIGHT
 	cmp	#52
 	bcs	@do_change
@@ -485,58 +556,12 @@ act_atk_projectile:
 ;;;
 
 act_atk_hitscan:
-	ldx	THTICK_ACTION_ST_IDX
+	jsr	prepare_hitscan
 
-	; type
-	lda	THSTATE_STRUCT_ARG0,x
-	ora	#>THTYPE_STRUCT_SPAWN_A
-	sta	@opcode_spawn+2
+	; range
+	stz	ARG_HITSCAN_RANGE
 
-	; count
-	lda	THSTATE_STRUCT_ARG2,x
-	sta	THTICK_ACTION_COUNT
-
-	; spread
-	jsr	get_spread_arg
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; th->ticker.type
-	lda	TICKER_STRUCT_TYPE,y
-	sta	@opcode_spawn+1
-
-	; check_weapon_th
-	tya
-	bne	:+
-	ldy	G_PLAYER_THING
-:
-	sty	THTICK_ACTION_ORIGIN
-
-	; th->ticker.type
-	ldx	TICKER_STRUCT_TYPE,y
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
-	; type = thing_type[th->ticker.type].spawn[st->arg[0]]
-@opcode_spawn:
-	lda	THTYPE_STRUCT_SPAWN_A	; modified address
-	sta	THTICK_ACTION_TEMP
-
-	; attack Z
-	lda	THTYPE_STRUCT_ATK_HEIGHT,x
-	sta	ARG_HITSCAN_ATK_Z
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; angles
-	jsr	prepare_spread
-
+	; the loop
 @loop:
 	; spread
 	jsr	apply_spread
@@ -550,6 +575,29 @@ act_atk_hitscan:
 	; next
 	dec	THTICK_ACTION_COUNT
 	bne	@loop
+
+	; done
+	jmp	thing_actdone
+
+;;;
+; action: hitscan melee
+;;;
+
+act_atk_melee:
+	jsr	prepare_hitscan
+
+	; spread
+	jsr	apply_spread
+
+	; range
+	lda	THTICK_ACTION_COUNT
+	sta	ARG_HITSCAN_RANGE
+
+	; attack
+	lda	THTICK_ACTION_TEMP
+	sta	ARG_THING_TYPE
+	ldy	THTICK_ACTION_ORIGIN
+	jsr	hitscan_attack
 
 	; done
 	jmp	thing_actdone
@@ -704,160 +752,6 @@ act_die_radius:
 	jmp	thing_actdone
 
 ;;;
-; HAX
-;;;
-
-hax_slide_door:
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	lda	G_LEVEL_TICK_L
-	ldx	THING_STRUCT_ANGLE,y
-	bpl	:+
-	asl
-:
-	tax
-
-	;; FRAME
-
-	and	#31
-	sta	MATH_VAR_L
-	txa
-	and	#32
-	beq	:+
-	lda	MATH_VAR_L
-	eor	#31
-	sta	MATH_VAR_L
-:
-	sec
-	lda	MATH_VAR_L
-	sbc	#10
-	sta	MATH_VAR_L
-	bpl	@pos
-	lda	#0
-	bra	@pass
-@pos:
-	cmp	#15
-	bcc	@pass
-	lda	#14
-@pass:
-	asl
-	asl
-	asl
-	sec
-	sbc	#48
-	sta	MATH_VAR_L
-	tax
-	lda	TAB_SIGN_EXT,x
-	sta	MATH_VAR_H
-
-	;; SECTOR
-
-	; thing sectors bank
-	lda	#BANK_THING_SECTORS
-	sta	REG_RAM_BANK
-
-	; thing sector
-	ldx	$B000,y
-	sta	ARG_THING_SECTOR
-
-	; sector bank
-	lda	#BANK_SECTORS
-	sta	REG_RAM_BANK
-
-	;; OBJECTS
-
-	lda	SECTOR_STRUCT_OBJ_H,x
-	and	#$7F
-	asl
-	asl
-	asl
-	ldy	SECTOR_STRUCT_OBJ_L,x
-	ora	TAB_BANK,y
-	sta	TMP_PTR_I
-	tya
-	and	#$1F
-	ora	#$A0
-	sta	TMP_PTR_H
-	lda	SECTOR_STRUCT_OBJ_S,x
-	sta	TMP_PTR_L
-
-	; first
-	jsr	@slide_door_hack
-
-	; flip
-	lda	MATH_VAR_L
-	eor	#$FF
-	ina
-	sta	MATH_VAR_L
-	tax
-	lda	TAB_SIGN_EXT,x
-	sta	MATH_VAR_H
-
-	; next
-	clc
-	lda	TMP_PTR_L
-	adc	#SECOBJ_STRUCT_SIZE
-	sta	TMP_PTR_L
-
-	; second
-	jsr	@slide_door_hack
-
-	; done
-	jmp	thing_actdone
-
-@slide_door_hack:
-	; data bank
-	lda	TMP_PTR_I
-	sta	REG_RAM_BANK
-
-	; walls
-	lda	(TMP_PTR_L)
-	ora	#BANK_MAPWALLS
-	sta	WALL_BANK
-	ldy	#SECOBJ_STRUCT_FIRST
-	lda	(TMP_PTR_L),y
-	pha
-	ldy	#SECOBJ_STRUCT_Y_L
-	lda	(TMP_PTR_L),y
-	sta	WALL_D0_Y_L
-	iny
-	lda	(TMP_PTR_L),y
-	sta	WALL_D0_Y_H
-
-	; wall bank
-	lda	WALL_BANK
-	sta	REG_RAM_BANK
-
-	; skip
-	ply
-	ldx	WALL_STRUCT_NEXT,y
-
-	; move
-	clc
-	lda	WALL_D0_Y_L
-	adc	MATH_VAR_L
-	sta	WALL_STRUCT_VTX_Y_L,x
-	lda	WALL_D0_Y_H
-	adc	MATH_VAR_H
-	sta	WALL_STRUCT_VTX_Y_H,x
-
-	; next
-	ldy	WALL_STRUCT_NEXT,x
-
-	; move
-	clc
-	lda	WALL_D0_Y_L
-	adc	MATH_VAR_L
-	sta	WALL_STRUCT_VTX_Y_L,y
-	lda	WALL_D0_Y_H
-	adc	MATH_VAR_H
-	sta	WALL_STRUCT_VTX_Y_H,y
-
-	rts
-
-;;;
 ; state action table
 ;;;
 
@@ -867,12 +761,11 @@ action_table:
 	.word	act_wpn_lower
 	.word	act_atk_projectile
 	.word	act_atk_hitscan
+	.word	act_atk_melee
 	.word	act_eff_blood
 	.word	act_tick_add
 	.word	act_die_simple
 	.word	act_die_radius
-; HAX
-	.word	hax_slide_door
 
 ;;;
 ; extra tables

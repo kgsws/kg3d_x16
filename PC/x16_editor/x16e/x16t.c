@@ -377,6 +377,31 @@ const state_action_def_t state_action_def[] =
 			.lim = {1, 8}
 		},
 	},
+	{
+		.name = "attack: melee",
+		.flags = AFLG_THING | AFLG_WEAPON,
+		.arg[0] =
+		{
+			.name = "spawn",
+			.type = ARGT_SPAWN_SLOT,
+			.def = 0,
+			.lim = {0, 3}
+		},
+		.arg[1] =
+		{
+			.name = "spread",
+			.type = ARGT_XY_SPREAD,
+			.def = 0,
+			.lim = {0, 255}
+		},
+		.arg[2] =
+		{
+			.name = "range",
+			.type = ARGT_U8,
+			.def = 64,
+			.lim = {1, 255}
+		},
+	},
 ///
 	{
 		.name = "effect: blood splat",
@@ -465,11 +490,6 @@ const state_action_def_t state_action_def[] =
 			.def = 0,
 			.lim = {0, 255}
 		}
-	},
-	/// DEMO HAX
-	{
-		.name = "slide door hax",
-		.flags = AFLG_THING
 	},
 	// terminator
 	{}

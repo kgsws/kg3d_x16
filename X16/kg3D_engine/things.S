@@ -4834,6 +4834,7 @@ thing_actdone:
 	pha	; <next L>
 
 	; spawn sprite
+	lda	#$FF
 	ldy	THSTATE_STRUCT_SPRITE,x
 	bmi	:+
 

@@ -19,6 +19,13 @@
 
 typedef struct
 {
+	uint16_t addr;
+	int16_t x, y;
+	uint8_t ia, ib;
+} x16_sprite_t;
+
+typedef struct
+{
 	uint64_t magic;
 	uint8_t version;
 	uint8_t flags;
@@ -151,6 +158,7 @@ extern p2a_t p2a_coord;
 extern projection_t projection;
 
 extern uint8_t wram[0x200000];
+extern uint8_t vram[128 * 1024];
 
 extern sector_t map_sectors[256];
 extern wall_t map_walls[WALL_BANK_COUNT][256];
