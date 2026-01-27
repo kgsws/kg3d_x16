@@ -75,21 +75,110 @@ cb_attack_thing:
 	stz	VERA_DATA0
 
 	; get result (>> 8)
-	; hitscan.ztmp = hitscan.z + dd
-	clc
 	lda	VERA_DATA0
-	adc	ARG_THING_Z_L
 	sta	HITSCAN_ZTMP_L
 	lda	VERA_DATA0
+	sta	HITSCAN_ZTMP_H
+
+	; th->radius
+	ldx	THING_STRUCT_RADIUS,y
+
+	; if(th->iflags & THING_IFLAG_ALTRADIUS)
+	lda	THING_STRUCT_IFLAGS,y
+	and	#THING_IFLAG_ALTRADIUS
+	beq	@normal_radius
+
+	; type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; alt_radius
+	lda	THTYPE_STRUCT_ALT_RADIUS,x
+	tax
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+@normal_radius:
+	;; tr = ((dd * tr * hitscan.wtan) >> 15)
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; if(tr > 127)
+	txa
+	bpl	:+
+	lda	#127
+:
+	; tr
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; hitscan.wtan is already set
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; use result
+	stz	VERA_ADDRx_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_M
+
+	; dd
+	; hitscan.ztmp = hitscan.z + dd
+	clc
+	lda	HITSCAN_ZTMP_L
+	sta	VERA_FX_CACHE_H
+	adc	ARG_THING_Z_L
+	sta	HITSCAN_ZTMP_L
+	lda	HITSCAN_ZTMP_H
+	sta	VERA_FX_CACHE_U
 	adc	ARG_THING_Z_H
 	sta	HITSCAN_ZTMP_H
 
-	; get thing Z
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 16)
+	lda	VERA_DATA0
+	lda	VERA_DATA0
+	sta	HITSCAN_TR_L
+	lda	VERA_DATA0
+	sta	HITSCAN_TR_H
+
+	; tz = th->z >> 8
 	lda	THING_STRUCT_Z_L,y
 	sta	MATH_VAR_L
 	lda	THING_STRUCT_Z_H,y
 	sta	MATH_VAR_H
 
+	; if(hitscan.wtan >= 0)
+	lda	HITSCAN_WTAN_H
+	bmi	:+
+
+	; tz -= tr
+	sec
+	lda	MATH_VAR_L
+	sbc	HITSCAN_TR_L
+	sta	MATH_VAR_L
+	lda	MATH_VAR_H
+	sbc	HITSCAN_TR_H
+	sta	MATH_VAR_H
+:
 	; if(hitscan.ztmp < tz)
 	sec
 	lda	HITSCAN_ZTMP_L
@@ -98,13 +187,27 @@ cb_attack_thing:
 	sbc	MATH_VAR_H
 	bmi	@no_hit
 
-	; tz += th->height
+	; tz = (th->z >> 8) + th->height
 	clc
-	lda	MATH_VAR_L
+	lda	THING_STRUCT_Z_L,y
 	adc	THING_STRUCT_HEIGHT,y
 	sta	MATH_VAR_L
-	bcc	:+
-	inc	MATH_VAR_H
+	lda	THING_STRUCT_Z_H,y
+	adc	#0
+	sta	MATH_VAR_H
+
+	; if(hitscan.wtan < 0)
+	lda	HITSCAN_WTAN_H
+	bpl	:+
+
+	; tz += tr
+	clc
+	lda	MATH_VAR_L
+	adc	HITSCAN_TR_L
+	sta	MATH_VAR_L
+	lda	MATH_VAR_H
+	adc	HITSCAN_TR_H
+	sta	MATH_VAR_H
 :
 	; if(hitscan.ztmp > tz)
 	sec
@@ -659,6 +762,9 @@ scan_things:
 	lda	#BANK_SECTOR_THINGS
 	sta	REG_RAM_BANK
 
+	; backup
+	phx
+
 	; things in this sector
 	lda	#$A0
 	sta	TMP_PTR_H
@@ -681,7 +787,6 @@ scan_things:
 	beq	@skip_thing_bank
 
 	; find in list
-	phx
 	sty	MATH_TEMP
 	ldx	#0
 @loop_find:
@@ -690,18 +795,12 @@ scan_things:
 
 	lda	HITSCAN_THING_TABLE,x
 	cmp	MATH_TEMP
-	bne	:+
+	beq	@skip_thing_bank
 
-	; found, skip
-	plx
-	bra	@skip_thing_bank
-:
 	inx
 	bra	@loop_find
 
 @not_found:
-	plx
-
 	; thing_list[thing_idx] = tdx
 	tya
 	sta	(HITSCAN_THG_IDX_L)
@@ -727,6 +826,7 @@ scan_things:
 	jmp	@loop_thing
 :
 	; next sector
+	plx
 	inx
 	cpx	HITSCAN_SEC_IDX
 	beq	:+

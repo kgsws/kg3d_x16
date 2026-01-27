@@ -98,15 +98,28 @@ static void scan_things(uint32_t (*cb)(thing_t*,int16_t))
 
 static uint32_t cb_attack_thing(thing_t *th, int16_t dd)
 {
-	int32_t tz = th->z >> 8;
+	int32_t tz, tr;
 
 	dd = (dd * (int32_t)hitscan.wtan) >> 8;
 	hitscan.ztmp = hitscan.z + dd;
 
+	if(th->iflags & THING_IFLAG_ALTRADIUS)
+		tr = thing_type[th->ticker.type].alt_radius;
+	else
+		tr = th->radius;
+	if(tr > 127)
+		tr = 127;
+	tr = ((dd * tr * hitscan.wtan) >> 15);
+
+	tz = th->z >> 8;
+	if(hitscan.wtan >= 0)
+		tz -= tr;
 	if(hitscan.ztmp < tz)
 		return 0;
 
-	tz += th->height;
+	tz = (th->z >> 8) + th->height;
+	if(hitscan.wtan < 0)
+		tz += tr;
 	if(hitscan.ztmp > tz)
 		return 0;
 

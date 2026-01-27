@@ -64,6 +64,18 @@ thing_spawn_org:
 	ldx	#0
 	rts
 :
+	; thing type
+	ldx	ARG_THING_TYPE
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; check spawn animation
+	lda	THTYPE_ANIM_SPAWN_L,x
+	ora	THTYPE_ANIM_SPAWN_H,x
+	beq	@stop
+
 	; new ticker
 	jsr	tick_add
 	beq	@stop

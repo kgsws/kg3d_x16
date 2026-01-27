@@ -928,10 +928,17 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 		return 0;
 	}
 
+	state = thing_anim[type][ANIM_SPAWN].state;
+	if(!state)
+		// no spawn animation
+		return 0;
+
 	tdx = tick_add();
 	if(!tdx)
 		// no free slots
 		return 0;
+
+	st = thing_state + (state & (MAX_X16_STATES-1));
 
 	th = thing_ptr(tdx);
 	th->ticker.type = type;
@@ -966,10 +973,6 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 
 	th->floort = 0;
 	th->ceilingt = 0;
-
-	state = thing_anim[type][ANIM_SPAWN].state;
-
-	st = thing_state + (state & (MAX_X16_STATES-1));
 
 	th->next_state = state;
 	th->ticks = 1;
