@@ -10,7 +10,7 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	26
+#define MAP_VERSION	27
 #define MAP_MAGIC	0x36315870614D676B
 
 #define WALL_BANK_COUNT	16
@@ -171,7 +171,13 @@ typedef struct
 uint_fast8_t x16e_enable_logo;
 uint8_t x16e_logo_data[160 * 120];
 
-static uint8_t temp_data[64 * 1024];
+static uint8_t temp_data[32 * 1024];
+
+static uint8_t vis_tab[256 * 256];
+// static uint8_t *const vis_tmp = vis_tab + 256 * 256;
+static kge_line_t *vis_line;
+static uint32_t vis_sector[2];
+static uint32_t vis_normal;
 
 static uint32_t validcount;
 
@@ -484,6 +490,81 @@ static uint32_t fill_base_wall(kge_sector_t *sec, kge_line_t *line, wall_t *wall
 	return 0;
 }
 
+static void recursive_vis(kge_sector_t *sec, int32_t va0, int32_t va1)
+{
+	uint32_t sdx = list_get_idx(&edit_list_sector, (link_entry_t*)sec - 1) + 1;
+
+	// enable in table
+	vis_tab[vis_sector[0] + sdx * 256] = 0x80;
+	vis_tab[vis_sector[1] + sdx] = 0x80;
+
+	// go trough lines
+	for(uint32_t i = 0; i < sec->line_count; i++)
+	{
+		kge_line_t *line = &sec->line[i];
+		int32_t angle[2];
+
+		if(!line->backsector)
+			continue;
+
+		angle[0] = x16e_line_angle(line->vertex[0]->x - vis_line->vertex[0]->x, line->vertex[0]->y - vis_line->vertex[0]->y) - vis_normal;
+		if(angle[0] <= va0)
+			continue;
+
+		angle[1] = x16e_line_angle(line->vertex[1]->x - vis_line->vertex[1]->x, line->vertex[1]->y - vis_line->vertex[1]->y) - vis_normal;
+		if(angle[1] >= va1)
+			continue;
+
+		angle[0] = x16e_line_angle(line->vertex[1]->x - vis_line->vertex[0]->x, line->vertex[1]->y - vis_line->vertex[0]->y) - vis_normal;
+		angle[1] = x16e_line_angle(line->vertex[0]->x - vis_line->vertex[1]->x, line->vertex[0]->y - vis_line->vertex[1]->y) - vis_normal;
+
+		if(angle[1] <= angle[0])
+			continue;
+
+		if(angle[0] < va0)
+			angle[0] = va0;
+
+		if(angle[1] > va1)
+			angle[1] = va1;
+
+		recursive_vis(line->backsector, angle[0], angle[1]);
+	}
+}
+
+static void mark_visibility(kge_sector_t *sec, kge_line_t *line)
+{
+	kge_sector_t *ces = line->backsector;
+	uint32_t sdx = list_get_idx(&edit_list_sector, (link_entry_t*)ces - 1) + 1;
+
+	vis_line = line;
+	vis_normal = line->stuff.nangle;
+
+	// enable in table
+	vis_tab[vis_sector[0] + sdx * 256] = 0xA0;
+	vis_tab[vis_sector[1] + sdx] = 0xA0;
+
+	// go trough lines
+	for(uint32_t i = 0; i < ces->line_count; i++)
+	{
+		kge_line_t *ln = &ces->line[i];
+		int32_t angle[2];
+
+		if(!ln->backsector)
+			continue;
+
+		if(ln->backsector == sec)
+			continue;
+
+		angle[0] = x16e_line_angle(ln->vertex[1]->x - line->vertex[0]->x, ln->vertex[1]->y - line->vertex[0]->y) - vis_normal;
+		angle[1] = x16e_line_angle(ln->vertex[0]->x - line->vertex[1]->x, ln->vertex[0]->y - line->vertex[1]->y) - vis_normal;
+
+		if(angle[1] <= angle[0])
+			continue;
+
+		recursive_vis(ln->backsector, angle[0], angle[1]);
+	}
+}
+
 //
 // API
 
@@ -509,6 +590,11 @@ uint32_t x16_init()
 		return 1;
 
 	return 0;
+}
+
+uint32_t x16e_line_angle(float y, float x)
+{
+	return (M_PI + atan2f(y, x)) * (0x100000000 / (M_PI*2));
 }
 
 void x16_export_map()
@@ -1040,6 +1126,38 @@ void x16_export_map()
 			count_extra_storage = i;
 	count_extra_storage++;
 
+	// visibility table
+	memset(vis_tab, 0, sizeof(vis_tab));
+
+	// go trough sectors
+	vis_sector[0] = 1;
+	vis_sector[1] = 256;
+	ent = edit_list_sector.top;
+	while(ent)
+	{
+		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
+
+		vis_tab[vis_sector[0] + vis_sector[1]] = 0xFF;
+
+		// go trough lines
+		for(uint32_t i = 0; i < sec->line_count; i++)
+		{
+			kge_line_t *line = &sec->line[i];
+
+			if(!line->backsector)
+				continue;
+
+			mark_visibility(sec, line);
+		}
+
+		vis_sector[0]++;
+		vis_sector[1] += 256;
+
+		ent = ent->next;
+	}
+#if 0
+	edit_save_file("/tmp/vis.data", vis_tab, sizeof(vis_tab));
+#endif
 	// save map info
 	map_head.count_ptex = count_ptex;
 	map_head.count_wtex = count_wtex;
@@ -1117,6 +1235,25 @@ void x16_export_map()
 	// extra storage
 	for(uint32_t i = 0; i < count_extra_storage; i++)
 		write(fd, extra_storage[i].data, 256);
+
+	// visibility table
+	memset(temp_data, 0, sizeof(vis_tab) / 8);
+	for(uint32_t y = 0; y < 256; y++)
+	{
+		for(uint32_t x = 0; x < 256; x++)
+		{
+			uint32_t ii, bb;
+
+			if(!vis_tab[y * 256 + x])
+				continue;
+
+			ii = y & 0x1F;
+			bb = 1 << (y >> 5);
+
+			temp_data[ii * 256 + x] |= bb;
+		}
+	}
+	write(fd, temp_data, sizeof(vis_tab) / 8);
 
 	// things
 	ent = tick_list_normal.top;

@@ -3834,6 +3834,9 @@ void edit_mark_sector_things(kge_sector_t *sec)
 
 void edit_fix_thing_z(kge_thing_t *thing, uint32_t eflags)
 {
+	if(!thing->pos.sector)
+		return;
+
 	if(eflags & 2 || thing->pos.z > thing->prop.ceilingz - thing->prop.height)
 		thing->pos.z = thing->prop.ceilingz - thing->prop.height;
 

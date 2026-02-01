@@ -427,6 +427,7 @@ static uint8_t portal_top, portal_bot;
 
 // map buffer
 static uint8_t map_block_data[8192];
+static uint8_t map_vis_tab[8192];
 map_head_t map_head;
 sector_t map_sectors[256];
 wall_t map_walls[WALL_BANK_COUNT][256];
@@ -2785,7 +2786,14 @@ static void render()
 		tick_run(); // 15 TPS
 		input_action = 0;
 #if 0
-		thing_t *th = things + player_thing;
+		thing_t *th = thing_ptr(player_thing);
+		uint32_t sn = thingsec[player_thing][0];
+		uint32_t ss = thing_ptr(0)->target;
+		if(ss)
+			printf("from %u to %u; vis %u\n", ss, sn, !!(map_vis_tab[sn | ((ss & 0x1F) * 256)] & (1 << (ss >> 5))));
+#endif
+#if 0
+		thing_t *th = thing_ptr(player_thing);
 		printf("fs %u cs %u\n", th->floors, th->ceilings);
 #endif
 #if 0
@@ -3946,6 +3954,10 @@ static uint32_t load_map()
 		goto error;
 
 	if(temp && read(fd, dst, temp) != temp)
+		goto error;
+
+	// visibility table
+	if(read(fd, map_vis_tab, 8192) != 8192)
 		goto error;
 
 	// fix objects

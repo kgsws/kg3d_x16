@@ -42,7 +42,10 @@ BANK_SECTORS = 12
 ; textures
 BANK_TEXTURES = 13
 
-;; 2 game banks available here
+; visibility table
+BANK_VISTAB = 14
+
+;; 1 game bank available here
 
 ; MAP DATA overlap
 ; walls are loaded in up to 16 banks

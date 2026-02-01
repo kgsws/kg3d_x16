@@ -3,6 +3,7 @@
 #include "list.h"
 #include "engine.h"
 #include "x16r.h"
+#include "x16e.h"
 
 sector_link_t **engine_link_ptr;
 
@@ -88,6 +89,7 @@ void engine_update_line(kge_line_t *line)
 	line->stuff.normal.x = -line->stuff.dist.y / line->stuff.length;
 	line->stuff.normal.y = line->stuff.dist.x / line->stuff.length;
 
+	line->stuff.nangle = x16e_line_angle(-line->stuff.normal.y, line->stuff.normal.x) - 0x40000000;
 	line->stuff.x16angle = x16r_line_angle(line);
 }
 

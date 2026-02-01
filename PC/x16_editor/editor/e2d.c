@@ -2730,6 +2730,7 @@ static int32_t in2d_draw_insert()
 				edit_status_printf("Line limit hit! Close the sector now.");
 		}
 	} else
+	if(draw_into_sector)
 	{
 		// stop at the same vertex
 finish_extra:

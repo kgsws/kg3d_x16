@@ -115,7 +115,7 @@ MAP_TEMP_PLANE8_EFFECT = $B000
 ;;;
 
 MAP_HEAD__SIZE = $20
-MAP_HEAD__VERSION = 26
+MAP_HEAD__VERSION = 27
 MAP_CMAP__SIZE = 4
 MAP_PLANE__SIZE = 5
 MAP_WALL__SIZE = 5
@@ -822,7 +822,7 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#9
+	lda	#8
 	jmp	load_error
 :
 	;;;;
@@ -843,7 +843,7 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#10
+	lda	#9
 	jmp	load_error
 :
 	;;;;
@@ -864,7 +864,7 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#11
+	lda	#10
 	jmp	load_error
 :
 	; next
@@ -890,7 +890,7 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#12
+	lda	#11
 	jmp	load_error
 :
 	; advance WRAM pointer
@@ -949,6 +949,27 @@ ex_map_load:
 	inx
 	bne	@loop_sobj_fix
 
+	;;;;
+	; visibility table
+
+	; visibility bank
+	lda	#BANK_VISTAB
+	sta	REG_RAM_BANK
+
+	; load
+	stz	TAB_FILE_BUF_SIZE+0
+	lda	#$20
+	sta	TAB_FILE_BUF_SIZE+1
+	stz	TAB_FILE_DEST+0
+	lda	#$A0
+	sta	TAB_FILE_DEST+1
+	jsr	file_read_16_wram
+	bcc	:+
+
+	; error
+	lda	#12
+	jmp	load_error
+:
 	;;;;
 	; things
 

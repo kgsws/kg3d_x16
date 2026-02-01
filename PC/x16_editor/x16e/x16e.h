@@ -18,5 +18,6 @@ extern uint8_t x16e_logo_data[160 * 120];
 //
 
 uint32_t x16_init();
+uint32_t x16e_line_angle(float y, float x);
 void x16_export_map();
 

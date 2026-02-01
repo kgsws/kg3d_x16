@@ -160,6 +160,7 @@ typedef struct kge_line_stuff_s
 	kge_xy_vec_t normal;
 	kge_xy_vec_t dist;
 	float length;
+	uint32_t nangle;
 	uint16_t x16angle;
 } kge_line_stuff_t;
 
