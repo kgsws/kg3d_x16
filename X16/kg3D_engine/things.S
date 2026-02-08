@@ -1647,6 +1647,8 @@ thing_check_spawn:
 	; go trough things
 	lda	THMOVE_BLOCKEDBY
 	beq	:+
+	lda	THMOVE_NORADIUS
+	bne	:+
 	jsr	check_things
 	bpl	:+
 	jmp	@do_thing_block

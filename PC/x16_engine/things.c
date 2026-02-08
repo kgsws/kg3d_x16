@@ -23,6 +23,7 @@ typedef struct
 
 typedef struct
 {
+	uint8_t *vis_tab;
 	int16_t floorz, ceilingz;
 	int16_t tfz, tcz;
 	int16_t th_zh, th_sh;
@@ -41,6 +42,7 @@ typedef struct
 	uint8_t htype, hidx;
 	uint8_t hitang;
 	uint8_t midhit, midsec;
+	uint8_t vis_bit;
 } pos_check_t;
 
 //
@@ -71,7 +73,7 @@ uint8_t camera_damage;
 static portal_t portals[256];
 
 // position check stuff
-pos_check_t poscheck;
+static pos_check_t poscheck;
 
 //
 //
@@ -318,6 +320,37 @@ static void check_point(vertex_t *dd, uint32_t wdx)
 	poscheck.ptwall = wdx;
 }
 
+static int32_t t2t_dist(thing_t *ht, int32_t nx, int32_t ny, int32_t radius)
+{
+	int32_t dist;
+
+	dist = nx - ht->x / 256;
+	p2a_coord.x = dist;
+	if(dist >= 0)
+	{
+		if(dist - radius >= 0)
+			return 0x10000;
+	} else
+	{
+		if(dist + radius < 0)
+			return 0x10000;
+	}
+
+	dist = ny - ht->y / 256;
+	p2a_coord.y = dist;
+	if(dist >= 0)
+	{
+		if(dist - radius >= 0)
+			return 0x10000;
+	} else
+	{
+		if(dist + radius < 0)
+			return 0x10000;
+	}
+
+	return point_to_dist();
+}
+
 static uint32_t check_things(uint8_t tdx, uint8_t sdx, int32_t nx, int32_t ny)
 {
 	thing_t *th = thing_ptr(tdx);
@@ -348,31 +381,7 @@ static uint32_t check_things(uint8_t tdx, uint8_t sdx, int32_t nx, int32_t ny)
 		else
 			radius = ht->radius + poscheck.radius;
 
-		dist = nx - ht->x / 256;
-		p2a_coord.x = dist;
-		if(dist >= 0)
-		{
-			if(dist - radius >= 0)
-				continue;
-		} else
-		{
-			if(dist + radius < 0)
-				continue;
-		}
-
-		dist = ny - ht->y / 256;
-		p2a_coord.y = dist;
-		if(dist >= 0)
-		{
-			if(dist - radius >= 0)
-				continue;
-		} else
-		{
-			if(dist + radius < 0)
-				continue;
-		}
-
-		dist = point_to_dist();
+		dist = t2t_dist(ht, nx, ny, radius);
 		if(dist - radius >= 0)
 			continue;
 
@@ -818,34 +827,38 @@ radpass:
 	if(poscheck.htype)
 		return 0;
 
-	poscheck.portal_rd = 0;
-	while(poscheck.portal_rd < poscheck.portal_wr)
-	{
-		uint8_t odx;
-
-		sdx = portals[poscheck.portal_rd].sector;
-		poscheck.portal_rd++;
-
-		odx = check_things(tdx, sdx, nx, ny);
-		if(odx)
+	if(	poscheck.blockedby &&
+		!poscheck.noradius
+	){
+		poscheck.portal_rd = 0;
+		while(poscheck.portal_rd < poscheck.portal_wr)
 		{
-			thing_t *ht = thing_ptr(odx);
+			uint8_t odx;
 
-			if(	ht->eflags & THING_EFLAG_PUSHABLE &&
-				th->eflags & THING_EFLAG_CANPUSH
-			){
-				ht->mx += th->mx;
-				ht->my += th->my;
+			sdx = portals[poscheck.portal_rd].sector;
+			poscheck.portal_rd++;
+
+			odx = check_things(tdx, sdx, nx, ny);
+			if(odx)
+			{
+				thing_t *ht = thing_ptr(odx);
+
+				if(	ht->eflags & THING_EFLAG_PUSHABLE &&
+					th->eflags & THING_EFLAG_CANPUSH
+				){
+					ht->mx += th->mx;
+					ht->my += th->my;
+				}
+
+				p2a_coord.x = ht->x / 256 - th->x / 256;
+				p2a_coord.y = ht->y / 256 - th->y / 256;
+				poscheck.hitang = point_to_angle() >> 4;
+				poscheck.hitang += 0x40;
+				poscheck.htype = 0xFF;
+				poscheck.hidx = odx;
+
+				return 0;
 			}
-
-			p2a_coord.x = ht->x / 256 - th->x / 256;
-			p2a_coord.y = ht->y / 256 - th->y / 256;
-			poscheck.hitang = point_to_angle() >> 4;
-			poscheck.hitang += 0x40;
-			poscheck.htype = 0xFF;
-			poscheck.hidx = odx;
-
-			return 0;
 		}
 	}
 
@@ -966,6 +979,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	th->origin = origin;
 	th->target = 0;
 	th->counter = 0;
+	th->marked = 0;
 
 	th->mx = 0;
 	th->my = 0;
@@ -1114,6 +1128,161 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 			damage = 127;
 		thing_launch_ang(tdx, angle, damage);
 	}
+}
+
+static wall_t *explode_check_wall(sector_t *sec, wall_t *wall, wall_t *walf, int32_t x, int32_t y)
+{
+	vertex_t *vtx = &wall->vtx;
+	uint8_t sdx = sec - map_sectors;
+	int32_t dist;
+	vertex_t dd;
+
+	vtx = &wall->vtx;
+	dd.x = vtx->x - x;
+	dd.y = vtx->y - y;
+
+	dist = (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8;
+	if(	dist >= 0 &&
+		dist <= poscheck.radius
+	){
+		if(	wall->backsector &&
+			!(wall->blocking & poscheck.blockedby & 0x7F)
+		){
+			if(poscheck.vis_tab[sdx] & poscheck.vis_bit)
+				add_sector(wall->backsector, 0);
+		}
+	}
+
+	wall = map_walls[sec->wall.bank] + wall->next;
+	if(wall == walf)
+		return NULL;
+
+	return wall;
+}
+
+void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t blockedby)
+{
+	thing_t *th = thing_ptr(tdx);
+	int32_t x = th->x / 256;
+	int32_t y = th->y / 256;
+	sector_t *sec;
+	wall_t *wall;
+	wall_t *walf;
+	uint8_t sdx;
+
+	poscheck.radius = radius;
+	poscheck.blockedby = blockedby;
+
+	poscheck.portal_rd = 0;
+	poscheck.portal_wr = 1;
+
+	sdx = thingsec[tdx][0];
+	portals[0].sector = sdx;
+
+	poscheck.vis_tab = map_vis_tab + ((sdx & 0x1F) * 256);
+	poscheck.vis_bit = 1 << (sdx >> 5);
+
+	while(poscheck.portal_rd < poscheck.portal_wr)
+	{
+		sdx = portals[poscheck.portal_rd].sector;
+		sec = map_sectors + sdx;
+
+		poscheck.portal_rd++;
+
+		wall = map_walls[sec->wall.bank] + sec->wall.first;
+		walf = wall;
+
+		do
+		{
+			wall = explode_check_wall(sec, wall, walf, x, y);
+		} while(wall);
+	}
+
+	poscheck.th_zh = th->z / 256;
+	poscheck.th_zh += th->height / 2;
+
+	poscheck.th_sh = inv_div[poscheck.radius];
+
+	while(poscheck.portal_rd)
+	{
+		poscheck.portal_rd--;
+		sdx = portals[poscheck.portal_rd].sector;
+
+		for(uint32_t i = 0; i < 31; i++)
+		{
+			uint8_t odx = sectorth[sdx][i];
+			int32_t dist, zist;
+			thing_t *ht;
+
+			if(!odx)
+				continue;
+
+			if(odx == tdx)
+				// self-hit angle calculation is unhandled
+				continue;
+
+//			if(th->origin == odx)
+//				continue;
+
+			ht = thing_ptr(odx);
+
+			if(ht->marked)
+				continue;
+
+			ht->marked = 1;
+
+			if(!(poscheck.blockedby & ht->blocking))
+				continue;
+
+			zist = ht->z / 256 - poscheck.th_zh;
+
+			if(zist < 0)
+			{
+				zist += ht->height;
+				if(zist < 0)
+					zist = -zist;
+				else
+					zist = 0;
+			}
+
+			if(zist - poscheck.radius >= 0)
+				continue;
+
+			dist = t2t_dist(ht, x, y, ht->radius + poscheck.radius);
+			if(dist >= 0x10000)
+				continue;
+
+			poscheck.hitang = p2a_coord.a ^ 0x80;
+
+			dist -= ht->radius;
+			if(dist < 0)
+				dist = 0;
+
+			p2a_coord.x = dist;
+			p2a_coord.y = zist;
+			dist = point_to_dist();
+
+			dist = poscheck.radius - dist;
+			if(dist < 0)
+				continue;
+
+			dist *= poscheck.th_sh;
+
+			dist *= damage;
+			dist >>= 16;
+			dist++;
+
+			thing_damage(odx, th->origin, poscheck.hitang, dist);
+		}
+	}
+
+	thing_unmark_all();
+}
+
+void thing_unmark_all()
+{
+	for(uint32_t i = 0; i < NUM_TICKERS; i++)
+		thing_ptr(i)->marked = 0;
 }
 
 //

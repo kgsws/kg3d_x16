@@ -205,8 +205,8 @@ static const uint8_t *const blocking_name[NUM_BLOCKBITS] =
 	[BLOCKING_SOLID] = "solid",
 	[BLOCKING_PROJECTILE] = "projectile",
 	[BLOCKING_HITSCAN] = "hitscan",
-	[BLOCKING_EXTRA_A] = "extra A",
-	[BLOCKING_EXTRA_B] = "extra B",
+	[BLOCKING_EXPLOSION] = "explosion",
+	[BLOCKING_EXTRA] = "extra",
 	[BLOCKING_SPECIAL] = "special",
 };
 

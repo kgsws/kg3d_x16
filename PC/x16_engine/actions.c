@@ -219,6 +219,9 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				thing_apply_pos();
 		}
 		break;
+		case 11: // explosion
+			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2]);
+		break;
 	}
 
 	return 0;

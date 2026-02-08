@@ -211,7 +211,7 @@ static const export_type_t default_player_info =
 	.radius = 31,
 	.height = 144, // 0.5x for crouching / swimming
 	.blocking = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_ENEMY) | BLOCK_FLAG(BLOCKING_SOLID) | BLOCK_FLAG(BLOCKING_PROJECTILE) | BLOCK_FLAG(BLOCKING_HITSCAN),
-	.blockedby = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_SPECIAL),
+	.blockedby = BLOCK_FLAG(BLOCKING_PLAYER) | BLOCK_FLAG(BLOCKING_EXPLOSION) | BLOCK_FLAG(BLOCKING_SPECIAL),
 	.imass = 64,
 	.gravity = 128,
 	.speed = 13, // 0.5x for crouching / swimming
@@ -488,6 +488,32 @@ const state_action_def_t state_action_def[] =
 			.name = "blocked by",
 			.type = ARGT_BLOCK_FLAGS,
 			.def = 0,
+			.lim = {0, 255}
+		}
+	},
+	//
+	{
+		.name = "explosion",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "radius",
+			.type = ARGT_U8,
+			.def = 128,
+			.lim = {1, 255}
+		},
+		.arg[1] =
+		{
+			.name = "damage",
+			.type = ARGT_U8,
+			.def = 128,
+			.lim = {1, 255}
+		},
+		.arg[2] =
+		{
+			.name = "blocked by",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 1 << BLOCKING_EXPLOSION,
 			.lim = {0, 255}
 		}
 	},

@@ -124,6 +124,8 @@ typedef struct
 	uint8_t sprite;
 	uint8_t ticks;
 	uint16_t next_state;
+	//
+	uint8_t marked;
 } thing_t;
 
 typedef union
@@ -207,6 +209,9 @@ void thing_launch(uint8_t tdx, uint8_t speed);
 void thing_launch_ang(uint8_t tdx, uint8_t ang, uint8_t speed);
 
 void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage);
+void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t blockedby);
+
+void thing_unmark_all();
 
 uint32_t thing_check_pos(uint8_t tdx, int16_t nx, int16_t ny, int16_t nz, uint8_t sdx);
 void thing_apply_pos();

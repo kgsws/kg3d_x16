@@ -427,7 +427,7 @@ static uint8_t portal_top, portal_bot;
 
 // map buffer
 static uint8_t map_block_data[8192];
-static uint8_t map_vis_tab[8192];
+uint8_t map_vis_tab[8192];
 map_head_t map_head;
 sector_t map_sectors[256];
 wall_t map_walls[WALL_BANK_COUNT][256];

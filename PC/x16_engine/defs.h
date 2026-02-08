@@ -176,6 +176,8 @@ extern vertex_t display_point;
 extern vertex_t display_line[2];
 extern vertex_t display_wall[2];
 
+extern uint8_t map_vis_tab[8192];
+
 extern const uint32_t wall_size_tab[];
 
 //
