@@ -1130,34 +1130,17 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 	}
 }
 
-static wall_t *explode_check_wall(sector_t *sec, wall_t *wall, wall_t *walf, int32_t x, int32_t y)
+static int32_t explode_check_wall(sector_t *sec, wall_t *wall, wall_t *walf, int32_t x, int32_t y)
 {
 	vertex_t *vtx = &wall->vtx;
 	uint8_t sdx = sec - map_sectors;
-	int32_t dist;
 	vertex_t dd;
 
 	vtx = &wall->vtx;
 	dd.x = vtx->x - x;
 	dd.y = vtx->y - y;
 
-	dist = (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8;
-	if(	dist >= 0 &&
-		dist <= poscheck.radius
-	){
-		if(	wall->backsector &&
-			!(wall->blocking & poscheck.blockedby & 0x7F)
-		){
-			if(poscheck.vis_tab[sdx] & poscheck.vis_bit)
-				add_sector(wall->backsector, 0);
-		}
-	}
-
-	wall = map_walls[sec->wall.bank] + wall->next;
-	if(wall == walf)
-		return NULL;
-
-	return wall;
+	return (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8;
 }
 
 void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t blockedby)
@@ -1194,8 +1177,22 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 
 		do
 		{
-			wall = explode_check_wall(sec, wall, walf, x, y);
-		} while(wall);
+			int32_t dist;
+
+			dist = explode_check_wall(sec, wall, walf, x, y);
+			if(	dist >= 0 &&
+				dist < poscheck.radius
+			){
+				if(	wall->backsector &&
+					!(wall->blocking & poscheck.blockedby & 0x7F)
+				){
+					if(poscheck.vis_tab[sdx] & poscheck.vis_bit)
+						add_sector_raw(wall->backsector, 0);
+				}
+			}
+
+			wall = map_walls[sec->wall.bank] + wall->next;
+		} while(wall != walf);
 	}
 
 	poscheck.th_zh = th->z / 256;

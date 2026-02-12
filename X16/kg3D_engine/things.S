@@ -21,6 +21,7 @@
 .export thing_check_heights
 .export thing_apply_pos
 .export thing_damage
+.export thing_explode
 .export thing_actdone
 .export thing_actnext
 
@@ -684,6 +685,248 @@ thing_damage:
 	rts
 
 ;;;
+; explosion from thing
+;;;
+; Y - damage origin thing
+; ARG_EXPLODE_*
+
+thing_explode:
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; thing sector
+	lda	$B000,y
+	tax
+
+	; poscheck.vis_tab = map_vis_tab + ((sdx & 0x1F) * 256)
+	and	#$1F
+	ora	#$A0
+	sta	TMP_PTR_H
+
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; portals[0].sector = sdx
+	stx	MEM_PORTALS_SECTOR
+
+	; poscheck.vis_bit = 1 << (sdx >> 5)
+	lda	TAB_BANK,x
+	tax
+	lda	TAB_POW2,x
+	sta	EXPLODE_VIS_BIT
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; save XYZ
+	lda	THING_STRUCT_X_L,y
+	sta	ARG_THING_X_L
+	lda	THING_STRUCT_X_H,y
+	sta	ARG_THING_X_H
+	lda	THING_STRUCT_Y_L,y
+	sta	ARG_THING_Y_L
+	lda	THING_STRUCT_Y_H,y
+	sta	ARG_THING_Y_H
+	lda	THING_STRUCT_Z_L,y
+	sta	ARG_THING_Z_L
+	lda	THING_STRUCT_Z_H,y
+	sta	ARG_THING_Z_H
+
+	; poscheck.blockedby = blockedby
+	; poscheck.radius = radius
+	; these are forced overlap
+
+	; poscheck.portal_wr = 1
+	lda	#1
+	sta	THMOVE_PORTAL_WR
+
+	; poscheck.portal_rd = 0
+	stz	THMOVE_PORTAL_RD
+
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; while(poscheck.portal_rd < poscheck.portal_wr)
+	ldy	#0
+@loop_portal:
+	; sdx = portals[poscheck.portal_rd].sector
+	ldx	MEM_PORTALS_SECTOR,y
+	stx	EXPLODE_SDX
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; walls
+	lda	SECTOR_STRUCT_WALL_BANK,x
+	ora	#BANK_MAPWALLS
+	sta	WALL_BANK
+	lda	SECTOR_STRUCT_WALL_FIRST,x
+	sta	WALL_FIRST
+
+	; wall loop
+@loop_wall:
+	sta	WALL_NOW
+	tay
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; explode_check_wall
+	jsr	@check_wall
+
+	; dist >= 0 && dist <= poscheck.radius
+	bne	@next_wall
+	lda	MATH_VAR_L
+	cmp	THMOVE_RADIUS
+	bcs	@next_wall
+
+	; wall->backsector
+	ldx	WALL_STRUCT_BACKSECTOR,y
+	beq	@next_wall
+
+	; !(wall->blocking & poscheck.blockedby & 0x7F)
+	lda	WALL_STRUCT_BLOCKING,y
+	and	THMOVE_BLOCKEDBY
+	and	#$7F
+	bne	@next_wall
+
+	; vistab bank
+	lda	#BANK_VISTAB
+	sta	REG_RAM_BANK
+
+	; poscheck.vis_tab[sdx] & poscheck.vis_bit
+	lda	(TMP_PTR_L)
+	and	EXPLODE_VIS_BIT
+	beq	:+
+
+	; add this sector
+	jsr	add_sector_raw
+
+	; wall
+	ldy	WALL_NOW
+:
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+@next_wall:
+	; next wall
+	lda	WALL_STRUCT_NEXT,y
+	cmp	WALL_FIRST
+	bne	@loop_wall
+
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; next sector
+	inc	THMOVE_PORTAL_RD
+	ldy	THMOVE_PORTAL_RD
+	cpy	THMOVE_PORTAL_WR
+	bcc	@loop_portal
+
+	; poscheck.th_zh = th->z / 256;
+	; poscheck.th_zh += th->height / 2;
+
+	; poscheck.th_sh = inv_div[poscheck.radius];
+
+	; while(poscheck.portal_rd)
+@loop_sector:
+	ldy	THMOVE_PORTAL_RD
+	dey
+
+	; portal bank
+	lda	#BANK_PORTALS
+	sta	REG_RAM_BANK
+
+	; sdx = portals[poscheck.portal_rd].sector
+	ldx	MEM_PORTALS_SECTOR,y
+
+	; sector things
+	lda	#$A0
+	sta	THMOVE_PTR_H
+	stx	THMOVE_PTR_L
+@loop_thing:
+	; sector things bank
+	lda	#BANK_SECTOR_THINGS
+	sta	REG_RAM_BANK
+
+	; check this slot
+	lda	(THMOVE_PTR_L)
+	beq	@next_slot
+
+	; TEST
+	tay
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+	lda	#$40
+	sta	THING_STRUCT_MZ_L,y
+
+@next_slot:
+	; next
+	inc	THMOVE_PTR_H
+	lda	THMOVE_PTR_H
+	cmp	#$BF
+	bne	@loop_thing
+
+	; next portal
+	dec	THMOVE_PORTAL_RD
+	bne	@loop_sector
+
+	rts
+
+@check_wall:
+	;; (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; V0 diff (X)
+	jsr	v0_diff_x
+
+	; wall->dist.y
+	lda	WALL_STRUCT_DIST_Y_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_Y_H,y
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; V0 diff (-Y)
+	sec
+	lda	ARG_THING_Y_L
+	sbc	WALL_STRUCT_VTX_Y_L,y
+	sta	VERA_FX_CACHE_L
+	lda	ARG_THING_Y_H
+	sbc	WALL_STRUCT_VTX_Y_H,y
+	sta	VERA_FX_CACHE_M
+
+	; wall->dist.x
+	lda	WALL_STRUCT_DIST_X_L,y
+	sta	VERA_FX_CACHE_H
+	lda	WALL_STRUCT_DIST_X_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	MATH_VAR_L
+	lda	VERA_DATA0
+	sta	MATH_VAR_H
+
+	rts
+
+;;;
 ; momentnum with limit
 ;;;
 
@@ -1065,10 +1308,10 @@ thing_check_spawn:
 	; portals[0].midhit = 0
 	stz	MEM_PORTALS_MIDHIT
 
-	; portal_rd = 0
+	; poscheck.portal_rd = 0
 	stz	THMOVE_PORTAL_RD
 
-	; portal_wr = 1
+	; poscheck.portal_wr = 1
 	lda	#1
 	sta	THMOVE_PORTAL_WR
 

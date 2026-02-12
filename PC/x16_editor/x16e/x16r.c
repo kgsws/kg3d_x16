@@ -40,8 +40,9 @@ typedef union
 	{
 		uint8_t idiv_h[256];	// @ 0x1100
 		uint8_t ydepth_h[256];	// @ 0x1200
-		uint8_t x2a_l[256];	// @ 0x1300
-		uint8_t x2a_h[256];	// @ 0x1400
+		uint8_t x2a_l[256];	// @ 0x1300 // only 160B
+		uint8_t x2a_h[256-8];	// @ 0x1400 // only 160B
+		uint8_t pow_tab[8];	// @ 0x14F8
 		uint8_t swap[256];	// @ 0x1500
 		uint8_t bank[256];	// @ 0x1600
 		uint8_t pvxjmp_l[128];	// @ 0x1700
@@ -2283,6 +2284,10 @@ void x16r_generate()
 		tables_1100.x2a_l[i] = val;
 		tables_1100.x2a_h[i] = val >> 8;
 	}
+
+	// pow2 table
+	for(uint32_t i = 0; i < 8; i++)
+		tables_1100.pow_tab[i] = 1 << i;
 
 	// nibble swap
 	for(uint32_t i = 0; i < 256; i++)

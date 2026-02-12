@@ -752,6 +752,27 @@ act_die_radius:
 	jmp	thing_actdone
 
 ;;;
+; explosion
+;;;
+
+act_explode:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; arguments
+	lda	THSTATE_STRUCT_ARG0,x
+	sta	ARG_EXPLODE_RADIUS
+	lda	THSTATE_STRUCT_ARG1,x
+	sta	ARG_EXPLODE_DAMAGE
+	lda	THSTATE_STRUCT_ARG2,x
+	sta	ARG_EXPLODE_BLOCKEDBY
+
+	; boom
+	jsr	thing_explode
+
+	; done
+	jmp	thing_actdone
+
+;;;
 ; state action table
 ;;;
 
@@ -766,6 +787,7 @@ action_table:
 	.word	act_tick_add
 	.word	act_die_simple
 	.word	act_die_radius
+	.word	act_explode
 
 ;;;
 ; extra tables

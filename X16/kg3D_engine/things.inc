@@ -8,6 +8,7 @@
 .import thing_check_heights
 .import thing_apply_pos
 .import thing_damage
+.import thing_explode
 .import thing_actdone
 .import thing_actnext
 
