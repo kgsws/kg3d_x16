@@ -493,20 +493,95 @@ const state_action_def_t state_action_def[] =
 	},
 	//
 	{
-		.name = "explosion",
+		.name = "explode: origin",
 		.flags = AFLG_THING,
 		.arg[0] =
 		{
 			.name = "radius",
 			.type = ARGT_U8,
-			.def = 128,
+			.def = 192,
 			.lim = {1, 255}
 		},
 		.arg[1] =
 		{
 			.name = "damage",
 			.type = ARGT_U8,
-			.def = 128,
+			.def = 64,
+			.lim = {1, 255}
+		},
+		.arg[2] =
+		{
+			.name = "blocked by",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 1 << BLOCKING_EXPLOSION,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "explode: target",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "radius",
+			.type = ARGT_U8,
+			.def = 192,
+			.lim = {1, 255}
+		},
+		.arg[1] =
+		{
+			.name = "damage",
+			.type = ARGT_U8,
+			.def = 64,
+			.lim = {1, 255}
+		},
+		.arg[2] =
+		{
+			.name = "blocked by",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 1 << BLOCKING_EXPLOSION,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "explode: damager",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "radius",
+			.type = ARGT_U8,
+			.def = 192,
+			.lim = {1, 255}
+		},
+		.arg[1] =
+		{
+			.name = "damage",
+			.type = ARGT_U8,
+			.def = 64,
+			.lim = {1, 255}
+		},
+		.arg[2] =
+		{
+			.name = "blocked by",
+			.type = ARGT_BLOCK_FLAGS,
+			.def = 1 << BLOCKING_EXPLOSION,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "explode: self",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "radius",
+			.type = ARGT_U8,
+			.def = 192,
+			.lim = {1, 255}
+		},
+		.arg[1] =
+		{
+			.name = "damage",
+			.type = ARGT_U8,
+			.def = 64,
 			.lim = {1, 255}
 		},
 		.arg[2] =

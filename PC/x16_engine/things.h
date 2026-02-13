@@ -120,6 +120,7 @@ typedef struct
 	//
 	uint8_t origin;
 	uint8_t target;
+	uint8_t damager;
 	//
 	uint8_t sprite;
 	uint8_t ticks;
@@ -209,7 +210,7 @@ void thing_launch(uint8_t tdx, uint8_t speed);
 void thing_launch_ang(uint8_t tdx, uint8_t ang, uint8_t speed);
 
 void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage);
-void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t blockedby);
+void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t blockedby, uint32_t src);
 
 void thing_unmark_all();
 

@@ -7,10 +7,10 @@
 #include "things.h"
 
 ticker_dummy_t ticker[NUM_TICKERS];
-uint8_t tick_idx;
 
-static uint8_t top;
-static uint8_t cur;
+uint32_t tick_idx;
+uint32_t tick_top;
+uint32_t tick_cur;
 
 //
 // API
@@ -18,10 +18,13 @@ static uint8_t cur;
 void tick_clear()
 {
 	for(uint32_t i = 1; i < NUM_TICKERS; i++)
+	{
 		ticker[i].base.func = TFUNC_FREE_SLOT;
+		ticker[i].base.type = 0xFF;
+	}
 
-	top = 0;
-	cur = 0;
+	tick_top = 0;
+	tick_cur = 0;
 
 	thing_clear();
 }
@@ -39,7 +42,7 @@ void tick_run()
 
 	// run tickers
 
-	tick_idx = top;
+	tick_idx = tick_top;
 	while(tick_idx)
 	{
 		uint32_t next = ticker[tick_idx].base.next;
@@ -76,13 +79,13 @@ uint32_t tick_add()
 		return 0;
 
 	ticker[i].base.func = TICKER_FUNC_DUMMY;
-	ticker[i].base.prev = cur;
+	ticker[i].base.prev = tick_cur;
 	ticker[i].base.next = 0;
-	ticker[cur].base.next = i; // writing to ZERO is ignored
-	cur = i;
+	ticker[tick_cur].base.next = i; // writing to ZERO is ignored
+	tick_cur = i;
 
-	if(!top)
-		top = i;
+	if(!tick_top)
+		tick_top = i;
 
 	return i;
 }
@@ -93,14 +96,15 @@ void tick_del(uint32_t idx)
 	uint8_t prev = ticker[idx].base.prev;
 
 	ticker[idx].base.func = TFUNC_FREE_SLOT;
+	ticker[idx].base.type = 0xFF;
 
 	// writing to ZERO is ignored
 	ticker[next].base.prev = prev;
 	ticker[prev].base.next = next;
 
-	if(idx == top)
-		top = next;
+	if(idx == tick_top)
+		tick_top = next;
 
-	if(idx == cur)
-		cur = prev;
+	if(idx == tick_cur)
+		tick_cur = prev;
 }

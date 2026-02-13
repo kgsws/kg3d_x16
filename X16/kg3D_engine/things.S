@@ -22,6 +22,7 @@
 .export thing_apply_pos
 .export thing_damage
 .export thing_explode
+.export thing_unmark_all
 .export thing_actdone
 .export thing_actnext
 
@@ -490,6 +491,10 @@ thing_damage:
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
+	; th->damager = odx
+	txa
+	sta	THING_STRUCT_TH_DAMAGER,y
+
 	; check health
 	lda	THING_STRUCT_HEALTH_L,y
 	ora	THING_STRUCT_HEALTH_H,y
@@ -691,6 +696,13 @@ thing_damage:
 ; ARG_EXPLODE_*
 
 thing_explode:
+	sty	RET_THING_IDX
+
+	; check source
+	lda	ARG_EXPLODE_SOURCE
+	bne	:+
+	sty	ARG_EXPLODE_SOURCE
+:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
@@ -831,10 +843,36 @@ thing_explode:
 	cpy	THMOVE_PORTAL_WR
 	bcc	@loop_portal
 
-	; poscheck.th_zh = th->z / 256;
-	; poscheck.th_zh += th->height / 2;
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
 
-	; poscheck.th_sh = inv_div[poscheck.radius];
+	; the thing
+	ldx	RET_THING_IDX
+
+	; poscheck.th_zh = th->z / 256 + th->height / 2
+	lda	THING_STRUCT_HEIGHT,x
+	lsr
+	clc
+	adc	THING_STRUCT_Z_L,x
+	sta	EXPLODE_TH_ZH_L
+	lda	THING_STRUCT_Z_H,x
+	adc	#0
+	sta	EXPLODE_TH_ZH_H
+
+	; inverse division bank
+	lda	#BANK_IDIV_L
+	sta	REG_RAM_BANK
+
+	; poscheck.th_sh = inv_div[poscheck.radius]
+	lda	THMOVE_RADIUS
+	sta	MATH_VAR_L
+	stz	MATH_VAR_H
+	jsr	math_idiv
+	lda	MATH_VAR_L
+	sta	EXPLODE_TH_SH_L
+	lda	MATH_VAR_H
+	sta	EXPLODE_TH_SH_H
 
 	; while(poscheck.portal_rd)
 @loop_sector:
@@ -860,13 +898,28 @@ thing_explode:
 	; check this slot
 	lda	(THMOVE_PTR_L)
 	beq	@next_slot
+	tax
 
-	; TEST
-	tay
+	; odx == tdx
+	cpx	RET_THING_IDX
+	beq	@next_slot
+
+	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
-	lda	#$40
-	sta	THING_STRUCT_MZ_L,y
+
+	; ht->marked
+	lda	THING_STRUCT_MARKED,x
+	bne	@next_slot
+
+	; ht->marked = <anything non-zero>
+	ina
+	sta	THING_STRUCT_MARKED,x
+
+	; !(poscheck.blockedby & ht->blocking)
+	lda	THING_STRUCT_BLOCKING,x
+	and	ARG_EXPLODE_BLOCKEDBY
+	bne	@check_thing
 
 @next_slot:
 	; next
@@ -879,7 +932,8 @@ thing_explode:
 	dec	THMOVE_PORTAL_RD
 	bne	@loop_sector
 
-	rts
+	; cleanup and done
+	jmp	thing_unmark_all
 
 @check_wall:
 	;; (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8
@@ -923,6 +977,209 @@ thing_explode:
 	sta	MATH_VAR_L
 	lda	VERA_DATA0
 	sta	MATH_VAR_H
+
+	rts
+
+@check_thing:
+	; zist = ht->z / 256 - poscheck.th_zh
+	sec
+	lda	THING_STRUCT_Z_L,x
+	sbc	EXPLODE_TH_ZH_L
+	sta	EXPLODE_ZIST_L
+	lda	THING_STRUCT_Z_H,x
+	sbc	EXPLODE_TH_ZH_H
+	sta	EXPLODE_ZIST_H
+
+	; zist < 0
+	bpl	@skip_zist
+
+	; zist += ht->height
+	clc
+	lda	EXPLODE_ZIST_L
+	adc	THING_STRUCT_HEIGHT,x
+	sta	EXPLODE_ZIST_L
+	lda	EXPLODE_ZIST_H
+	adc	#0
+	sta	EXPLODE_ZIST_H
+
+	; zist < 0
+	bmi	:+
+
+	; zist = 0
+	stz	EXPLODE_ZIST_L
+	stz	EXPLODE_ZIST_H
+
+	bra	@skip_zist
+:
+	; zist = -zist
+	sec
+	lda	#0
+	sbc	EXPLODE_ZIST_L
+	sta	EXPLODE_ZIST_L
+	lda	#0
+	sbc	EXPLODE_ZIST_H
+	sta	EXPLODE_ZIST_H
+
+@skip_zist:
+	; zist - poscheck.radius >= 0
+	sec
+	lda	EXPLODE_ZIST_L
+	sbc	THMOVE_RADIUS
+	lda	EXPLODE_ZIST_H
+	sbc	#0
+	bmi	:+
+
+	; skip
+@th_local_skip:
+	jmp	@next_slot
+:
+	; the thing
+	stx	MATH_COUNTER
+
+	; dist = t2t_dist(ht, x, y, ht->radius + poscheck.radius)
+	clc
+	lda	THING_STRUCT_RADIUS,x
+	adc	THMOVE_RADIUS
+	sta	THMOVE_RADIUS_L
+	lda	#0
+	rol
+	sta	THMOVE_RADIUS_H
+	jsr	t2t_dist
+	bpl	@th_local_skip
+
+	; poscheck.hitang = p2a_coord.a ^ 0x80
+	lda	MATH_VAR_U
+	eor	#$80
+	sta	EXPLODE_ANGLE
+
+	; the thing
+	ldx	MATH_COUNTER
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; dist -= ht->radius
+	sec
+	lda	MATH_VAR_L
+	sbc	THING_STRUCT_RADIUS,x
+	sta	MATH_P2A_X_L
+	lda	MATH_VAR_H
+	sbc	#0
+	sta	MATH_P2A_X_H
+
+	; dist < 0
+	bpl	:+
+
+	; dist = 0
+	stz	MATH_P2A_X_L
+	stz	MATH_P2A_X_H
+:
+	; p2a_coord.x = dist
+	; already set
+
+	; p2a_coord.y = zist
+	lda	EXPLODE_ZIST_L
+	sta	MATH_P2A_Y_L
+	lda	EXPLODE_ZIST_H
+	sta	MATH_P2A_Y_H
+
+	; dist = point_to_dist()
+	jsr	math_p2d
+
+	; dist = poscheck.radius - dist
+	sec
+	lda	THMOVE_RADIUS
+	sbc	MATH_VAR_L
+	sta	VERA_FX_CACHE_L
+	lda	#0
+	sbc	MATH_VAR_H
+	sta	VERA_FX_CACHE_M
+
+	; dist < 0
+	bmi	@th_local_skip
+
+	;; dist *= poscheck.th_sh
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; poscheck.th_sh
+	lda	EXPLODE_TH_SH_L
+	sta	VERA_FX_CACHE_H
+	lda	EXPLODE_TH_SH_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result
+	stz	VERA_ADDRx_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_L
+	lda	VERA_DATA0
+	sta	VERA_FX_CACHE_M
+
+	;; dist *= damage * 2
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; damage
+	lda	ARG_EXPLODE_DAMAGE
+	sta	VERA_FX_CACHE_H
+	stz	VERA_FX_CACHE_U
+
+	; accumulate (double the value)
+	lda	VERA_FX_ACCUM
+	lda	VERA_FX_ACCUM
+
+	; add "one"
+	lda	#1
+	sta	VERA_FX_CACHE_M
+	sta	VERA_FX_CACHE_U
+	stz	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_H
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 16)
+	lda	VERA_DATA0
+	lda	VERA_DATA0
+	sta	ARG_THING_DAMAGE_L
+	lda	VERA_DATA0
+	sta	ARG_THING_DAMAGE_H
+
+	; do damage
+	ldx	ARG_EXPLODE_SOURCE
+	ldy	MATH_COUNTER
+	lda	EXPLODE_ANGLE
+	jsr	thing_damage
+
+	jmp	@next_slot
+
+;;;
+; clear thing marks
+;;;
+
+thing_unmark_all:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; loop
+	ldx	#0
+@loop:
+	stz	THING_STRUCT_MARKED,x
+	inx
+	bpl	@loop
 
 	rts
 
@@ -2798,6 +3055,49 @@ check_floor_plane:
 	rts
 
 ;;;
+; thing to thing distance
+;;;
+
+t2t_dist:
+	; X diff
+	sec
+	lda	ARG_THING_X_L
+	sbc	THING_STRUCT_X_L,x
+	sta	THMOVE_DIFF_L
+	sta	MATH_P2A_X_L
+	lda	ARG_THING_X_H
+	sbc	THING_STRUCT_X_H,x
+	sta	THMOVE_DIFF_H
+	sta	MATH_P2A_X_H
+
+	; X check
+	jsr	check_radist
+	bmi	:+
+	rts
+:
+	; Y diff
+	sec
+	lda	ARG_THING_Y_L
+	sbc	THING_STRUCT_Y_L,x
+	sta	THMOVE_DIFF_L
+	sta	MATH_P2A_Y_L
+	lda	ARG_THING_Y_H
+	sbc	THING_STRUCT_Y_H,x
+	sta	THMOVE_DIFF_H
+	sta	MATH_P2A_Y_H
+
+	; Y check
+	jsr	check_radist
+	bmi	:+
+	rts
+:
+	; dist = point_to_dist()
+	jsr	math_p2d
+
+	lda	#$FF
+	rts
+
+;;;
 ; check things in a sector
 ;;;
 ; Y - the sector
@@ -2871,41 +3171,12 @@ check_things:
 	stz	THMOVE_RADIUS_H
 	rol	THMOVE_RADIUS_H
 
-	; X diff
-	sec
-	lda	ARG_THING_X_L
-	sbc	THING_STRUCT_X_L,x
-	sta	THMOVE_DIFF_L
-	sta	MATH_P2A_X_L
-	lda	ARG_THING_X_H
-	sbc	THING_STRUCT_X_H,x
-	sta	THMOVE_DIFF_H
-	sta	MATH_P2A_X_H
-
-	; X check
-	jsr	check_radist
-	bpl	@next_slot_ex
-
-	; Y diff
-	sec
-	lda	ARG_THING_Y_L
-	sbc	THING_STRUCT_Y_L,x
-	sta	THMOVE_DIFF_L
-	sta	MATH_P2A_Y_L
-	lda	ARG_THING_Y_H
-	sbc	THING_STRUCT_Y_H,x
-	sta	THMOVE_DIFF_H
-	sta	MATH_P2A_Y_H
-
-	; Y check
-	jsr	check_radist
-	bpl	@next_slot_ex
-
 	; save
 	stx	THMOVE_HIDX
 
-	; dist = point_to_dist()
-	jsr	math_p2d
+	; dist
+	jsr	t2t_dist
+	bpl	@next_slot_ex
 
 	; if(dist - radius >= 0)
 	sec
@@ -5047,9 +5318,7 @@ thing_actnext:
 	bne	:+
 
 	; delete
-	stz	THMOVE_SECTOR
-	jsr	thing_apply_pos
-	jmp	tick_del
+	jmp	delete_thing
 :
 	; thing states bank
 	ora	#BANK_THING_STATES
@@ -5133,6 +5402,44 @@ thing_actdone:
 	sta	THING_STRUCT_NXTFRM_H,y
 
 	rts
+
+delete_thing:
+	; remove ticker
+	jsr	tick_del
+
+	; unlink pointers
+	lda	G_TICKER_TOP
+@loop_del:
+	tax
+	lda	TICKER_STRUCT_TYPE,x
+	bmi	@next
+
+	; origin
+	lda	THING_STRUCT_TH_ORIGIN,x
+	cmp	G_TICKER_IDX
+	bne	:+
+	stz	THING_STRUCT_TH_ORIGIN,x
+:
+	; target
+	lda	THING_STRUCT_TH_TARGET,x
+	cmp	G_TICKER_IDX
+	bne	:+
+	stz	THING_STRUCT_TH_TARGET,x
+:
+	; damager
+	lda	THING_STRUCT_TH_DAMAGER,x
+	cmp	G_TICKER_IDX
+	bne	:+
+	stz	THING_STRUCT_TH_DAMAGER,x
+:
+	; next
+@next:
+	lda	TICKER_STRUCT_NEXT,x
+	bne	@loop_del
+
+	; remove from sectors
+	stz	THMOVE_SECTOR
+	jmp	thing_apply_pos
 
 ;;;
 ; thing ticker (player)

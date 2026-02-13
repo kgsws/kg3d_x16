@@ -30,7 +30,10 @@ typedef struct
 //
 
 extern ticker_dummy_t ticker[NUM_TICKERS];
-extern uint8_t tick_idx;
+
+extern uint32_t tick_idx;
+extern uint32_t tick_top;
+extern uint32_t tick_cur;
 
 //
 

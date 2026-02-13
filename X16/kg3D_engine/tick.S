@@ -32,7 +32,7 @@ tick_clear:
 	ldx	#1
 @loop:
 	sta	TICKER_STRUCT_FUNC,x
-	stz	TICKER_STRUCT_NEXT,x
+	sta	TICKER_STRUCT_TYPE,x
 	inx
 	bpl	@loop
 
@@ -164,6 +164,9 @@ tick_del:
 	; func = TFUNC_FREE_SLOT
 	lda	#$FF
 	sta	TICKER_STRUCT_FUNC,y
+
+	; type = 0xFF
+	sta	TICKER_STRUCT_TYPE,y
 
 	; prev->next = next
 	ldx	TICKER_STRUCT_PREV,y

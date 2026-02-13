@@ -15,11 +15,11 @@
 ;;;
 ; NOTES: action callback
 ;;;
-; X Y and BANK can be trashed
+; X and Y can be trashed
 ; Y - the thing; 0 = player weapon; (also stored in THTICK_ACTION_TDX)
 ; THTICK_ACTION_ST_IDX : THTICK_ACTION_ST_BNK - current state (also current bank)
-; jump to 'thing_actdone' to continue
-; jump to 'thing_actnext'; TODO: more info
+; jump to 'thing_actdone' to continue; BANK can be trashed
+; jump to 'thing_actnext'; X is LO, A is HI of new animation, BANK_THING_INFO must be set
 
 ;;;
 ; CODE
@@ -237,6 +237,31 @@ normal_death:
 	sta	THING_STRUCT_GRAVITY,y
 
 	rts
+
+;;;
+; explosion action
+;;;
+
+explosion_action:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; thing states bank
+	lda	THTICK_ACTION_ST_BNK
+	sta	REG_RAM_BANK
+
+	; arguments
+	lda	THSTATE_STRUCT_ARG0,x
+	sta	ARG_EXPLODE_RADIUS
+	lda	THSTATE_STRUCT_ARG1,x
+	sta	ARG_EXPLODE_DAMAGE
+	lda	THSTATE_STRUCT_ARG2,x
+	sta	ARG_EXPLODE_BLOCKEDBY
+
+	; boom
+	jsr	thing_explode
+
+	; done
+	jmp	thing_actdone
 
 ;;;
 ; weapon: ready
@@ -755,22 +780,45 @@ act_die_radius:
 ; explosion
 ;;;
 
-act_explode:
-	ldx	THTICK_ACTION_ST_IDX
+act_explode_origin:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
 
-	; arguments
-	lda	THSTATE_STRUCT_ARG0,x
-	sta	ARG_EXPLODE_RADIUS
-	lda	THSTATE_STRUCT_ARG1,x
-	sta	ARG_EXPLODE_DAMAGE
-	lda	THSTATE_STRUCT_ARG2,x
-	sta	ARG_EXPLODE_BLOCKEDBY
+	; origin
+	lda	THING_STRUCT_TH_ORIGIN,y
+	sta	ARG_EXPLODE_SOURCE
 
-	; boom
-	jsr	thing_explode
+	; action
+	jmp	explosion_action
 
-	; done
-	jmp	thing_actdone
+act_explode_target:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; target
+	lda	THING_STRUCT_TH_TARGET,y
+	sta	ARG_EXPLODE_SOURCE
+
+	; action
+	jmp	explosion_action
+
+act_explode_damager:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; target
+	lda	THING_STRUCT_TH_DAMAGER,y
+	sta	ARG_EXPLODE_SOURCE
+
+	; action
+	jmp	explosion_action
+
+act_explode_self:
+	sty	ARG_EXPLODE_SOURCE
+	jmp	explosion_action
 
 ;;;
 ; state action table
@@ -787,7 +835,10 @@ action_table:
 	.word	act_tick_add
 	.word	act_die_simple
 	.word	act_die_radius
-	.word	act_explode
+	.word	act_explode_origin
+	.word	act_explode_target
+	.word	act_explode_damager
+	.word	act_explode_self
 
 ;;;
 ; extra tables

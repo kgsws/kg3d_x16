@@ -978,6 +978,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	th->iflags = 0;
 	th->origin = origin;
 	th->target = 0;
+	th->damager = 0;
 	th->counter = 0;
 	th->marked = 0;
 
@@ -1044,6 +1045,7 @@ void thing_spawn_player()
 void thing_remove(uint8_t tdx)
 {
 	thing_t *th = thing_ptr(tdx);
+
 	th->health = 0;
 	th->blocking = 0;
 	th->next_state = 0;
@@ -1085,6 +1087,8 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 	thing_t *th = thing_ptr(tdx);
 	thing_type_t *info = thing_type + th->ticker.type;
 	int32_t hp = 1;
+
+	th->damager = odx;
 
 	if(th->health)
 	{
@@ -1143,7 +1147,7 @@ static int32_t explode_check_wall(sector_t *sec, wall_t *wall, wall_t *walf, int
 	return (dd.x * wall->dist.y - dd.y * wall->dist.x) >> 8;
 }
 
-void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t blockedby)
+void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t blockedby, uint32_t src)
 {
 	thing_t *th = thing_ptr(tdx);
 	int32_t x = th->x / 256;
@@ -1152,6 +1156,9 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 	wall_t *wall;
 	wall_t *walf;
 	uint8_t sdx;
+
+	if(!src)
+		src = tdx;
 
 	poscheck.radius = radius;
 	poscheck.blockedby = blockedby;
@@ -1187,7 +1194,7 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 					!(wall->blocking & poscheck.blockedby & 0x7F)
 				){
 					if(poscheck.vis_tab[sdx] & poscheck.vis_bit)
-						add_sector_raw(wall->backsector, 0);
+						add_sector_raw(wall->backsector, 0, 0);
 				}
 			}
 
@@ -1195,9 +1202,7 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 		} while(wall != walf);
 	}
 
-	poscheck.th_zh = th->z / 256;
-	poscheck.th_zh += th->height / 2;
-
+	poscheck.th_zh = th->z / 256 + th->height / 2;
 	poscheck.th_sh = inv_div[poscheck.radius];
 
 	while(poscheck.portal_rd)
@@ -1265,11 +1270,11 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 
 			dist *= poscheck.th_sh;
 
-			dist *= damage;
+			dist *= damage * 2;
 			dist >>= 16;
 			dist++;
 
-			thing_damage(odx, th->origin, poscheck.hitang, dist);
+			thing_damage(odx, src, poscheck.hitang, dist);
 		}
 	}
 
@@ -1526,9 +1531,35 @@ repeat:
 	tmp = th->next_state & (MAX_X16_STATES-1);
 	if(!tmp)
 	{
+		uint32_t idx;
+
+		tick_del(tick_idx);
+
+		idx = tick_top;
+		while(idx)
+		{
+			ticker_dummy_t *tt = ticker + idx;
+
+			if(!(tt->base.type & 0x80))
+			{
+				thing_t *ht = thing_ptr(idx);
+
+				if(ht->origin == tick_idx)
+					ht->origin = 0;
+
+				if(ht->target == tick_idx)
+					ht->target = 0;
+
+				if(ht->damager == tick_idx)
+					ht->damager = 0;
+			}
+
+			idx = tt->base.next;
+		}
+
 		poscheck.thing = tick_idx;
 		remove_from_sectors();
-		tick_del(tick_idx);
+
 		return;
 	}
 
