@@ -584,7 +584,7 @@ act_atk_hitscan:
 	jsr	prepare_hitscan
 
 	; range
-	stz	ARG_HITSCAN_RANGE
+	stz	ARG_HITSCAN_ATK_RANGE
 
 	; the loop
 @loop:
@@ -616,7 +616,7 @@ act_atk_melee:
 
 	; range
 	lda	THTICK_ACTION_COUNT
-	sta	ARG_HITSCAN_RANGE
+	sta	ARG_HITSCAN_ATK_RANGE
 
 	; attack
 	lda	THTICK_ACTION_TEMP

@@ -1510,7 +1510,7 @@ static void blocking_select_fill()
 		const uint8_t *name = blocking_name[i];
 
 		if(blocksel_is_wall && i >= NUM_BLOCKBITS - 1)
-			name = "use";
+			name = "Sight / Use";
 
 		sprintf(text, "%s: %s", name, blocksel_bits & (1 << i) ? "ON" : "off");
 		text[0] &= ~0x20;

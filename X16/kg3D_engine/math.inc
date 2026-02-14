@@ -39,15 +39,3 @@
 	lda	TAB_HTAN_H,x
 	sta	dest_h
 .endmacro
-
-.macro  math_lsr4_u16	src_l, src_h
-	ldx	src_l
-	lda	TAB_SWAP,x
-	and	#$0F
-	sta	MATH_TEMP
-	ldx	src_h
-	lda	TAB_SWAP,x
-	and	#$F0
-	ora	MATH_TEMP
-.endmacro
-

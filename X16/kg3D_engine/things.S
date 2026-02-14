@@ -556,6 +556,11 @@ thing_damage:
 	ora	#THING_IFLAG_CORPSE
 	sta	THING_STRUCT_IFLAGS,y
 
+	; can't push
+	lda	THING_STRUCT_EFLAGS,y
+	and	#<~THING_EFLAG_CANPUSH
+	sta	THING_STRUCT_EFLAGS,y
+
 @set_anim:
 	; set ticks
 	lda	#1
@@ -747,7 +752,7 @@ thing_explode:
 	lda	THING_STRUCT_Z_H,y
 	sta	ARG_THING_Z_H
 
-	; poscheck.blockedby = blockedby
+	; hitscan.blockedby = blockedby
 	; poscheck.radius = radius
 	; these are forced overlap
 
@@ -795,16 +800,16 @@ thing_explode:
 	; dist >= 0 && dist <= poscheck.radius
 	bne	@next_wall
 	lda	MATH_VAR_L
-	cmp	THMOVE_RADIUS
+	cmp	ARG_EXPLODE_RADIUS
 	bcs	@next_wall
 
 	; wall->backsector
 	ldx	WALL_STRUCT_BACKSECTOR,y
 	beq	@next_wall
 
-	; !(wall->blocking & poscheck.blockedby & 0x7F)
+	; !(wall->blocking & hitscan.blockedby & 0x7F)
 	lda	WALL_STRUCT_BLOCKING,y
-	and	THMOVE_BLOCKEDBY
+	and	ARG_EXPLODE_BLOCKEDBY
 	and	#$7F
 	bne	@next_wall
 
@@ -865,7 +870,7 @@ thing_explode:
 	sta	REG_RAM_BANK
 
 	; poscheck.th_sh = inv_div[poscheck.radius]
-	lda	THMOVE_RADIUS
+	lda	ARG_EXPLODE_RADIUS
 	sta	MATH_VAR_L
 	stz	MATH_VAR_H
 	jsr	math_idiv
@@ -916,7 +921,7 @@ thing_explode:
 	ina
 	sta	THING_STRUCT_MARKED,x
 
-	; !(poscheck.blockedby & ht->blocking)
+	; !(hitscan.blockedby & ht->blocking)
 	lda	THING_STRUCT_BLOCKING,x
 	and	ARG_EXPLODE_BLOCKEDBY
 	bne	@check_thing
@@ -1024,7 +1029,7 @@ thing_explode:
 	; zist - poscheck.radius >= 0
 	sec
 	lda	EXPLODE_ZIST_L
-	sbc	THMOVE_RADIUS
+	sbc	ARG_EXPLODE_RADIUS
 	lda	EXPLODE_ZIST_H
 	sbc	#0
 	bmi	:+
@@ -1039,7 +1044,7 @@ thing_explode:
 	; dist = t2t_dist(ht, x, y, ht->radius + poscheck.radius)
 	clc
 	lda	THING_STRUCT_RADIUS,x
-	adc	THMOVE_RADIUS
+	adc	ARG_EXPLODE_RADIUS
 	sta	THMOVE_RADIUS_L
 	lda	#0
 	rol
@@ -1049,8 +1054,7 @@ thing_explode:
 
 	; poscheck.hitang = p2a_coord.a ^ 0x80
 	lda	MATH_VAR_U
-	eor	#$80
-	sta	EXPLODE_ANGLE
+	sta	ARG_HITSCAN_ANGLE
 
 	; the thing
 	ldx	MATH_COUNTER
@@ -1059,23 +1063,25 @@ thing_explode:
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	; dist -= ht->radius
+	; dmg = dist - ht->radius
 	sec
 	lda	MATH_VAR_L
+	sta	HITSCAN_SIGHT_DIST_L
 	sbc	THING_STRUCT_RADIUS,x
 	sta	MATH_P2A_X_L
 	lda	MATH_VAR_H
+	sta	HITSCAN_SIGHT_DIST_H
 	sbc	#0
 	sta	MATH_P2A_X_H
 
-	; dist < 0
+	; dmg < 0
 	bpl	:+
 
-	; dist = 0
+	; dmg = 0
 	stz	MATH_P2A_X_L
 	stz	MATH_P2A_X_H
 :
-	; p2a_coord.x = dist
+	; p2a_coord.x = dmg
 	; already set
 
 	; p2a_coord.y = zist
@@ -1084,27 +1090,27 @@ thing_explode:
 	lda	EXPLODE_ZIST_H
 	sta	MATH_P2A_Y_H
 
-	; dist = point_to_dist()
+	; dmg = point_to_dist()
 	jsr	math_p2d
 
-	; dist = poscheck.radius - dist
+	; dmg = poscheck.radius - dmg
 	sec
-	lda	THMOVE_RADIUS
+	lda	ARG_EXPLODE_RADIUS
 	sbc	MATH_VAR_L
 	sta	VERA_FX_CACHE_L
 	lda	#0
 	sbc	MATH_VAR_H
 	sta	VERA_FX_CACHE_M
 
-	; dist < 0
+	; dmg < 0
 	bmi	@th_local_skip
 
-	;; dist *= poscheck.th_sh
+	;; dmg *= poscheck.th_sh
 
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
-	; dist is already set
+	; dmg is already set
 
 	; poscheck.th_sh
 	lda	EXPLODE_TH_SH_L
@@ -1123,12 +1129,12 @@ thing_explode:
 	lda	VERA_DATA0
 	sta	VERA_FX_CACHE_M
 
-	;; dist *= damage * 2
+	;; dmg *= damage * 2
 
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
-	; dist is already set
+	; dmg is already set
 
 	; damage
 	lda	ARG_EXPLODE_DAMAGE
@@ -1157,10 +1163,19 @@ thing_explode:
 	lda	VERA_DATA0
 	sta	ARG_THING_DAMAGE_H
 
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; sight check
+	ldy	RET_THING_IDX
+	ldx	MATH_COUNTER
+	jsr	hitscan_sight_ex
+
 	; do damage
 	ldx	ARG_EXPLODE_SOURCE
 	ldy	MATH_COUNTER
-	lda	EXPLODE_ANGLE
+	lda	ARG_HITSCAN_ANGLE
 	jsr	thing_damage
 
 	jmp	@next_slot
@@ -3061,12 +3076,12 @@ check_floor_plane:
 t2t_dist:
 	; X diff
 	sec
-	lda	ARG_THING_X_L
-	sbc	THING_STRUCT_X_L,x
+	lda	THING_STRUCT_X_L,x
+	sbc	ARG_THING_X_L
 	sta	THMOVE_DIFF_L
 	sta	MATH_P2A_X_L
-	lda	ARG_THING_X_H
-	sbc	THING_STRUCT_X_H,x
+	lda	THING_STRUCT_X_H,x
+	sbc	ARG_THING_X_H
 	sta	THMOVE_DIFF_H
 	sta	MATH_P2A_X_H
 
@@ -3077,12 +3092,12 @@ t2t_dist:
 :
 	; Y diff
 	sec
-	lda	ARG_THING_Y_L
-	sbc	THING_STRUCT_Y_L,x
+	lda	THING_STRUCT_Y_L,x
+	sbc	ARG_THING_Y_L
 	sta	THMOVE_DIFF_L
 	sta	MATH_P2A_Y_L
-	lda	ARG_THING_Y_H
-	sbc	THING_STRUCT_Y_H,x
+	lda	THING_STRUCT_Y_H,x
+	sbc	ARG_THING_Y_H
 	sta	THMOVE_DIFF_H
 	sta	MATH_P2A_Y_H
 
@@ -4100,6 +4115,7 @@ projectile_death:
 	; calculate
 	stz	WALL_NOW
 	jsr	hitscan_wall_pos
+	jsr	hitscan_wall_hitz
 
 	; new position
 	lda	HITSCAN_D0_X_L

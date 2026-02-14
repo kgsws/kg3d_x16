@@ -10,9 +10,12 @@
 
 .export hitscan_cb_wall
 .export hitscan_func
+.export hitscan_sight_ex
+.export hitscan_sight_check
 .export hitscan_attack
 .export hitscan_angles
 .export hitscan_wall_pos
+.export hitscan_wall_hitz
 .export hitscan_thing_dd
 .export hitscan_thing_dt
 .export hitscan_sobj_sort
@@ -34,13 +37,6 @@
 ; Y is the thing.
 ; Set carry to accept this thing.
 ; X and Y must be preserved.
-
-;;;
-; RAM tables
-;;;
-
-HITSCAN_SECTOR_TABLE = TAB_TEMP_DATA + $0000
-HITSCAN_THING_TABLE = TAB_TEMP_DATA + $0100
 
 ;;;
 ; CODE
@@ -76,9 +72,9 @@ cb_attack_thing:
 
 	; get result (>> 8)
 	lda	VERA_DATA0
-	sta	HITSCAN_ZTMP_L
+	sta	HITSCAN_ATK_ZTMP_L
 	lda	VERA_DATA0
-	sta	HITSCAN_ZTMP_H
+	sta	HITSCAN_ATK_ZTMP_H
 
 	; th->radius
 	ldx	THING_STRUCT_RADIUS,y
@@ -137,14 +133,14 @@ cb_attack_thing:
 	; dd
 	; hitscan.ztmp = hitscan.z + dd
 	clc
-	lda	HITSCAN_ZTMP_L
+	lda	HITSCAN_ATK_ZTMP_L
 	sta	VERA_FX_CACHE_H
 	adc	ARG_THING_Z_L
-	sta	HITSCAN_ZTMP_L
-	lda	HITSCAN_ZTMP_H
+	sta	HITSCAN_ATK_ZTMP_L
+	lda	HITSCAN_ATK_ZTMP_H
 	sta	VERA_FX_CACHE_U
 	adc	ARG_THING_Z_H
-	sta	HITSCAN_ZTMP_H
+	sta	HITSCAN_ATK_ZTMP_H
 
 	; accumulate
 	lda	VERA_FX_ACCUM
@@ -156,9 +152,9 @@ cb_attack_thing:
 	; get result (>> 16)
 	lda	VERA_DATA0
 	lda	VERA_DATA0
-	sta	HITSCAN_TR_L
+	sta	HITSCAN_ATK_TR_L
 	lda	VERA_DATA0
-	sta	HITSCAN_TR_H
+	sta	HITSCAN_ATK_TR_H
 
 	; tz = th->z >> 8
 	lda	THING_STRUCT_Z_L,y
@@ -173,17 +169,17 @@ cb_attack_thing:
 	; tz -= tr
 	sec
 	lda	MATH_VAR_L
-	sbc	HITSCAN_TR_L
+	sbc	HITSCAN_ATK_TR_L
 	sta	MATH_VAR_L
 	lda	MATH_VAR_H
-	sbc	HITSCAN_TR_H
+	sbc	HITSCAN_ATK_TR_H
 	sta	MATH_VAR_H
 :
 	; if(hitscan.ztmp < tz)
 	sec
-	lda	HITSCAN_ZTMP_L
+	lda	HITSCAN_ATK_ZTMP_L
 	sbc	MATH_VAR_L
-	lda	HITSCAN_ZTMP_H
+	lda	HITSCAN_ATK_ZTMP_H
 	sbc	MATH_VAR_H
 	bmi	@no_hit
 
@@ -203,18 +199,18 @@ cb_attack_thing:
 	; tz += tr
 	clc
 	lda	MATH_VAR_L
-	adc	HITSCAN_TR_L
+	adc	HITSCAN_ATK_TR_L
 	sta	MATH_VAR_L
 	lda	MATH_VAR_H
-	adc	HITSCAN_TR_H
+	adc	HITSCAN_ATK_TR_H
 	sta	MATH_VAR_H
 :
 	; if(hitscan.ztmp > tz)
 	sec
 	lda	MATH_VAR_L
-	sbc	HITSCAN_ZTMP_L
+	sbc	HITSCAN_ATK_ZTMP_L
 	lda	MATH_VAR_H
-	sbc	HITSCAN_ZTMP_H
+	sbc	HITSCAN_ATK_ZTMP_H
 	bmi	@no_hit
 
 	; hit
@@ -228,6 +224,7 @@ cb_attack_thing:
 cb_attack:
 	; get wall hit
 	jsr	hitscan_wall_pos
+	jsr	hitscan_wall_hitz
 
 	; sector bank
 	lda	#BANK_SECTORS
@@ -273,7 +270,7 @@ cb_attack:
 
 	; floor texture
 	lda	SECTOR_STRUCT_FLOOR_TEXTURE,x
-	sta	HITSCAN_TEXTURE
+	sta	HITSCAN_ATK_TEXTURE
 
 	bra	@in_plane
 
@@ -300,7 +297,7 @@ cb_attack:
 	; zz = sec->ceiling.height - hitscan.height
 	sec
 	lda	MATH_VAR_L
-	sbc	HITSCAN_HEIGHT
+	sbc	HITSCAN_ATK_HEIGHT
 	sta	HITSCAN_ZZ_L
 	lda	MATH_VAR_H
 	sbc	#0
@@ -308,7 +305,7 @@ cb_attack:
 
 	; ceiling texture
 	lda	SECTOR_STRUCT_CEILING_TEXTURE,x
-	sta	HITSCAN_TEXTURE
+	sta	HITSCAN_ATK_TEXTURE
 
 @in_plane:
 	; dist = hitscan.z - dd
@@ -398,7 +395,7 @@ cb_attack:
 
 	; top texture
 	lda	WALL_STRUCT_TOP_TEX,y
-	sta	HITSCAN_TEXTURE
+	sta	HITSCAN_ATK_TEXTURE
 
 	; if(wall->backsector)
 	ldx	WALL_STRUCT_BACKSECTOR,y
@@ -424,14 +421,14 @@ cb_attack:
 
 	; bot texture
 	lda	WALL_STRUCT_BOT_TEX,y
-	sta	HITSCAN_TEXTURE
+	sta	HITSCAN_ATK_TEXTURE
 
 	bra	@do_wall
 
 @handle_bs:
 	; save blocking
 	lda	WALL_STRUCT_BLOCKING,y
-	and	HITSCAN_BLOCKBY
+	and	HITSCAN_ATK_BLOCKEDBY
 	sta	MATH_TEMP
 
 	; sector bank
@@ -452,7 +449,7 @@ cb_attack:
 
 	; bot texture
 	lda	WALL_STRUCT_BOT_TEX,y
-	sta	HITSCAN_TEXTURE
+	sta	HITSCAN_ATK_TEXTURE
 
 	bra	@do_wall
 
@@ -467,7 +464,7 @@ cb_attack:
 
 	; no texture (blocking line)
 	lda	#$80
-	sta	HITSCAN_TEXTURE
+	sta	HITSCAN_ATK_TEXTURE
 
 	; wall bank
 	lda	WALL_BANK
@@ -478,12 +475,12 @@ cb_attack:
 	bne	@do_wall
 
 	; hitscan.range
-	lda	ARG_HITSCAN_RANGE
+	lda	ARG_HITSCAN_ATK_RANGE
 	beq	:+
 
 	; hitscan.dist > hitscan.range
 	sec
-	lda	ARG_HITSCAN_RANGE
+	lda	ARG_HITSCAN_ATK_RANGE
 	sbc	HITSCAN_DIST_L
 	lda	#0
 	sbc	HITSCAN_DIST_H
@@ -505,7 +502,7 @@ cb_attack:
 	;; d0.x -= (wall->solid.dist.y * hitscan.radius) >> 8
 
 	; hitscan.radius
-	lda	HITSCAN_RADIUS
+	lda	HITSCAN_ATK_RADIUS
 	sta	VERA_FX_CACHE_L
 	stz	VERA_FX_CACHE_M
 
@@ -553,7 +550,7 @@ cb_attack:
 
 @do_hit:
 	; if(hitscan.blockedby)
-	lda	HITSCAN_BLOCKBY
+	lda	HITSCAN_ATK_BLOCKEDBY
 	bne	:+
 	jmp	@no_things
 :
@@ -562,19 +559,19 @@ cb_attack:
 	jsr	scan_things
 
 	; if(hitscan.thing_pick)
-	lda	HITSCAN_PICK_TDX
+	lda	HITSCAN_ATK_TDX
 	bne	:+
 	jmp	@no_things
 :
 	tay
 
 	; hitscan.range
-	lda	ARG_HITSCAN_RANGE
+	lda	ARG_HITSCAN_ATK_RANGE
 	beq	:+
 
 	; hitscan.dist > hitscan.range
 	sec
-	lda	ARG_HITSCAN_RANGE
+	lda	ARG_HITSCAN_ATK_RANGE
 	sbc	HITSCAN_DIST_L
 	lda	#0
 	sbc	HITSCAN_DIST_H
@@ -585,7 +582,7 @@ cb_attack:
 	rts
 :
 	; hitscan.sector = hitscan.thing_sdx
-	lda	HITSCAN_PICK_SDX
+	lda	HITSCAN_ATK_SDX
 	sta	ARG_THING_SECTOR
 
 	;; d0.x = (hitscan.sin * (int32_t)hitscan.dist) >> 8
@@ -644,9 +641,9 @@ cb_attack:
 	sta	HITSCAN_D0_Y_H
 
 	; zz = hitscan.thing_zz
-	lda	HITSCAN_PICK_Z_L
+	lda	HITSCAN_ATK_PZ_L
 	sta	HITSCAN_ZZ_L
-	lda	HITSCAN_PICK_Z_H
+	lda	HITSCAN_ATK_PZ_H
 	sta	HITSCAN_ZZ_H
 
 	; ticker structure bank
@@ -676,12 +673,12 @@ cb_attack:
 
 @no_things:
 	; hitscan.range
-	lda	ARG_HITSCAN_RANGE
+	lda	ARG_HITSCAN_ATK_RANGE
 	beq	:+
 
 	; hitscan.dist > hitscan.range
 	sec
-	lda	ARG_HITSCAN_RANGE
+	lda	ARG_HITSCAN_ATK_RANGE
 	sbc	HITSCAN_DIST_L
 	lda	#0
 	sbc	HITSCAN_DIST_H
@@ -692,7 +689,7 @@ cb_attack:
 	rts
 :
 	; check sky texture
-	lda	HITSCAN_TEXTURE
+	lda	HITSCAN_ATK_TEXTURE
 	ina
 	beq	@skip
 
@@ -747,15 +744,15 @@ scan_things:
 	sty	@cb_opcode+2
 
 	; reset
-	lda	#>HITSCAN_THING_TABLE
-	sta	HITSCAN_THG_IDX_H
-	stz	HITSCAN_THG_IDX_L
-	stz	HITSCAN_PICK_TDX
+	lda	#>TAB_HITSCAN_THING
+	sta	HITSCAN_ATK_IDX_H
+	stz	HITSCAN_ATK_IDX_L
+	stz	HITSCAN_ATK_TDX
 
 	; check sectors
 	ldx	#0
 @loop_sec:
-	lda	HITSCAN_SECTOR_TABLE,x
+	lda	TAB_HITSCAN_SECTOR,x
 	sta	TMP_PTR_L
 
 	; sector things bank
@@ -783,17 +780,17 @@ scan_things:
 
 	; th->blocking & hitscan.blockedby
 	lda	THING_STRUCT_BLOCKING,y
-	and	HITSCAN_BLOCKBY
+	and	HITSCAN_ATK_BLOCKEDBY
 	beq	@skip_thing_bank
 
 	; find in list
 	sty	MATH_TEMP
 	ldx	#0
 @loop_find:
-	cpx	HITSCAN_THG_IDX_L
+	cpx	HITSCAN_ATK_IDX_L
 	beq	@not_found
 
-	lda	HITSCAN_THING_TABLE,x
+	lda	TAB_HITSCAN_THING,x
 	cmp	MATH_TEMP
 	beq	@skip_thing_bank
 
@@ -803,14 +800,14 @@ scan_things:
 @not_found:
 	; thing_list[thing_idx] = tdx
 	tya
-	sta	(HITSCAN_THG_IDX_L)
+	sta	(HITSCAN_ATK_IDX_L)
 
 	; distance calculations
 	jmp	@calc_dist
 
 @skip_thing_add:
 	; thing_idx++
-	inc	HITSCAN_THG_IDX_L
+	inc	HITSCAN_ATK_IDX_L
 
 @skip_thing_bank:
 	; sector things bank
@@ -879,17 +876,17 @@ scan_things:
 	sta	HITSCAN_DIST_H
 
 	; hitscan.thing_pick = tdx
-	sty	HITSCAN_PICK_TDX
+	sty	HITSCAN_ATK_TDX
 
 	; hitscan.thing_sdx = sdx
 	lda	TMP_PTR_L
-	sta	HITSCAN_PICK_SDX
+	sta	HITSCAN_ATK_SDX
 
 	; hitscan.thing_zz = hitscan.ztmp
-	lda	HITSCAN_ZTMP_L
-	sta	HITSCAN_PICK_Z_L
-	lda	HITSCAN_ZTMP_H
-	sta	HITSCAN_PICK_Z_H
+	lda	HITSCAN_ATK_ZTMP_L
+	sta	HITSCAN_ATK_PZ_L
+	lda	HITSCAN_ATK_ZTMP_H
+	sta	HITSCAN_ATK_PZ_H
 :
 	jmp	@skip_thing_add
 
@@ -897,7 +894,7 @@ scan_things:
 ; get vetex angle
 ;;;
 ; Y - the wall
-; returns angle in A
+; returns angle in MATH_VAR_U
 
 get_angle:
 	; p2a_coord.x = v1->x - x
@@ -920,9 +917,7 @@ get_angle:
 
 	; angle
 	jsr	math_p2a
-	math_lsr4_u16	MATH_VAR_L, MATH_VAR_H
-
-	rts
+	jmp	math_ang8
 
 ;;;
 ; run 2D hitscan
@@ -944,7 +939,7 @@ hitscan_func:
 	sta	ARG_THING_SECTOR
 
 	; sector_list[0] = sdx
-	sta	HITSCAN_SECTOR_TABLE
+	sta	TAB_HITSCAN_SECTOR
 
 	; sector_idx = 1
 	lda	#1
@@ -978,6 +973,7 @@ hs_skip_sobj:
 
 	; first angle
 	jsr	get_angle
+	lda	MATH_VAR_U
 	sta	HITSCAN_LAST_ANGLE
 
 	; wall bank
@@ -992,6 +988,7 @@ hs_skip_sobj:
 
 	; angle
 	jsr	get_angle
+	lda	MATH_VAR_U
 	sta	HITSCAN_NEW_ANGLE
 
 	; hit = angle - thang
@@ -1048,7 +1045,7 @@ hitscan_cb_wall:
 :
 	ldx	HITSCAN_SEC_IDX
 	inc	HITSCAN_SEC_IDX
-	sta	HITSCAN_SECTOR_TABLE,x
+	sta	TAB_HITSCAN_SECTOR,x
 	sta	ARG_THING_SECTOR
 	jmp	hs_sector_loop
 
@@ -1085,6 +1082,7 @@ hs_check_sobj:
 
 	; first angle
 	jsr	get_angle
+	lda	MATH_VAR_U
 	sta	HITSCAN_LAST_ANGLE
 
 	; wall bank
@@ -1102,6 +1100,7 @@ hs_check_sobj:
 
 	; angle
 	jsr	get_angle
+	lda	MATH_VAR_U
 	sta	HITSCAN_NEW_ANGLE
 
 	; hit = angle - thang
@@ -1149,6 +1148,96 @@ hs_check_sobj:
 	ldx	ARG_THING_SECTOR
 
 	jmp	hs_skip_sobj
+
+;;;
+; part of sight check
+;;;
+; this is run directly from explosion code
+; Y - origin
+; X - target
+
+hitscan_sight_ex:
+	sty	HITSCAN_ORIGIN
+	stx	HITSCAN_SIGHT_TARGET
+
+	; hitscan.z = th->z / 256 + th->view_height
+	clc
+	lda	THING_STRUCT_Z_L,y
+	adc	THING_STRUCT_VIEW_HEIGHT,y
+	sta	HITSCAN_ZZ_L
+	lda	THING_STRUCT_Z_H,y
+	adc	#0
+	sta	HITSCAN_ZZ_H
+
+	; zz = ht->z / 256 - hitscan.z
+	; p2a_coord.x = zz
+	sec
+	lda	THING_STRUCT_Z_L,x
+	sbc	HITSCAN_ZZ_L
+	sta	HITSCAN_ZZ_L
+	sta	MATH_P2A_X_L
+	lda	THING_STRUCT_Z_H,x
+	sbc	HITSCAN_ZZ_H
+	sta	HITSCAN_ZZ_H
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = dist
+	lda	HITSCAN_SIGHT_DIST_L
+	sta	MATH_P2A_Y_L
+	lda	HITSCAN_SIGHT_DIST_H
+	sta	MATH_P2A_Y_H
+
+	; hitscan.pbot = point_to_angle() >> 4
+	jsr	math_p2a
+	jsr	math_ang8
+
+	; hitscan.pbot ^= 0x80
+	lda	MATH_VAR_U
+	eor	#$80
+	sta	HITSCAN_SIGHT_PBOT
+sta DBG_BYTE0
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; restore
+	ldy	HITSCAN_ORIGIN
+	ldx	HITSCAN_SIGHT_TARGET
+
+	; p2a_coord.x = zz + ht->height
+	clc
+	lda	HITSCAN_ZZ_L
+	adc	THING_STRUCT_HEIGHT,x
+	sta	MATH_P2A_X_L
+	lda	HITSCAN_ZZ_H
+	adc	#0
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = dist
+	lda	HITSCAN_SIGHT_DIST_L
+	sta	MATH_P2A_Y_L
+	lda	HITSCAN_SIGHT_DIST_H
+	sta	MATH_P2A_Y_H
+
+	; hitscan.ptop = point_to_angle() >> 4
+	jsr	math_p2a
+	jsr	math_ang8
+
+	; hitscan.ptop ^= 0x80
+	lda	MATH_VAR_U
+	eor	#$80
+	sta	HITSCAN_SIGHT_PTOP
+sta DBG_BYTE1
+
+	rts
+
+;;;
+; sight check
+;;;
+
+hitscan_sight_check:
+	rts
 
 ;;;
 ; bullet attack
@@ -1211,16 +1300,16 @@ hitscan_attack:
 
 	; height
 	lda	THTYPE_STRUCT_HEIGHT,x
-	sta	HITSCAN_HEIGHT
+	sta	HITSCAN_ATK_HEIGHT
 
 	; radius + 1
 	lda	THTYPE_STRUCT_ALT_RADIUS,x
 	ina
-	sta	HITSCAN_RADIUS
+	sta	HITSCAN_ATK_RADIUS
 
 	; blocked by
 	lda	THTYPE_STRUCT_ALT_BLOCK,x
-	sta	HITSCAN_BLOCKBY
+	sta	HITSCAN_ATK_BLOCKEDBY
 
 	; damage
 	lda	THTYPE_STRUCT_HEALTH_L,x
@@ -1530,6 +1619,13 @@ hitscan_wall_pos:
 	sta	VERA_FX_CACHE_M
 	sta	HITSCAN_DIST_H
 
+	rts
+
+;;;
+; wall hit Z
+;;;
+
+hitscan_wall_hitz:
 	;; dd = (dist * hitscan.wtan) >> 8
 
 	; reset accumulator

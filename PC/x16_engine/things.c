@@ -324,7 +324,7 @@ static int32_t t2t_dist(thing_t *ht, int32_t nx, int32_t ny, int32_t radius)
 {
 	int32_t dist;
 
-	dist = nx - ht->x / 256;
+	dist = ht->x / 256 - nx;
 	p2a_coord.x = dist;
 	if(dist >= 0)
 	{
@@ -336,7 +336,7 @@ static int32_t t2t_dist(thing_t *ht, int32_t nx, int32_t ny, int32_t radius)
 			return 0x10000;
 	}
 
-	dist = ny - ht->y / 256;
+	dist = ht->y / 256 - ny;
 	p2a_coord.y = dist;
 	if(dist >= 0)
 	{
@@ -1101,6 +1101,7 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 			th->next_state = thing_anim[th->ticker.type][ANIM_DEATH].state;
 			th->ticks = 1;
 			th->iflags |= THING_IFLAG_CORPSE;
+			th->eflags &= ~THING_EFLAG_CANPUSH;
 		} else
 			th->health = hp;
 	}
@@ -1160,8 +1161,9 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 	if(!src)
 		src = tdx;
 
+	hitscan.blockedby = blockedby;
+
 	poscheck.radius = radius;
-	poscheck.blockedby = blockedby;
 
 	poscheck.portal_rd = 0;
 	poscheck.portal_wr = 1;
@@ -1191,7 +1193,7 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 				dist < poscheck.radius
 			){
 				if(	wall->backsector &&
-					!(wall->blocking & poscheck.blockedby & 0x7F)
+					!(wall->blocking & hitscan.blockedby & 0x7F)
 				){
 					if(poscheck.vis_tab[sdx] & poscheck.vis_bit)
 						add_sector_raw(wall->backsector, 0, 0);
@@ -1213,7 +1215,7 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 		for(uint32_t i = 0; i < 31; i++)
 		{
 			uint8_t odx = sectorth[sdx][i];
-			int32_t dist, zist;
+			int32_t dist, zist, dmg;
 			thing_t *ht;
 
 			if(!odx)
@@ -1233,7 +1235,7 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 
 			ht->marked = 1;
 
-			if(!(poscheck.blockedby & ht->blocking))
+			if(!(hitscan.blockedby & ht->blocking))
 				continue;
 
 			zist = ht->z / 256 - poscheck.th_zh;
@@ -1254,27 +1256,32 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 			if(dist >= 0x10000)
 				continue;
 
-			poscheck.hitang = p2a_coord.a ^ 0x80;
+			poscheck.hitang = p2a_coord.a;
 
-			dist -= ht->radius;
-			if(dist < 0)
-				dist = 0;
+			// TODO: move sight check here
 
-			p2a_coord.x = dist;
+			dmg = dist - ht->radius;
+			if(dmg < 0)
+				dmg = 0;
+
+			p2a_coord.x = dmg;
 			p2a_coord.y = zist;
-			dist = point_to_dist();
+			dmg = point_to_dist();
 
-			dist = poscheck.radius - dist;
-			if(dist < 0)
+			dmg = poscheck.radius - dmg;
+			if(dmg < 0)
 				continue;
 
-			dist *= poscheck.th_sh;
+			dmg *= poscheck.th_sh;
 
-			dist *= damage * 2;
-			dist >>= 16;
-			dist++;
+			dmg *= damage * 2;
+			dmg >>= 16;
+			dmg++;
 
-			thing_damage(odx, src, poscheck.hitang, dist);
+			hitscan_sight_ex(tdx, odx, poscheck.hitang, dist);
+
+			if(hitscan.pbot < hitscan.ptop)
+				thing_damage(odx, src, poscheck.hitang, dmg);
 		}
 	}
 
@@ -1373,7 +1380,7 @@ static void projectile_death(uint8_t tdx)
 		hitscan.angle = th->angle;
 
 		hitscan_angles(hitscan.angle, th->pitch / 2);
-		zz = hitscan_wall_pos(&wall, &d0, NULL);
+		zz = hitscan_wall_hitz(hitscan_wall_pos(&wall, &d0));
 
 		nx = d0.x << 8;
 		ny = d0.y << 8;

@@ -134,7 +134,8 @@ static uint32_t cb_attack(wall_t *wall)
 	uint8_t texture, tdx;
 	sector_t *sec = map_sectors + hitscan.sector;
 
-	zz = hitscan_wall_pos(wall, &d0, &dist);
+	dist = hitscan_wall_pos(wall, &d0);
+	zz = hitscan_wall_hitz(dist);
 
 	// check floor
 	if(zz < sec->floor.height)
@@ -283,6 +284,65 @@ do_spawn:
 }
 
 //
+// sight check callback
+
+static uint32_t cb_sight(wall_t *wall)
+{
+	vertex_t d0;
+	sector_t *fs, *bs;
+	int32_t top, bot, dist;
+
+	for(uint32_t i = 0; i < 16; i++)
+	{
+		uint8_t sdx = thingsec[hitscan.target][i];
+		if(!sdx)
+			break;
+		if(sdx == hitscan.sector)
+			return 1;
+	}
+
+	if(	!wall->backsector ||
+		wall->blocking & hitscan.blockedby
+	){
+		uint8_t tmp = hitscan.ptop;
+		hitscan.ptop = hitscan.pbot;
+		hitscan.pbot = tmp;
+		return 1;
+	}
+
+	fs = map_sectors + hitscan.sector;
+	bs = map_sectors + wall->backsector;
+
+	if(fs->floor.height - bs->floor.height < 0)
+		bot = bs->floor.height;
+	else
+		bot = fs->floor.height;
+
+	if(bs->ceiling.height - fs->ceiling.height < 0)
+		top = bs->ceiling.height;
+	else
+		top = fs->ceiling.height;
+
+	dist = hitscan_wall_pos(wall, &d0);
+
+	p2a_coord.x = bot - hitscan.z;
+	p2a_coord.y = dist;
+	bot = point_to_angle() >> 4;
+	bot ^= 0x80;
+	if(bot > hitscan.pbot)
+		hitscan.pbot = bot;
+
+	p2a_coord.x = top - hitscan.z;
+	p2a_coord.y = dist;
+	top = point_to_angle() >> 4;
+	top ^= 0x80;
+	if(top < hitscan.ptop)
+		hitscan.ptop = top;
+
+	return hitscan.pbot >= hitscan.ptop;
+}
+
+//
 // generic hitscan
 
 void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
@@ -396,6 +456,52 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 }
 
 //
+// hitscan sight check
+
+void hitscan_sight_ex(uint8_t tdx, uint8_t odx, uint8_t ang, int32_t dist)
+{
+	thing_t *th = thing_ptr(tdx);
+	thing_t *ht = thing_ptr(odx);
+	int32_t zz;
+	uint8_t pitch;
+
+	hitscan.z = th->z / 256 + th->view_height;
+
+	zz = ht->z / 256 - hitscan.z;
+	p2a_coord.x = zz;
+	p2a_coord.y = dist;
+	hitscan.pbot = point_to_angle() >> 4;
+	hitscan.pbot ^= 0x80;
+
+	p2a_coord.x = zz + ht->height;
+	p2a_coord.y = dist;
+	hitscan.ptop = point_to_angle() >> 4;
+	hitscan.ptop ^= 0x80;
+
+	hitscan.target = odx;
+	if(thingsec[odx][0] == thingsec[tdx][0])
+		return;
+
+	hitscan_angles(ang, 0);
+	hitscan_func(tdx, ang, cb_sight);
+}
+
+void hitscan_sight_check(uint8_t tdx, uint8_t odx)
+{
+	thing_t *th = thing_ptr(tdx);
+	thing_t *ht = thing_ptr(odx);
+	int32_t dist;
+
+	hitscan.blockedby = 0x80;
+
+	p2a_coord.x = ht->x / 256 - th->x / 256;
+	p2a_coord.y = ht->y / 256 - th->y / 256;
+	dist = point_to_dist();
+
+	hitscan_sight_ex(tdx, odx, p2a_coord.a, dist);
+}
+
+//
 // hitscan bullet attack
 
 void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, uint8_t type, uint8_t range)
@@ -447,7 +553,7 @@ void hitscan_angles(uint8_t hang, uint8_t halfpitch)
 	hitscan.wtan = tab_tan_hs[halfpitch];
 }
 
-int32_t hitscan_wall_pos(wall_t *wall, vertex_t *d0, int32_t *dout)
+int32_t hitscan_wall_pos(wall_t *wall, vertex_t *d0)
 {
 	vertex_t *vtx;
 	uint8_t angle;
@@ -485,11 +591,14 @@ int32_t hitscan_wall_pos(wall_t *wall, vertex_t *d0, int32_t *dout)
 
 	dist *= hitscan.idiv * 2;
 	dist >>= 8;
-	if(dout)
-		*dout = dist;
 
+	return dist;
+}
+
+int32_t hitscan_wall_hitz(int32_t dist)
+{
 	// get Z
-	dd = (dist * hitscan.wtan) >> 8;
+	int32_t dd = (dist * hitscan.wtan) >> 8;
 	return hitscan.z + dd;
 }
 
