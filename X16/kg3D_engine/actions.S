@@ -38,16 +38,12 @@ action_xy:
 	sta	REG_RAM_BANK
 
 	; X
-	lda	THING_STRUCT_X_S,y
-	sta	ARG_THING_X_S
 	lda	THING_STRUCT_X_L,y
 	sta	ARG_THING_X_L
 	lda	THING_STRUCT_X_H,y
 	sta	ARG_THING_X_H
 
 	; Y
-	lda	THING_STRUCT_Y_S,y
-	sta	ARG_THING_Y_S
 	lda	THING_STRUCT_Y_L,y
 	sta	ARG_THING_Y_L
 	lda	THING_STRUCT_Y_H,y
@@ -522,6 +518,10 @@ act_atk_projectile:
 
 	; XY
 	jsr	action_xy
+	lda	THING_STRUCT_X_S,y
+	sta	ARG_THING_X_S
+	lda	THING_STRUCT_Y_S,y
+	sta	ARG_THING_Y_S
 
 	; Z
 	stz	ARG_THING_Z_S

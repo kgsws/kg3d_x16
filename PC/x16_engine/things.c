@@ -1258,8 +1258,6 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 
 			poscheck.hitang = p2a_coord.a;
 
-			// TODO: move sight check here
-
 			dmg = dist - ht->radius;
 			if(dmg < 0)
 				dmg = 0;
@@ -1272,16 +1270,17 @@ void thing_explode(uint32_t tdx, uint32_t radius, uint32_t damage, uint32_t bloc
 			if(dmg < 0)
 				continue;
 
+			hitscan_sight_ex(tdx, odx, poscheck.hitang, dist);
+			if(hitscan.pbot >= hitscan.ptop)
+				continue;
+
 			dmg *= poscheck.th_sh;
 
 			dmg *= damage * 2;
 			dmg >>= 16;
 			dmg++;
 
-			hitscan_sight_ex(tdx, odx, poscheck.hitang, dist);
-
-			if(hitscan.pbot < hitscan.ptop)
-				thing_damage(odx, src, poscheck.hitang, dmg);
+			thing_damage(odx, src, poscheck.hitang, dmg);
 		}
 	}
 

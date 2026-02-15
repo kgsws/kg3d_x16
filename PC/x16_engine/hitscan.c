@@ -292,14 +292,15 @@ static uint32_t cb_sight(wall_t *wall)
 	sector_t *fs, *bs;
 	int32_t top, bot, dist;
 
-	for(uint32_t i = 0; i < 16; i++)
-	{
-		uint8_t sdx = thingsec[hitscan.target][i];
-		if(!sdx)
-			break;
-		if(sdx == hitscan.sector)
-			return 1;
-	}
+	if(hitscan.tsec == hitscan.sector)
+		return 1;
+
+	fs = map_sectors + hitscan.sector;
+
+	if(	hitscan.tsec == fs->floor.link ||
+		hitscan.tsec == fs->ceiling.link
+	)
+		return 1;
 
 	if(	!wall->backsector ||
 		wall->blocking & hitscan.blockedby
@@ -310,7 +311,6 @@ static uint32_t cb_sight(wall_t *wall)
 		return 1;
 	}
 
-	fs = map_sectors + hitscan.sector;
 	bs = map_sectors + wall->backsector;
 
 	if(fs->floor.height - bs->floor.height < 0)
@@ -478,11 +478,11 @@ void hitscan_sight_ex(uint8_t tdx, uint8_t odx, uint8_t ang, int32_t dist)
 	hitscan.ptop = point_to_angle() >> 4;
 	hitscan.ptop ^= 0x80;
 
-	hitscan.target = odx;
-	if(thingsec[odx][0] == thingsec[tdx][0])
+	hitscan.tsec = thingsec[odx][0];
+	if(hitscan.tsec == thingsec[tdx][0])
 		return;
 
-	hitscan_angles(ang, 0);
+	hitscan_wangle(ang);
 	hitscan_func(tdx, ang, cb_sight);
 }
 
@@ -539,17 +539,25 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, 
 //
 // wall hit calculation
 
-void hitscan_angles(uint8_t hang, uint8_t halfpitch)
+void hitscan_sincos(uint8_t hang)
 {
 	hitscan.sin = tab_sin[hang];
 	hitscan.cos = tab_cos[hang];
+}
 
+void hitscan_wangle(uint8_t hang)
+{
 	hitscan.axis = (hang + 0x20) << 1;
 	if(hitscan.axis & 0x80)
 		hitscan.idiv = inv_div[hitscan.sin];
 	else
 		hitscan.idiv = inv_div[hitscan.cos];
+}
 
+void hitscan_angles(uint8_t hang, uint8_t halfpitch)
+{
+	hitscan_sincos(hang);
+	hitscan_wangle(hang);
 	hitscan.wtan = tab_tan_hs[halfpitch];
 }
 

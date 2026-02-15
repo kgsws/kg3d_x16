@@ -1052,7 +1052,13 @@ thing_explode:
 	jsr	t2t_dist
 	bpl	@th_local_skip
 
-	; poscheck.hitang = p2a_coord.a ^ 0x80
+	; save distance
+	lda	MATH_VAR_L
+	sta	HITSCAN_SIGHT_DIST_L
+	lda	MATH_VAR_H
+	sta	HITSCAN_SIGHT_DIST_H
+
+	; poscheck.hitang = p2a_coord.a
 	lda	MATH_VAR_U
 	sta	ARG_HITSCAN_ANGLE
 
@@ -1065,12 +1071,10 @@ thing_explode:
 
 	; dmg = dist - ht->radius
 	sec
-	lda	MATH_VAR_L
-	sta	HITSCAN_SIGHT_DIST_L
+	lda	HITSCAN_SIGHT_DIST_L
 	sbc	THING_STRUCT_RADIUS,x
 	sta	MATH_P2A_X_L
-	lda	MATH_VAR_H
-	sta	HITSCAN_SIGHT_DIST_H
+	lda	HITSCAN_SIGHT_DIST_H
 	sbc	#0
 	sta	MATH_P2A_X_H
 
@@ -1097,20 +1101,38 @@ thing_explode:
 	sec
 	lda	ARG_EXPLODE_RADIUS
 	sbc	MATH_VAR_L
-	sta	VERA_FX_CACHE_L
+	sta	ARG_THING_DAMAGE_L
 	lda	#0
 	sbc	MATH_VAR_H
-	sta	VERA_FX_CACHE_M
+	sta	ARG_THING_DAMAGE_H
 
 	; dmg < 0
 	bmi	@th_local_skip
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; sight check
+	ldy	RET_THING_IDX
+	ldx	MATH_COUNTER
+	jsr	hitscan_sight_ex
+
+	; hitscan.pbot >= hitscan.ptop
+	lda	HITSCAN_SIGHT_PBOT
+	cmp	HITSCAN_SIGHT_PTOP
+	bcs	@th_local_skip
 
 	;; dmg *= poscheck.th_sh
 
 	; reset accumulator
 	lda	VERA_FX_ACCUM_RESET
 
-	; dmg is already set
+	; dmg
+	lda	ARG_THING_DAMAGE_L
+	sta	VERA_FX_CACHE_L
+	lda	ARG_THING_DAMAGE_H
+	sta	VERA_FX_CACHE_M
 
 	; poscheck.th_sh
 	lda	EXPLODE_TH_SH_L
@@ -1162,15 +1184,6 @@ thing_explode:
 	sta	ARG_THING_DAMAGE_L
 	lda	VERA_DATA0
 	sta	ARG_THING_DAMAGE_H
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; sight check
-	ldy	RET_THING_IDX
-	ldx	MATH_COUNTER
-	jsr	hitscan_sight_ex
 
 	; do damage
 	ldx	ARG_EXPLODE_SOURCE

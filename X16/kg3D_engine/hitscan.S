@@ -732,6 +732,44 @@ cb_attack:
 	rts
 
 ;;;
+; bullet attack callbacks
+;;;
+
+cb_sight:
+	; hitscan.tsec == hitscan.sector
+	lda	HITSCAN_SIGHT_TSEC
+	cmp	ARG_THING_SECTOR
+	bne	:+
+
+	; PASS
+	sec
+	rts
+:
+	; the wall
+	ldx	WALL_NOW
+
+	;; TODO
+
+	; !wall->backsector || wall->blocking & hitscan.blockedby
+	lda	WALL_STRUCT_BACKSECTOR,x
+	bne	:+
+
+	; swap PBOT and PTOP
+	ldy	HITSCAN_SIGHT_PBOT
+	lda	HITSCAN_SIGHT_PTOP
+	sta	HITSCAN_SIGHT_PBOT
+	sty	HITSCAN_SIGHT_PTOP
+
+	; FAIL
+	sec
+	rts
+:
+	;; TODO
+
+	clc
+	rts
+
+;;;
 ; scan for things in all traversed sectors
 ;;;
 ; HITSCAN_DIST_* is maximum distance
@@ -930,6 +968,7 @@ hitscan_func:
 	; get XY
 	jsr	action_xy
 
+hitscan_func_ex:
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
@@ -1202,7 +1241,7 @@ sta DBG_BYTE0
 	sta	REG_RAM_BANK
 
 	; restore
-	ldy	HITSCAN_ORIGIN
+;	ldy	HITSCAN_ORIGIN
 	ldx	HITSCAN_SIGHT_TARGET
 
 	; p2a_coord.x = zz + ht->height
@@ -1230,7 +1269,32 @@ sta DBG_BYTE0
 	sta	HITSCAN_SIGHT_PTOP
 sta DBG_BYTE1
 
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; hitscan.tsec = thingsec[odx][0]
+	; if(hitscan.tsec == thingsec[tdx][0])
+	ldy	HITSCAN_ORIGIN
+	ldx	HITSCAN_SIGHT_TARGET
+	lda	$B000,x
+	cmp	$B000,y
+	bne	:+
 	rts
+:
+	sta	HITSCAN_SIGHT_TSEC
+
+	; hitscan_wangle(ang)
+	ldx	ARG_HITSCAN_ANGLE
+	jsr	hitscan_wangle
+
+	; hitscan_func(tdx, ang, cb_sight)
+	lda	#<cb_sight
+	sta	hitscan_cb_wall+1
+	lda	#>cb_sight
+	sta	hitscan_cb_wall+2
+	ldy	HITSCAN_ORIGIN
+	jmp	hitscan_func_ex
 
 ;;;
 ; sight check
@@ -1335,6 +1399,7 @@ hitscan_angles:
 	; cos
 	math_read_cos	HITSCAN_COS_L, HITSCAN_COS_H
 
+hitscan_wangle:
 	; hitscan.axis = (hang + 0x20) << 1
 	txa
 	clc
