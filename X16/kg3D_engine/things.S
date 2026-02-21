@@ -880,9 +880,10 @@ thing_explode:
 	sta	EXPLODE_TH_SH_H
 
 	; while(poscheck.portal_rd)
-@loop_sector:
 	ldy	THMOVE_PORTAL_RD
 	dey
+@loop_sector:
+	phy
 
 	; portal bank
 	lda	#BANK_PORTALS
@@ -934,8 +935,9 @@ thing_explode:
 	bne	@loop_thing
 
 	; next portal
-	dec	THMOVE_PORTAL_RD
-	bne	@loop_sector
+	ply
+	dey
+	bpl	@loop_sector
 
 	; cleanup and done
 	jmp	thing_unmark_all

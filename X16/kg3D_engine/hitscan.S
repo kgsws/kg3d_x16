@@ -27,6 +27,7 @@
 ; WALL_NOW : WALL_BANK is current wall.
 ; ARG_THING_SECTOR is current sector.
 ; ARG_THING_* are origin coordinates. (XY and LH only)
+; HITSCAN_IS_SOBJ is non-zero for sector object walls.
 ; Set carry to STOP checking.
 ; Wall bank must be restored on exit, if carry is cleared.
 
@@ -740,6 +741,22 @@ cb_sight:
 	ldy	ARG_THING_SECTOR
 	cpy	HITSCAN_SIGHT_TSEC
 	bne	:+
+
+	; hitscan.is_sobj
+	lda	HITSCAN_IS_SOBJ
+	beq	@do_pass
+
+	; dist = hitscan_wall_pos(wall, &d0)
+	jsr	hitscan_wall_pos
+
+	; if(dist - hitscan.dist < 0)
+	sec
+	lda	HITSCAN_DIST_L
+	sbc	HITSCAN_SIGHT_DIST_L
+	lda	HITSCAN_DIST_H
+	sbc	HITSCAN_SIGHT_DIST_H
+	bmi	@do_fail
+
 @do_pass:
 	; PASS
 	sec
@@ -773,6 +790,7 @@ cb_sight:
 	ldy	WALL_STRUCT_BACKSECTOR,x
 	bne	:+
 
+@do_fail:
 	; swap PBOT and PTOP
 	ldy	HITSCAN_SIGHT_PBOT
 	lda	HITSCAN_SIGHT_PTOP
@@ -1159,29 +1177,27 @@ hs_skip_sobj:
 	; next wall
 	ldy	WALL_STRUCT_NEXT,x
 
-	; angle
+	; get angle
 	jsr	get_angle
-	lda	MATH_VAR_U
-	sta	HITSCAN_NEW_ANGLE
-
-	; hit = angle - thang
-	sec
-	sbc	ARG_HITSCAN_ANGLE
-	sta	HITSCAN_HIT_ANGLE
 
 	; wall bank
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
 
+	; angle
+	lda	MATH_VAR_U
+	sta	HITSCAN_NEW_ANGLE
+
+	; hit = angle - thang
+	cmp	ARG_HITSCAN_ANGLE
+	bmi	@no_hit
+
 	; hit |= thang - last_angle
-	sec
 	lda	ARG_HITSCAN_ANGLE
-	sbc	HITSCAN_LAST_ANGLE
-	ora	HITSCAN_HIT_ANGLE
+	cmp	HITSCAN_LAST_ANGLE
+	bpl	@cb_wall
 
-	; check for hit
-	bpl	hitscan_cb_wall
-
+@no_hit:
 	; last_angle = angle
 	lda	HITSCAN_NEW_ANGLE
 	sta	HITSCAN_LAST_ANGLE
@@ -1197,6 +1213,9 @@ hs_skip_sobj:
 
 	; loop
 	bra	@loop_wall
+
+@cb_wall:
+	stz	HITSCAN_IS_SOBJ
 
 hitscan_cb_wall:
 	; run callback
@@ -1271,29 +1290,32 @@ hs_check_sobj:
 	; next wall
 	ldy	WALL_STRUCT_NEXT,x
 
-	; angle
+	; get angle
 	jsr	get_angle
-	lda	MATH_VAR_U
-	sta	HITSCAN_NEW_ANGLE
-
-	; hit = angle - thang
-	sec
-	sbc	ARG_HITSCAN_ANGLE
-	sta	HITSCAN_HIT_ANGLE
 
 	; wall bank
 	lda	WALL_BANK
 	sta	REG_RAM_BANK
+	sta	HITSCAN_IS_SOBJ
 
-	; hit |= thang - last_angle
-	sec
+	; angle
+	lda	MATH_VAR_U
+	sta	HITSCAN_NEW_ANGLE
+
+	; hit = angle - last_angle
+	cmp	HITSCAN_LAST_ANGLE
+	bmi	@no_hit
+
+	; hit |= angle - hang
+	cmp	ARG_HITSCAN_ANGLE
+	bmi	@no_hit
+
+	; hit |= hang - last_angle
 	lda	ARG_HITSCAN_ANGLE
-	sbc	HITSCAN_LAST_ANGLE
-	ora	HITSCAN_HIT_ANGLE
-
-	; check for hit
+	cmp	HITSCAN_LAST_ANGLE
 	bpl	hitscan_cb_wall
 
+@no_hit:
 	; last_angle = angle
 	lda	HITSCAN_NEW_ANGLE
 	sta	HITSCAN_LAST_ANGLE
@@ -1407,17 +1429,33 @@ hitscan_sight_ex:
 	lda	#BANK_THING_SECTORS
 	sta	REG_RAM_BANK
 
-	; hitscan.tsec = thingsec[odx][0]
-	; if(hitscan.tsec == thingsec[tdx][0])
+	; sectors
+	sec
 	ldy	HITSCAN_ORIGIN
 	ldx	HITSCAN_SIGHT_TARGET
 	lda	$B000,x
-	cmp	$B000,y
-	bne	:+
-	rts
-:
 	sta	HITSCAN_SIGHT_TSEC
+	tax
+	sbc	$B000,y
+	sta	MATH_VAR_U
 
+	; hitscan.tsec = thingsec[odx][0]
+	; done
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; map_sectors[hitscan.tsec].sobj_hi
+	lda	SECTOR_STRUCT_OBJ_H,x
+	bne	@do_check
+
+	; hitscan.tsec == thingsec[tdx][0]
+	lda	MATH_VAR_U
+	bne	@do_check
+	rts
+
+@do_check:
 	; hitscan_angles(ang, ???)
 	jsr	hitscan_angles
 

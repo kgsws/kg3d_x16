@@ -12,6 +12,7 @@ typedef struct
 	uint8_t radius;
 	uint8_t height;
 	uint8_t blockedby;
+	uint8_t is_sobj;
 	uint8_t ptop, pbot, tsec;
 	uint16_t damage;
 	int16_t sin;

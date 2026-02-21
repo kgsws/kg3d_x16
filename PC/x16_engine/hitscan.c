@@ -291,9 +291,19 @@ static uint32_t cb_sight(wall_t *wall)
 	vertex_t d0;
 	sector_t *fs, *bs;
 	int32_t top, bot, dist;
+	uint8_t tmp;
 
 	if(hitscan.tsec == hitscan.sector)
+	{
+		if(hitscan.is_sobj)
+		{
+			dist = hitscan_wall_pos(wall, &d0);
+			if(dist - hitscan.dist < 0)
+				goto do_fail;
+		}
+
 		return 1;
+	}
 
 	fs = map_sectors + hitscan.sector;
 
@@ -305,7 +315,8 @@ static uint32_t cb_sight(wall_t *wall)
 	if(	!wall->backsector ||
 		wall->blocking & hitscan.blockedby
 	){
-		uint8_t tmp = hitscan.ptop;
+do_fail:
+		tmp = hitscan.ptop;
 		hitscan.ptop = hitscan.pbot;
 		hitscan.pbot = tmp;
 		return 1;
@@ -352,6 +363,8 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 	int16_t x = th->x >> 8;
 	int16_t y = th->y >> 8;
 
+	hitscan.link = 0; // HAX
+
 	sector_idx = 1;
 	sector_list[0] = sdx;
 
@@ -372,6 +385,8 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 			map_secobj_t *sobjlist[MAX_SOBJ];
 			uint32_t count = hitscan_sobj_sort(sec, sobjlist, th->x / 256, th->y / 256);
 
+			hitscan.is_sobj = 1;
+
 			for(int32_t i = count-1; i >= 0; i--)
 			{
 				map_secobj_t *sobj = sobjlist[i];
@@ -387,7 +402,8 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 
 					angle = get_angle(waln, x, y);
 
-					hit = angle - hang;
+					hit = angle - last_angle;
+					hit |= angle - hang;
 					hit |= hang - last_angle;
 
 					if(!(hit & 0x80))
@@ -403,6 +419,8 @@ void hitscan_func(uint8_t tdx, uint8_t hang, uint32_t (*cb)(wall_t*))
 				} while(wall != walf);
 			}
 		}
+
+		hitscan.is_sobj = 0;
 
 		wall = map_walls[sec->wall.bank] + sec->wall.first;
 		walf = wall;
@@ -479,8 +497,13 @@ void hitscan_sight_ex(uint8_t tdx, uint8_t odx, uint8_t ang, int32_t dist)
 	hitscan.ptop ^= 0x80;
 
 	hitscan.tsec = thingsec[odx][0];
-	if(hitscan.tsec == thingsec[tdx][0])
+
+	if(	!map_sectors[hitscan.tsec].sobj_hi &&
+		hitscan.tsec == thingsec[tdx][0]
+	)
 		return;
+
+	hitscan.dist = dist;
 
 	hitscan_angles(ang, 0);
 	hitscan_func(tdx, ang, cb_sight);
@@ -530,8 +553,6 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, 
 	hitscan.ptan = tab_tan_hs[halfpitch];
 
 	hitscan.type = type;
-
-	hitscan.link = 0; // HAX
 
 	hitscan_func(tdx, hang, cb_attack);
 }
