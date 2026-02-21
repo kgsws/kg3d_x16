@@ -41,7 +41,6 @@ void hitscan_sight_check(uint8_t tdx, uint8_t odx);
 void hitscan_sight_ex(uint8_t tdx, uint8_t odx, uint8_t ang, int32_t dist);
 
 void hitscan_angles(uint8_t hang, uint8_t halfpitch);
-void hitscan_wangle(uint8_t hang);
 int32_t hitscan_wall_pos(wall_t *wall, vertex_t *d0);
 int32_t hitscan_wall_hitz(int32_t dist);
 int32_t hitscan_thing_dd(thing_t *th, vertex_t *d1);

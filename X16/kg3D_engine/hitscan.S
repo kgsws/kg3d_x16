@@ -737,10 +737,10 @@ cb_attack:
 
 cb_sight:
 	; hitscan.tsec == hitscan.sector
-	lda	HITSCAN_SIGHT_TSEC
-	cmp	ARG_THING_SECTOR
+	ldy	ARG_THING_SECTOR
+	cpy	HITSCAN_SIGHT_TSEC
 	bne	:+
-
+@do_pass:
 	; PASS
 	sec
 	rts
@@ -748,10 +748,29 @@ cb_sight:
 	; the wall
 	ldx	WALL_NOW
 
-	;; TODO
+	; fs = map_sectors + hitscan.sector
+	; done
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; hitscan.tsec == fs->floor.link
+	lda	SECTOR_STRUCT_FLOOR_LINK,y
+	cmp	HITSCAN_SIGHT_TSEC
+	beq	@do_pass
+
+	; hitscan.tsec == fs->ceiling.link
+	lda	SECTOR_STRUCT_CEILING_LINK,y
+	cmp	HITSCAN_SIGHT_TSEC
+	beq	@do_pass
+
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
 
 	; !wall->backsector || wall->blocking & hitscan.blockedby
-	lda	WALL_STRUCT_BACKSECTOR,x
+	ldy	WALL_STRUCT_BACKSECTOR,x
 	bne	:+
 
 	; swap PBOT and PTOP
@@ -764,9 +783,124 @@ cb_sight:
 	sec
 	rts
 :
-	;; TODO
+	; fs = map_sectors + hitscan.sector
+	ldx	ARG_THING_SECTOR
 
-	clc
+	; bs = map_sectors + wall->backsector
+	; done
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; fs->floor.height - bs->floor.height < 0
+	sec
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,x
+	sta	HITSCAN_SIGHT_BOT_L
+	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_L,y
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,x
+	sta	HITSCAN_SIGHT_BOT_H
+	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_H,y
+	bpl	:+
+
+	; bot = bs->floor.height
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_L,y
+	sta	HITSCAN_SIGHT_BOT_L
+	lda	SECTOR_STRUCT_FLOOR_HEIGHT_H,y
+	sta	HITSCAN_SIGHT_BOT_H
+:
+	; bs->ceiling.height - fs->ceiling.height < 0
+	sec
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,y
+	sta	HITSCAN_SIGHT_TOP_L
+	sbc	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,y
+	sta	HITSCAN_SIGHT_TOP_H
+	sbc	SECTOR_STRUCT_CEILING_HEIGHT_H,x
+	bmi	:+
+
+	; top = fs->ceiling.height
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_L,x
+	sta	HITSCAN_SIGHT_TOP_L
+	lda	SECTOR_STRUCT_CEILING_HEIGHT_H,x
+	sta	HITSCAN_SIGHT_TOP_H
+:
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; dist = hitscan_wall_pos(wall, &d0)
+	jsr	hitscan_wall_pos
+
+	; p2a_coord.x = bot - hitscan.z
+	sec
+	lda	HITSCAN_SIGHT_BOT_L
+	sbc	HITSCAN_ZZ_L
+	sta	MATH_P2A_X_L
+	lda	HITSCAN_SIGHT_BOT_H
+	sbc	HITSCAN_ZZ_H
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = dist
+	lda	HITSCAN_DIST_L
+	sta	MATH_P2A_Y_L
+	lda	HITSCAN_DIST_H
+	sta	MATH_P2A_Y_H
+
+	; bot = point_to_angle() >> 4
+	jsr	math_p2a
+	jsr	math_ang8
+
+	; bot ^= 0x80
+	lda	MATH_VAR_U
+	eor	#$80
+
+	; bot > hitscan.pbot
+	cmp	HITSCAN_SIGHT_PBOT
+	bcc	:+
+
+	; hitscan.pbot = bot
+	sta	HITSCAN_SIGHT_PBOT
+:
+	; p2a_coord.x = top - hitscan.z
+	sec
+	lda	HITSCAN_SIGHT_TOP_L
+	sbc	HITSCAN_ZZ_L
+	sta	MATH_P2A_X_L
+	lda	HITSCAN_SIGHT_TOP_H
+	sbc	HITSCAN_ZZ_H
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = dist
+	lda	HITSCAN_DIST_L
+	sta	MATH_P2A_Y_L
+	lda	HITSCAN_DIST_H
+	sta	MATH_P2A_Y_H
+
+	; top = point_to_angle() >> 4
+	jsr	math_p2a
+	jsr	math_ang8
+
+	; top ^= 0x80
+	lda	MATH_VAR_U
+	eor	#$80
+
+	; top < hitscan.ptop
+	cmp	HITSCAN_SIGHT_PTOP
+	bcs	:+
+
+	; hitscan.ptop = top
+	sta	HITSCAN_SIGHT_PTOP
+:
+	; wall bank
+	lda	WALL_BANK
+	sta	REG_RAM_BANK
+
+	; hitscan.pbot >= hitscan.ptop
+	lda	HITSCAN_SIGHT_PBOT
+	cmp	HITSCAN_SIGHT_PTOP
+
+	; NEXT or FAIL
 	rts
 
 ;;;
@@ -1204,20 +1338,22 @@ hitscan_sight_ex:
 	lda	THING_STRUCT_Z_L,y
 	adc	THING_STRUCT_VIEW_HEIGHT,y
 	sta	HITSCAN_ZZ_L
+	sta	HITSCAN_SIGHT_ZZ_L
 	lda	THING_STRUCT_Z_H,y
 	adc	#0
 	sta	HITSCAN_ZZ_H
+	sta	HITSCAN_SIGHT_ZZ_H
 
 	; zz = ht->z / 256 - hitscan.z
 	; p2a_coord.x = zz
 	sec
 	lda	THING_STRUCT_Z_L,x
-	sbc	HITSCAN_ZZ_L
-	sta	HITSCAN_ZZ_L
+	sbc	HITSCAN_SIGHT_ZZ_L
+	sta	HITSCAN_SIGHT_ZZ_L
 	sta	MATH_P2A_X_L
 	lda	THING_STRUCT_Z_H,x
-	sbc	HITSCAN_ZZ_H
-	sta	HITSCAN_ZZ_H
+	sbc	HITSCAN_SIGHT_ZZ_H
+	sta	HITSCAN_SIGHT_ZZ_H
 	sta	MATH_P2A_X_H
 
 	; p2a_coord.y = dist
@@ -1234,7 +1370,6 @@ hitscan_sight_ex:
 	lda	MATH_VAR_U
 	eor	#$80
 	sta	HITSCAN_SIGHT_PBOT
-sta DBG_BYTE0
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
@@ -1246,10 +1381,10 @@ sta DBG_BYTE0
 
 	; p2a_coord.x = zz + ht->height
 	clc
-	lda	HITSCAN_ZZ_L
+	lda	HITSCAN_SIGHT_ZZ_L
 	adc	THING_STRUCT_HEIGHT,x
 	sta	MATH_P2A_X_L
-	lda	HITSCAN_ZZ_H
+	lda	HITSCAN_SIGHT_ZZ_H
 	adc	#0
 	sta	MATH_P2A_X_H
 
@@ -1267,7 +1402,6 @@ sta DBG_BYTE0
 	lda	MATH_VAR_U
 	eor	#$80
 	sta	HITSCAN_SIGHT_PTOP
-sta DBG_BYTE1
 
 	; thing sectors bank
 	lda	#BANK_THING_SECTORS
@@ -1284,9 +1418,8 @@ sta DBG_BYTE1
 :
 	sta	HITSCAN_SIGHT_TSEC
 
-	; hitscan_wangle(ang)
-	ldx	ARG_HITSCAN_ANGLE
-	jsr	hitscan_wangle
+	; hitscan_angles(ang, ???)
+	jsr	hitscan_angles
 
 	; hitscan_func(tdx, ang, cb_sight)
 	lda	#<cb_sight
@@ -1399,7 +1532,6 @@ hitscan_angles:
 	; cos
 	math_read_cos	HITSCAN_COS_L, HITSCAN_COS_H
 
-hitscan_wangle:
 	; hitscan.axis = (hang + 0x20) << 1
 	txa
 	clc

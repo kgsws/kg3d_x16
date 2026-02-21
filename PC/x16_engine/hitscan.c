@@ -329,7 +329,7 @@ static uint32_t cb_sight(wall_t *wall)
 	p2a_coord.y = dist;
 	bot = point_to_angle() >> 4;
 	bot ^= 0x80;
-	if(bot > hitscan.pbot)
+	if(bot >= hitscan.pbot)
 		hitscan.pbot = bot;
 
 	p2a_coord.x = top - hitscan.z;
@@ -482,7 +482,7 @@ void hitscan_sight_ex(uint8_t tdx, uint8_t odx, uint8_t ang, int32_t dist)
 	if(hitscan.tsec == thingsec[tdx][0])
 		return;
 
-	hitscan_wangle(ang);
+	hitscan_angles(ang, 0);
 	hitscan_func(tdx, ang, cb_sight);
 }
 
@@ -539,25 +539,17 @@ void hitscan_attack(uint8_t tdx, uint8_t zadd, uint8_t hang, uint8_t halfpitch, 
 //
 // wall hit calculation
 
-void hitscan_sincos(uint8_t hang)
+void hitscan_angles(uint8_t hang, uint8_t halfpitch)
 {
 	hitscan.sin = tab_sin[hang];
 	hitscan.cos = tab_cos[hang];
-}
 
-void hitscan_wangle(uint8_t hang)
-{
 	hitscan.axis = (hang + 0x20) << 1;
 	if(hitscan.axis & 0x80)
 		hitscan.idiv = inv_div[hitscan.sin];
 	else
 		hitscan.idiv = inv_div[hitscan.cos];
-}
 
-void hitscan_angles(uint8_t hang, uint8_t halfpitch)
-{
-	hitscan_sincos(hang);
-	hitscan_wangle(hang);
 	hitscan.wtan = tab_tan_hs[halfpitch];
 }
 
