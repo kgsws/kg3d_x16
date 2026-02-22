@@ -203,9 +203,14 @@ enum
 	CBOR_HUD_MENU_COLOR_SELECT,
 	CBOR_HUD_MENU_COLOR_EXTRA,
 	CBOR_HUD_MENU_COLOR_EXSEL,
+	CBOR_HUD_STAT_COLOR_INFO,
 	CBOR_HUD_STAT_COLOR_MSG,
 	CBOR_HUD_STAT_COLOR_HP,
 	CBOR_HUD_STAT_COLOR_AMMO,
+	CBOR_HUD_STAT_CFG_INFO,
+	CBOR_HUD_STAT_CFG_STYLE,
+	CBOR_HUD_STAT_CFG_POS_X,
+	CBOR_HUD_STAT_CFG_POS_Y,
 	//
 	NUM_CBOR_HUD
 };
@@ -400,14 +405,21 @@ typedef struct
 	} menu_color;
 	union
 	{
-		uint8_t raw[1];
+		uint8_t raw[4];
 		struct
 		{
+			uint8_t info;
 			uint8_t msg;
 			uint8_t hp;
 			uint8_t ammo;
 		};
 	} stat_color;
+	struct
+	{
+		uint8_t info;
+		uint8_t bar_style;
+		uint8_t bar_pos[2];
+	} stat_cfg;
 } hud_cfg_t;
 
 //
@@ -541,10 +553,17 @@ static const hud_cfg_t hud_cfg_def =
 	},
 	.stat_color =
 	{
+		.info = 10,
 		.msg = 9,
 		.hp = 8,
 		.ammo = 8,
-	}
+	},
+	.stat_cfg =
+	{
+		.info = 0,
+		.bar_style = 0,
+		.bar_pos = {2, 102},
+	},
 };
 
 static const uint8_t *const menu_color_name[] =
@@ -559,6 +578,7 @@ static const uint8_t *const menu_color_name[] =
 
 static const uint8_t *const stat_color_name[] =
 {
+	"Info",
 	"Message",
 	"Health",
 	"Ammo",
@@ -1326,6 +1346,13 @@ static edit_cbor_obj_t cbor_hud[] =
 		.type = EDIT_CBOR_TYPE_U8,
 		.u8 = &hud_cfg.menu_color.exsel
 	},
+	[CBOR_HUD_STAT_COLOR_INFO] =
+	{
+		.name = "stat.color.info",
+		.nlen = 15,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_color.info
+	},
 	[CBOR_HUD_STAT_COLOR_MSG] =
 	{
 		.name = "stat.color.message",
@@ -1346,6 +1373,34 @@ static edit_cbor_obj_t cbor_hud[] =
 		.nlen = 15,
 		.type = EDIT_CBOR_TYPE_U8,
 		.u8 = &hud_cfg.stat_color.ammo
+	},
+	[CBOR_HUD_STAT_CFG_INFO] =
+	{
+		.name = "stat.cfg.info",
+		.nlen = 13,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_cfg.info
+	},
+	[CBOR_HUD_STAT_CFG_STYLE] =
+	{
+		.name = "stat.cfg.style",
+		.nlen = 14,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_cfg.bar_style
+	},
+	[CBOR_HUD_STAT_CFG_POS_X] =
+	{
+		.name = "stat.cfg.pos.x",
+		.nlen = 14,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_cfg.bar_pos[0]
+	},
+	[CBOR_HUD_STAT_CFG_POS_Y] =
+	{
+		.name = "stat.cfg.pos.y",
+		.nlen = 14,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_cfg.bar_pos[1]
 	},
 	// terminator
 	[NUM_CBOR_HUD] = {}
@@ -5456,9 +5511,6 @@ static void hud_font_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 		dst = data + (x + fc->xoffs) + 160 * (y + fc->yoffs);
 		x += fc->space;
 
-		if(x > 160)
-			break;
-
 		for(uint32_t y = 0; y < 8; y++)
 		{
 			for(uint32_t x = 0; x < 4; x++)
@@ -5475,6 +5527,9 @@ static void hud_font_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 			}
 			dst += 160 - 8;
 		}
+
+		if(x > 160)
+			break;
 	}
 }
 
@@ -5670,20 +5725,28 @@ static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 		uint8_t in = *text++;
 		uint8_t *dst, *src;
 		nums_char_t *nc;
+		uint32_t sh = 16;
 
 		if(!in)
 			break;
 
-		in -= 0x30;
-		if(in > 10)
-			in = 10;
+		if(in >= '0' && in <= '9')
+			in -= 0x30;
+		else
+		if(in >= 'A' && in <= 'F')
+			in -= 0x37;
+		else
+			continue;
 
 		nc = nums_char + in;
 
 		if(y < 0)
 			continue;
-		if(y + 16 > 120)
+		if(y >= 120)
 			continue;
+		if(y + 16 > 120)
+			sh = 120 - y;
+
 		if(x < 0)
 			continue;
 		if(x + 8 > 160)
@@ -5693,10 +5756,7 @@ static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 		dst = data + x + 160 * y;
 		x += nc->space;
 
-		if(x > 160)
-			break;
-
-		for(uint32_t y = 0; y < 16; y++)
+		for(uint32_t y = 0; y < sh; y++)
 		{
 			for(uint32_t x = 0; x < 4; x++)
 			{
@@ -5712,6 +5772,9 @@ static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 			}
 			dst += 160 - 8;
 		}
+
+		if(x > 160)
+			break;
 	}
 }
 
@@ -5733,15 +5796,28 @@ static void *hud_pregen_nums(const hud_element_t *elm)
 		glui_set_text(&ui_gfx_hud_stat_opts.elements[i]->text, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 	}
 
+	// mode buttons
+	sprintf(text, "Info: %s", hud_cfg.stat_cfg.info ? "center" : "left");
+	glui_set_text(&ui_gfx_hud_stat_cfg_info, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+	sprintf(text, "Style: %s", hud_cfg.stat_cfg.bar_style ? "boxed" : "normal");
+	glui_set_text(&ui_gfx_hud_stat_cfg_bars, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+	sprintf(text, "<        %u        >", hud_cfg.stat_cfg.bar_pos[1]);
+	glui_set_text(&ui_gfx_hud_stat_cfg_bary, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+	sprintf(text, "<        %u        >", hud_cfg.stat_cfg.bar_pos[0]);
+	glui_set_text(&ui_gfx_hud_stat_cfg_barx, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+
+	// top message
+	hud_font_write(data, !!hud_cfg.stat_cfg.info * 80, 0, hud_cfg.stat_color.info, "Status message text.", !!hud_cfg.stat_cfg.info);
+
 	// center message
 	hud_font_write(data, 80, 60 - font_char[0].yoffs, hud_cfg.stat_color.msg, "Special center", 1);
 	hud_font_write(data, 80, 60, hud_cfg.stat_color.msg, "message text.", 1);
 
 	// health
-	hud_nums_write(data, 2, 120 - 18, hud_cfg.stat_color.hp, "100", 0);
+	hud_nums_write(data, hud_cfg.stat_cfg.bar_pos[0], hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.hp, "100", 0);
 
 	// ammo
-	hud_nums_write(data, 159, 120 - 18, hud_cfg.stat_color.ammo, " 423", -1);
+	hud_nums_write(data, 161 - hud_cfg.stat_cfg.bar_pos[0], hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.ammo, "A423", -1);
 
 	return data;
 }
@@ -8568,6 +8644,38 @@ int32_t uin_gfx_hud_stat_color(glui_element_t *elm, int32_t x, int32_t y)
 	update_gfx_mode(0);
 
 	return 1;
+}
+
+int32_t uin_gfx_hud_stat_cfg_info(glui_element_t *elm, int32_t x, int32_t y)
+{
+	hud_cfg.stat_cfg.info = !hud_cfg.stat_cfg.info;
+	update_gfx_mode(0);
+}
+
+int32_t uin_gfx_hud_stat_cfg_bars(glui_element_t *elm, int32_t x, int32_t y)
+{
+	hud_cfg.stat_cfg.bar_style = !hud_cfg.stat_cfg.bar_style;
+	update_gfx_mode(0);
+}
+
+int32_t uin_gfx_hud_stat_cfg_barp(glui_element_t *elm, int32_t x, int32_t y)
+{
+	int32_t val = hud_cfg.stat_cfg.bar_pos[elm->base.custom];
+	int32_t limit = elm->base.custom ? 112 : 32;
+
+	if(x >= elm->base.width / 2)
+		val++;
+	else
+		val--;
+
+	if(val > limit)
+		val = limit;
+	if(val < 0)
+		val = 0;
+
+	hud_cfg.stat_cfg.bar_pos[elm->base.custom] = val;
+
+	update_gfx_mode(0);
 }
 
 //

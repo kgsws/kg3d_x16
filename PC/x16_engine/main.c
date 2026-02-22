@@ -434,7 +434,7 @@ sector_t map_sectors[256];
 wall_t map_walls[WALL_BANK_COUNT][256];
 
 // font stuff
-static uint8_t font_info[512];
+uint8_t font_info[512];
 
 // texture stuff
 uint8_t vram[128 * 1024];
@@ -3082,6 +3082,7 @@ static uint32_t load_tables()
 
 	// font info
 	read(fd, font_info, sizeof(font_info));
+	memcpy(&hud_cfg, font_info + 96, sizeof(hud_cfg));
 
 	// HUD
 	read(fd, vram + 62 * 256, 2 * 256);

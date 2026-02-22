@@ -1805,6 +1805,68 @@
 										"background": ["btnbg", "gray"],
 										"text": true,
 										"color": ["bright", "white"]
+									},
+									{
+										"click": "uin_gfx_hud_stat_color",
+										"custom": 3,
+										"x": 128,
+										"y": 528,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"name": "ui_gfx_hud_stat_cfg_info",
+										"click": "uin_gfx_hud_stat_cfg_info",
+										"x": 896,
+										"y": 384,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"name": "ui_gfx_hud_stat_cfg_bars",
+										"click": "uin_gfx_hud_stat_cfg_bars",
+										"x": 896,
+										"y": 432,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"name": "ui_gfx_hud_stat_cfg_bary",
+										"click": "uin_gfx_hud_stat_cfg_barp",
+										"custom": 1,
+										"x": 896,
+										"y": 480,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
+									},
+									{
+										"name": "ui_gfx_hud_stat_cfg_barx",
+										"click": "uin_gfx_hud_stat_cfg_barp",
+										"custom": 0,
+										"x": 896,
+										"y": 528,
+										"width": 192,
+										"height": 32,
+										"align": "center",
+										"background": ["btnbg", "gray"],
+										"text": true,
+										"color": ["bright", "white"]
 									}
 								]
 							}
