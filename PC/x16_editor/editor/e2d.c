@@ -165,6 +165,8 @@ static uint32_t is_vertex_visible(kge_vertex_t *vtx)
 	{
 		if(!edit_subgrp_show)
 			return 1;
+		if(!thing_local_player->pos.sector)
+			return 0;
 		return is_vertex_in_sector(thing_local_player->pos.sector, vtx);
 	}
 
@@ -433,8 +435,9 @@ static kge_thing_t *find_cursor_thing()
 			float xx, yy;
 			kge_thing_t *th = (kge_thing_t*)tickable->data;
 
-			if(!edit_is_sector_hidden(th->pos.sector))
-			{
+			if(	!edit_is_sector_hidden(th->pos.sector) ||
+				th == edit_camera_thing
+			){
 				xx = th->pos.x - mx;
 				yy = th->pos.y - my;
 

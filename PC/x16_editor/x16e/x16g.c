@@ -208,7 +208,9 @@ enum
 	CBOR_HUD_STAT_COLOR_HP,
 	CBOR_HUD_STAT_COLOR_AMMO,
 	CBOR_HUD_STAT_CFG_INFO,
-	CBOR_HUD_STAT_CFG_STYLE,
+	CBOR_HUD_STAT_CFG_BOX,
+	CBOR_HUD_STAT_CFG_SPACE,
+	CBOR_HUD_STAT_CFG_DIGITS,
 	CBOR_HUD_STAT_CFG_POS_X,
 	CBOR_HUD_STAT_CFG_POS_Y,
 	//
@@ -387,37 +389,59 @@ typedef struct
 	uint8_t space;
 } nums_char_t;
 
-typedef struct
+typedef union
 {
-	// order is defined in game ASM and UI buttons
-	union
+	uint8_t raw[6];
+	struct
 	{
-		uint8_t raw[6];
-		struct
-		{
-			uint8_t title;
-			uint8_t item;
-			uint8_t group;
-			uint8_t select;
-			uint8_t extra;
-			uint8_t exsel;
-		};
-	} menu_color;
-	union
-	{
-		uint8_t raw[4];
-		struct
-		{
-			uint8_t info;
-			uint8_t msg;
-			uint8_t hp;
-			uint8_t ammo;
-		};
-	} stat_color;
+		uint8_t title;
+		uint8_t item;
+		uint8_t group;
+		uint8_t select;
+		uint8_t extra;
+		uint8_t exsel;
+	};
+} hud_menu_color_t;
+
+typedef union
+{
+	uint8_t raw[4];
 	struct
 	{
 		uint8_t info;
-		uint8_t bar_style;
+		uint8_t msg;
+		uint8_t hp;
+		uint8_t ammo;
+	};
+} hud_stat_color_t;
+
+typedef struct
+{
+	// order is defined in game ASM and UI buttons
+	hud_menu_color_t menu_color;
+	hud_stat_color_t stat_color;
+	struct
+	{
+		uint8_t info_x;
+		uint8_t info_y;
+		uint8_t hp_x[3];
+		uint8_t am_x[3];
+		uint8_t bar_y;
+		uint8_t space;
+		uint8_t digits;
+	} style;
+} hud_export_t;
+
+typedef struct
+{
+	hud_menu_color_t menu_color;
+	hud_stat_color_t stat_color;
+	struct
+	{
+		uint8_t info;
+		uint8_t bar_space;
+		uint8_t bar_digs;
+		uint8_t bar_box;
 		uint8_t bar_pos[2];
 	} stat_cfg;
 } hud_cfg_t;
@@ -540,6 +564,8 @@ static uint_fast8_t cbor_stex_is_sprite;
 
 uint8_t x16_sky_name[LEN_X16_SKY_NAME];
 
+static uint32_t stbar_num[2] = {100, 423};
+
 static const hud_cfg_t hud_cfg_def =
 {
 	.menu_color =
@@ -561,7 +587,9 @@ static const hud_cfg_t hud_cfg_def =
 	.stat_cfg =
 	{
 		.info = 0,
-		.bar_style = 0,
+		.bar_box = 0,
+		.bar_digs = 1,
+		.bar_space = 9,
 		.bar_pos = {2, 102},
 	},
 };
@@ -582,6 +610,22 @@ static const uint8_t *const stat_color_name[] =
 	"Message",
 	"Health",
 	"Ammo",
+};
+
+static const uint8_t *stbar_info[] =
+{
+	"top left",
+	"top center",
+	"bot left",
+	"bot center",
+};
+
+static const uint8_t *stbar_digits[] =
+{
+	"H3 / A3",
+	"H3 / A4",
+	"H4 / A3",
+	"H4 / A4"
 };
 
 static const uint8_t vram_ranges[] =
@@ -1381,12 +1425,26 @@ static edit_cbor_obj_t cbor_hud[] =
 		.type = EDIT_CBOR_TYPE_U8,
 		.u8 = &hud_cfg.stat_cfg.info
 	},
-	[CBOR_HUD_STAT_CFG_STYLE] =
+	[CBOR_HUD_STAT_CFG_BOX] =
 	{
-		.name = "stat.cfg.style",
+		.name = "stat.cfg.box",
+		.nlen = 12,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_cfg.bar_box
+	},
+	[CBOR_HUD_STAT_CFG_SPACE] =
+	{
+		.name = "stat.cfg.space",
 		.nlen = 14,
 		.type = EDIT_CBOR_TYPE_U8,
-		.u8 = &hud_cfg.stat_cfg.bar_style
+		.u8 = &hud_cfg.stat_cfg.bar_space
+	},
+	[CBOR_HUD_STAT_CFG_DIGITS] =
+	{
+		.name = "stat.cfg.digits",
+		.nlen = 15,
+		.type = EDIT_CBOR_TYPE_U8,
+		.u8 = &hud_cfg.stat_cfg.bar_digs
 	},
 	[CBOR_HUD_STAT_CFG_POS_X] =
 	{
@@ -4336,7 +4394,7 @@ static void gfx_cleanup()
 		font_char[i].space = 9;
 
 	for(uint32_t i = 0; i < NUMS_CHAR_COUNT; i++)
-		nums_char[i].space = 9;
+		nums_char[i].space = 8;
 
 	font_char[0].yoffs = 10;
 }
@@ -5480,8 +5538,10 @@ static void hud_font_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 	while(1)
 	{
 		uint8_t in = *text++;
+		uint32_t sh = 8;
 		uint8_t *dst, *src;
 		font_char_t *fc;
+		int32_t yy;
 
 		if(!in)
 			break;
@@ -5498,20 +5558,27 @@ static void hud_font_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 			continue;
 		}
 
-		if(fc->yoffs + y < 0)
+		yy = fc->yoffs + y;
+		if(yy < 0)
 			continue;
-		if(fc->yoffs + y + 8 > 120)
-			continue;
+		if(yy + 8 > 120)
+		{
+			if(yy + 8 < 128)
+				sh = 120 - yy;
+			else
+				continue;
+		}
+
 		if(fc->xoffs + x < 0)
 			continue;
 		if(fc->xoffs + x + 8 > 160)
 			continue;
 
 		src = fc->data;
-		dst = data + (x + fc->xoffs) + 160 * (y + fc->yoffs);
+		dst = data + (x + fc->xoffs) + 160 * yy;
 		x += fc->space;
 
-		for(uint32_t y = 0; y < 8; y++)
+		for(uint32_t y = 0; y < sh; y++)
 		{
 			for(uint32_t x = 0; x < 4; x++)
 			{
@@ -5685,6 +5752,7 @@ static void *hud_texgen_nums(const hud_element_t *elm)
 	return data;
 }
 
+#if 0
 static int32_t hud_nums_width(const uint8_t *text)
 {
 	int32_t x = 0;
@@ -5707,16 +5775,11 @@ static int32_t hud_nums_width(const uint8_t *text)
 
 	return x;
 }
+#endif
 
-static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, const uint8_t *text, int32_t align)
+static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, const uint8_t *text)
 {
-	if(align)
-	{
-		int32_t w = hud_nums_width(text);
-		if(align >= 0)
-			w /= 2;
-		x -= w;
-	}
+	uint32_t zero = 0;
 
 	color <<= 4;
 
@@ -5729,6 +5792,14 @@ static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 
 		if(!in)
 			break;
+
+		if(!zero)
+		{
+			if(in == '0')
+				in = 'A';
+			else
+				zero = 1;
+		}
 
 		if(in >= '0' && in <= '9')
 			in -= 0x30;
@@ -5754,7 +5825,7 @@ static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 
 		src = nc->data;
 		dst = data + x + 160 * y;
-		x += nc->space;
+		x += hud_cfg.stat_cfg.bar_space; // nc->space;
 
 		for(uint32_t y = 0; y < sh; y++)
 		{
@@ -5780,6 +5851,7 @@ static void hud_nums_write(uint8_t *data, int32_t x, int32_t y, int32_t color, c
 
 static void *hud_pregen_nums(const hud_element_t *elm)
 {
+	int32_t xx;
 	uint8_t *data;
 	uint8_t text[32];
 
@@ -5789,6 +5861,12 @@ static void *hud_pregen_nums(const hud_element_t *elm)
 
 	ui_gfx_hud_demo.base.click = NULL;
 
+	if(hud_cfg.stat_cfg.info >= sizeof(stbar_info) / sizeof(uint8_t*))
+		hud_cfg.stat_cfg.info = 0;
+
+	if(hud_cfg.stat_cfg.bar_digs >= sizeof(stbar_digits) / sizeof(uint8_t*))
+		hud_cfg.stat_cfg.bar_digs = 0;
+
 	// color buttons
 	for(uint32_t i = 0; i < sizeof(hud_cfg.stat_color); i++)
 	{
@@ -5797,9 +5875,13 @@ static void *hud_pregen_nums(const hud_element_t *elm)
 	}
 
 	// mode buttons
-	sprintf(text, "Info: %s", hud_cfg.stat_cfg.info ? "center" : "left");
+	sprintf(text, "Info: %s", stbar_info[hud_cfg.stat_cfg.info]);
 	glui_set_text(&ui_gfx_hud_stat_cfg_info, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-	sprintf(text, "Style: %s", hud_cfg.stat_cfg.bar_style ? "boxed" : "normal");
+	sprintf(text, "Box: %u", hud_cfg.stat_cfg.bar_box);
+	glui_set_text(&ui_gfx_hud_stat_cfg_barb, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+	sprintf(text, "Digits: %s", stbar_digits[hud_cfg.stat_cfg.bar_digs]);
+	glui_set_text(&ui_gfx_hud_stat_cfg_bard, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+	sprintf(text, "Space: %u", hud_cfg.stat_cfg.bar_space);
 	glui_set_text(&ui_gfx_hud_stat_cfg_bars, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 	sprintf(text, "<        %u        >", hud_cfg.stat_cfg.bar_pos[1]);
 	glui_set_text(&ui_gfx_hud_stat_cfg_bary, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
@@ -5807,17 +5889,37 @@ static void *hud_pregen_nums(const hud_element_t *elm)
 	glui_set_text(&ui_gfx_hud_stat_cfg_barx, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
 	// top message
-	hud_font_write(data, !!hud_cfg.stat_cfg.info * 80, 0, hud_cfg.stat_color.info, "Status message text.", !!hud_cfg.stat_cfg.info);
+	hud_font_write(data, (hud_cfg.stat_cfg.info & 1) * 80, (hud_cfg.stat_cfg.info & 2) * 54, hud_cfg.stat_color.info, "Status message text.", hud_cfg.stat_cfg.info & 1);
 
 	// center message
 	hud_font_write(data, 80, 60 - font_char[0].yoffs, hud_cfg.stat_color.msg, "Special center", 1);
 	hud_font_write(data, 80, 60, hud_cfg.stat_color.msg, "message text.", 1);
 
 	// health
-	hud_nums_write(data, hud_cfg.stat_cfg.bar_pos[0], hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.hp, "100", 0);
+	xx = sprintf(text, hud_cfg.stat_cfg.bar_digs & 2 ? "%04u" : "%03u", stbar_num[0] % (hud_cfg.stat_cfg.bar_digs & 2 ? 10000 : 1000));
+	xx *= hud_cfg.stat_cfg.bar_space;
+	if(hud_cfg.stat_cfg.bar_space > 8)
+		xx--;
+	hud_nums_write(data, hud_cfg.stat_cfg.bar_pos[0], hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.hp, text);
+
+	if(hud_cfg.stat_cfg.bar_box)
+	{
+		hud_nums_write(data, hud_cfg.stat_cfg.bar_pos[0] - hud_cfg.stat_cfg.bar_box, hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.hp, "B");
+		hud_nums_write(data, hud_cfg.stat_cfg.bar_pos[0] + xx - 8 + hud_cfg.stat_cfg.bar_box, hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.hp, "B");
+	}
 
 	// ammo
-	hud_nums_write(data, 161 - hud_cfg.stat_cfg.bar_pos[0], hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.ammo, "A423", -1);
+	xx = sprintf(text, hud_cfg.stat_cfg.bar_digs & 1 ? "%04u" : "%03u", stbar_num[1] % (hud_cfg.stat_cfg.bar_digs & 1 ? 10000 : 1000));
+	xx *= hud_cfg.stat_cfg.bar_space;
+	if(hud_cfg.stat_cfg.bar_space > 8)
+		xx--;
+	hud_nums_write(data, 160 - hud_cfg.stat_cfg.bar_pos[0] - xx, hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.ammo, text);
+
+	if(hud_cfg.stat_cfg.bar_box)
+	{
+		hud_nums_write(data, 152 - hud_cfg.stat_cfg.bar_pos[0] + hud_cfg.stat_cfg.bar_box, hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.ammo, "B");
+		hud_nums_write(data, 160 - hud_cfg.stat_cfg.bar_pos[0] - xx - hud_cfg.stat_cfg.bar_box, hud_cfg.stat_cfg.bar_pos[1], hud_cfg.stat_color.ammo, "B");
+	}
 
 	return data;
 }
@@ -8648,13 +8750,33 @@ int32_t uin_gfx_hud_stat_color(glui_element_t *elm, int32_t x, int32_t y)
 
 int32_t uin_gfx_hud_stat_cfg_info(glui_element_t *elm, int32_t x, int32_t y)
 {
-	hud_cfg.stat_cfg.info = !hud_cfg.stat_cfg.info;
+	hud_cfg.stat_cfg.info++;
+	if(hud_cfg.stat_cfg.info >= sizeof(stbar_info) / sizeof(uint8_t*))
+		hud_cfg.stat_cfg.info = 0;
+	update_gfx_mode(0);
+}
+
+int32_t uin_gfx_hud_stat_cfg_barb(glui_element_t *elm, int32_t x, int32_t y)
+{
+	hud_cfg.stat_cfg.bar_box++;
+	if(hud_cfg.stat_cfg.bar_box > 4)
+		hud_cfg.stat_cfg.bar_box = 0;
+	update_gfx_mode(0);
+}
+
+int32_t uin_gfx_hud_stat_cfg_bard(glui_element_t *elm, int32_t x, int32_t y)
+{
+	hud_cfg.stat_cfg.bar_digs++;
+	if(hud_cfg.stat_cfg.bar_digs >= sizeof(stbar_digits) / sizeof(uint8_t*))
+		hud_cfg.stat_cfg.bar_digs = 0;
 	update_gfx_mode(0);
 }
 
 int32_t uin_gfx_hud_stat_cfg_bars(glui_element_t *elm, int32_t x, int32_t y)
 {
-	hud_cfg.stat_cfg.bar_style = !hud_cfg.stat_cfg.bar_style;
+	hud_cfg.stat_cfg.bar_space++;
+	if(hud_cfg.stat_cfg.bar_space > 9)
+		hud_cfg.stat_cfg.bar_space = 4;
 	update_gfx_mode(0);
 }
 
@@ -9129,16 +9251,47 @@ void x16g_export()
 	{
 		uint32_t i;
 		uint8_t ttmp[256];
+		hud_export_t *hud = (hud_export_t*)ttmp;
 
 		memset(ttmp + FONT_CHAR_COUNT, 0, sizeof(ttmp) - FONT_CHAR_COUNT);
 
-		// font space
-		for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
+		// font space + HUD info
+		for(i = 0; i < FONT_CHAR_COUNT; i++)
 			ttmp[i] = font_char[i].space;
-		for(uint32_t i = 0; i < NUMS_CHAR_COUNT; i++)
-			ttmp[i + 128] = nums_char[i].space;
-		// HUD info
-		memcpy(ttmp + FONT_CHAR_COUNT, &hud_cfg, sizeof(hud_cfg));
+
+		i = hud_cfg.stat_cfg.bar_digs & 1 ? 4 : 3;
+		i *= hud_cfg.stat_cfg.bar_space;
+		if(hud_cfg.stat_cfg.bar_space > 8)
+			i--;
+
+		hud->menu_color = hud_cfg.menu_color;
+		hud->stat_color = hud_cfg.stat_color;
+		hud->style.info_x = hud_cfg.stat_cfg.info & 1 ? 80 : 0;
+		hud->style.info_y = hud_cfg.stat_cfg.info & 2 ? 108 : 0;
+		hud->style.hp_x[0] = hud_cfg.stat_cfg.bar_pos[0];
+		hud->style.hp_x[1] = 0;
+		hud->style.hp_x[2] = 0;
+		hud->style.am_x[0] = 160 - hud_cfg.stat_cfg.bar_pos[0] - i;
+		hud->style.am_x[1] = 0;
+		hud->style.am_x[2] = 0;
+		hud->style.bar_y = hud_cfg.stat_cfg.bar_pos[1];
+		hud->style.space = hud_cfg.stat_cfg.bar_space;
+		hud->style.digits = hud_cfg.stat_cfg.bar_digs;
+
+		if(hud_cfg.stat_cfg.bar_box)
+		{
+			hud->style.am_x[1] = 152 - hud_cfg.stat_cfg.bar_pos[0] + hud_cfg.stat_cfg.bar_box;
+			hud->style.am_x[2] = 160 - hud_cfg.stat_cfg.bar_pos[0] - i - hud_cfg.stat_cfg.bar_box;
+
+			i = hud_cfg.stat_cfg.bar_digs & 2 ? 4 : 3;
+			i *= hud_cfg.stat_cfg.bar_space;
+			if(hud_cfg.stat_cfg.bar_space > 8)
+				i--;
+
+			hud->style.hp_x[1] = hud_cfg.stat_cfg.bar_pos[0] - hud_cfg.stat_cfg.bar_box;
+			hud->style.hp_x[2] = hud_cfg.stat_cfg.bar_pos[0] + i - 8 + hud_cfg.stat_cfg.bar_box;
+		}
+
 		write(fd, ttmp, sizeof(ttmp));
 
 		// font offsets
