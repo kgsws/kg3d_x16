@@ -486,6 +486,12 @@ thing_damage:
 :
 	sta	G_DAMAGE_LEVEL
 
+	; check HUD
+	lda	G_PLAYER_THING
+	cmp	G_CAMERA_THING
+	bne	:+
+	sta	TAB_HUD_UPDATE
+:
 @no_camera:
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT

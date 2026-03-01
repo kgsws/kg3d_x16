@@ -1139,6 +1139,9 @@ ex_map_load:
 	stx	G_PLAYER_THING
 	stx	G_CAMERA_THING
 
+	; update HUD
+	stx	TAB_HUD_UPDATE
+
 	; change ticker
 	lda	#TICKER_FUNC_PLAYER
 	sta	TICKER_STRUCT_FUNC,x

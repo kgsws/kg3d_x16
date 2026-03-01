@@ -92,6 +92,17 @@ ARG_TEXT_C = $06
 RET_TEXT_LEN = $0F
 
 ;;;
+; function arguments for 'hud'
+;;;
+
+ARG_HUD_VAL_L = $02
+ARG_HUD_VAL_H = $03
+ARG_HUD_X = $04
+ARG_HUD_Y = $05
+ARG_HUD_C = $06
+ARG_HUD_D = $07
+
+;;;
 ; texture info structure
 ;;;
 ; there are 128 texture slots

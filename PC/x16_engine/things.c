@@ -8,6 +8,7 @@
 #include "things.h"
 #include "actions.h"
 #include "hitscan.h"
+#include "hud.h"
 
 //#define DBG_NO_CAMERA_DIP
 
@@ -1040,6 +1041,8 @@ void thing_spawn_player()
 
 	projection.wh = th->view_height;
 	projection.wd = 0;
+
+	hud_update = 1;
 }
 
 void thing_remove(uint8_t tdx)
@@ -1123,6 +1126,9 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 			camera_damage = 255 - 15;
 		else
 			camera_damage += damage;
+
+		if(tdx == player_thing)
+			hud_update = 1;
 	}
 
 	if(	odx &&

@@ -3082,7 +3082,7 @@ static uint32_t load_tables()
 
 	// font info
 	read(fd, font_info, sizeof(font_info));
-	memcpy(&hud_cfg, font_info + 96, sizeof(hud_cfg));
+	memcpy(&hud_info, font_info + 128, sizeof(hud_info));
 
 	// HUD
 	read(fd, vram + 62 * 256, 2 * 256);

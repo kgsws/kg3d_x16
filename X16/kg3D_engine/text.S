@@ -12,9 +12,11 @@
 .export text_write_ca
 .export text_width
 .export text_clean
+.export text_clean_all
+.export text_sprite_addr
 
-; defs
-MAX_CHARACTERS = 96
+; this is entire sprite range reserved for text and HUD
+MAX_CHARACTERS = 104
 
 ;;;
 ; CODE
@@ -43,22 +45,8 @@ text_write_la:
 	phy
 	phx
 
-	; ADDR0 = 0x01FC00+offs, increment = 1
-	stz	MATH_VAR_U
-	lda	TAB_TEXT_I
-	asl
-	rol	MATH_VAR_U
-	asl
-	rol	MATH_VAR_U
-	asl
-	rol	MATH_VAR_U
-	sta	VERA_ADDRx_L
-	clc
-	lda	#$FC
-	adc	MATH_VAR_U
-	sta	VERA_ADDRx_M
-	lda	#%00010001
-	sta	VERA_ADDRx_H
+	; set ADDR0
+	jsr	text_sprite_addr
 
 	; characters
 	ldy	#0
@@ -175,9 +163,15 @@ text_width:
 ;;;
 ; text cleanup
 ;;;
-; clear all sprites after TAB_TEXT_I
+; clear all sprites from TAB_TEXT_I
+; A is total sprite count
+
+text_clean_all:
+	lda	#MAX_CHARACTERS
 
 text_clean:
+	pha
+
 	; ADDR0 = 0x01FC00+offs, increment = 8
 	stz	MATH_VAR_U
 	lda	TAB_TEXT_I
@@ -198,7 +192,7 @@ text_clean:
 
 	; loop
 	sec
-	lda	#MAX_CHARACTERS
+	pla
 	sbc	TAB_TEXT_I
 	bne	@loop
 	rts
@@ -206,6 +200,31 @@ text_clean:
 	stz	VERA_DATA0
 	dea
 	bne	@loop
+
+	rts
+
+;;;
+; sprite base addr
+;;;
+; set VERA ADDR0 based on TAB_TEXT_I
+
+text_sprite_addr:
+	; ADDR0 = 0x01FC00+offs, increment = 1
+	stz	MATH_VAR_U
+	lda	TAB_TEXT_I
+	asl
+	rol	MATH_VAR_U
+	asl
+	rol	MATH_VAR_U
+	asl
+	rol	MATH_VAR_U
+	sta	VERA_ADDRx_L
+	clc
+	lda	#$FC
+	adc	MATH_VAR_U
+	sta	VERA_ADDRx_M
+	lda	#%00010001
+	sta	VERA_ADDRx_H
 
 	rts
 

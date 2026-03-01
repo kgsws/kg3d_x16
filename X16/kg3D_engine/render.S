@@ -10,6 +10,7 @@
 .include "video.inc"
 .include "things.inc"
 .include "hitscan.inc"
+.include "hud.inc"
 
 .export render_init
 .export render_view
@@ -481,7 +482,7 @@ render_view:
 	beq	:+
 
 	; menu logo active
-	rts
+	jmp	hud_update
 :
 	; weapon check
 	lda	#$FF
@@ -601,7 +602,7 @@ wspr_no_gfx:
 	bne	@loop_wspr_prt
 
 	; done
-	rts
+	jmp	hud_update
 
 @do_wspr_inv:
 	; dummy
@@ -622,7 +623,7 @@ wspr_no_gfx:
 	bne	@loop_wspr_inv
 
 	; done
-	rts
+	jmp	hud_update
 
 ;;;
 ; render_sector

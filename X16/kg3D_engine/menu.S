@@ -44,6 +44,7 @@ menu_wspr_draw:
 	stz	MATH_COUNTER
 
 	; force update weapon
+	stz	TAB_HUD_UPDATE
 	jsr	render_wspr_draw
 
 	; extra code bank
@@ -161,10 +162,13 @@ menu_toggle:
 
 	; clear text
 	stz	TAB_TEXT_I
-	jsr	text_clean
+	jsr	text_clean_all
 
 	; re-enable math
 	jsr	math_setup_vera
+
+	; update HUD
+	sta	TAB_HUD_UPDATE
 
 	rts
 
@@ -548,7 +552,7 @@ menu_update:
 	bne	@loop_item
 
 	; clear other characters
-	jsr	text_clean
+	jsr	text_clean_all
 
 	; re-enable math
 	jsr	math_setup_vera
@@ -818,7 +822,7 @@ sel_key_set:
 	jsr	text_write_ca
 
 	; clear other characters
-	jsr	text_clean
+	jsr	text_clean_all
 
 	; re-enable math
 	jmp	math_setup_vera

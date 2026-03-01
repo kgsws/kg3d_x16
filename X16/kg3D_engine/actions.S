@@ -361,6 +361,13 @@ act_wpn_ready:
 	jmp	thing_actnext
 
 @atk_alt:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; type
+	ldy	TICKER_STRUCT_TYPE
+
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK

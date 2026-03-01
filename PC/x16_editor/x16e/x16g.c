@@ -5889,7 +5889,7 @@ static void *hud_pregen_nums(const hud_element_t *elm)
 	glui_set_text(&ui_gfx_hud_stat_cfg_barx, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
 	// top message
-	hud_font_write(data, (hud_cfg.stat_cfg.info & 1) * 80, (hud_cfg.stat_cfg.info & 2) * 54, hud_cfg.stat_color.info, "Status message text.", hud_cfg.stat_cfg.info & 1);
+	hud_font_write(data, (hud_cfg.stat_cfg.info & 1) * 80, !!(hud_cfg.stat_cfg.info & 2) * (120 - font_char[0].yoffs), hud_cfg.stat_color.info, "Status message text.", hud_cfg.stat_cfg.info & 1);
 
 	// center message
 	hud_font_write(data, 80, 60 - font_char[0].yoffs, hud_cfg.stat_color.msg, "Special center", 1);
@@ -9251,7 +9251,7 @@ void x16g_export()
 	{
 		uint32_t i;
 		uint8_t ttmp[256];
-		hud_export_t *hud = (hud_export_t*)ttmp;
+		hud_export_t *hud = (hud_export_t*)(ttmp + 128);
 
 		memset(ttmp + FONT_CHAR_COUNT, 0, sizeof(ttmp) - FONT_CHAR_COUNT);
 
@@ -9265,9 +9265,14 @@ void x16g_export()
 			i--;
 
 		hud->menu_color = hud_cfg.menu_color;
-		hud->stat_color = hud_cfg.stat_color;
+
+		hud->stat_color.info = hud_cfg.stat_color.info | 0b01000000;
+		hud->stat_color.msg = hud_cfg.stat_color.msg | 0b01000000;
+		hud->stat_color.hp = hud_cfg.stat_color.hp | 0b01000000;
+		hud->stat_color.ammo = hud_cfg.stat_color.ammo | 0b01000000;
+
 		hud->style.info_x = hud_cfg.stat_cfg.info & 1 ? 80 : 0;
-		hud->style.info_y = hud_cfg.stat_cfg.info & 2 ? 108 : 0;
+		hud->style.info_y = hud_cfg.stat_cfg.info & 2 ? 120 - font_char[0].yoffs : 0;
 		hud->style.hp_x[0] = hud_cfg.stat_cfg.bar_pos[0];
 		hud->style.hp_x[1] = 0;
 		hud->style.hp_x[2] = 0;
@@ -9276,7 +9281,7 @@ void x16g_export()
 		hud->style.am_x[2] = 0;
 		hud->style.bar_y = hud_cfg.stat_cfg.bar_pos[1];
 		hud->style.space = hud_cfg.stat_cfg.bar_space;
-		hud->style.digits = hud_cfg.stat_cfg.bar_digs;
+		hud->style.digits = hud_cfg.stat_cfg.bar_digs << 6;
 
 		if(hud_cfg.stat_cfg.bar_box)
 		{
