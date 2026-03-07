@@ -30,6 +30,7 @@
 .export thing_tick_move
 .export thing_tick_anim
 .export thing_tick_plyr
+.export thing_tick_pded
 
 ;;;
 ; CODE
@@ -134,6 +135,14 @@ thing_spawn_org:
 	lda	THTYPE_STRUCT_VIEW_HEIGHT,y
 	pha
 
+	; <step height>
+	lda	THTYPE_STRUCT_STEP_HEIGHT,y
+	pha
+
+	; <water height>
+	lda	THTYPE_STRUCT_WATER_HEIGHT,y
+	pha
+
 	; get spawn animation
 	ldx	THTYPE_ANIM_SPAWN_L,y
 	phx	; <next frame LO>
@@ -225,6 +234,14 @@ thing_spawn_org:
 	; <next frame LO>
 	pla
 	sta	THING_STRUCT_NXTFRM_L,x
+
+	; <water height>
+	pla
+	sta	THING_STRUCT_WATER_HEIGHT,x
+
+	; <step height>
+	pla
+	sta	THING_STRUCT_STEP_HEIGHT,x
 
 	; <view height>
 	pla
@@ -435,6 +452,7 @@ thing_clear:
 	stz	THING_STRUCT_IFLAGS
 	lda	#64
 	sta	THING_STRUCT_HEIGHT
+	stz	THING_STRUCT_COUNTER
 
 	; save sprite
 	stx	THING_STRUCT_SPRITE
@@ -504,8 +522,9 @@ thing_damage:
 	; check health
 	lda	THING_STRUCT_HEALTH_L,y
 	ora	THING_STRUCT_HEALTH_H,y
-	beq	@skip_death
-
+	bne	:+
+	jmp	@skip_death
+:
 	; apply damage
 	sec
 	lda	THING_STRUCT_HEALTH_L,y
@@ -531,8 +550,51 @@ thing_damage:
 	sta	THING_STRUCT_HEALTH_L,y
 	sta	THING_STRUCT_HEALTH_H,y
 
-	; if(th->ticker.func < TICKER_FUNC_THING)
+	; ticker function
 	lda	TICKER_STRUCT_FUNC,y
+
+	; if(th->ticker.func == TICKER_FUNC_PLAYER)
+	cmp	#TICKER_FUNC_PLAYER
+	bne	@not_player
+
+	; th->ticker.func = TICKER_FUNC_PLR_DEAD
+	lda	#TICKER_FUNC_PLR_DEAD
+	sta	TICKER_STRUCT_FUNC,y
+
+	; wh->ticks = 1
+	lda	#1
+	sta	THING_STRUCT_TICKS
+
+	; wh->counter = 1
+	sta	THING_STRUCT_COUNTER
+
+	; weapon type
+	ldx	TICKER_STRUCT_TYPE
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; animation
+	lda	THTYPE_ANIM_LOWER_H,x
+	pha
+	lda	THTYPE_ANIM_LOWER_L,x
+	pha
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; wh->next_state = thing_anim[wh->ticker.type][ANIM_LOWER].state
+	pla
+	sta	THING_STRUCT_NXTFRM_L
+	pla
+	sta	THING_STRUCT_NXTFRM_H
+
+	bra	:+
+
+@not_player:
+	; if(th->ticker.func < TICKER_FUNC_THING)
 	cmp	#TICKER_FUNC_THING
 	bcs	:+
 
@@ -2811,24 +2873,13 @@ prepare_pos_check:
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	; thing type
-	ldy	TICKER_STRUCT_TYPE,x
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
 	; poscheck.water_height = info->water_height
-	lda	THTYPE_STRUCT_WATER_HEIGHT,y
+	lda	THING_STRUCT_WATER_HEIGHT,x
 	sta	THMOVE_WATER_HEIGHT
 
 	; step_height
-	lda	THTYPE_STRUCT_STEP_HEIGHT,y
+	lda	THING_STRUCT_STEP_HEIGHT,x
 	sta	MATH_VAR_U
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
 
 	; !(sflags & SECTOR_FLAG_WATER)
 	pla
@@ -4370,7 +4421,7 @@ thing_tick_move:
 	; projection.wh += projection.wd
 	clc
 	lda	G_VIEWDELTA
-	beq	@skip_camera
+	beq	@skip_cam_up
 	adc	G_VIEWHEIGHT
 	bcs	:+
 	sta	G_VIEWHEIGHT
@@ -4383,6 +4434,24 @@ thing_tick_move:
 
 	; projection.wd = 0
 	stz	G_VIEWDELTA
+
+	bra	@skip_camera
+
+@skip_cam_up:
+	; projection.wh > th->view_height
+	lda	THING_STRUCT_VIEW_HEIGHT,y
+	cmp	G_VIEWHEIGHT
+	bcs	@skip_camera
+
+	; projection.wh -= 12
+	sec
+	lda	G_VIEWHEIGHT
+	sbc	#12
+	cmp	THING_STRUCT_VIEW_HEIGHT,y
+	bcs	:+
+	lda	THING_STRUCT_VIEW_HEIGHT,y
+:
+	sta	G_VIEWHEIGHT
 
 @skip_camera:
 	; th->iflags &= ~(THING_IFLAG_BLOCKED | THING_IFLAG_GOTHIT)
@@ -5023,6 +5092,12 @@ thing_tick_move:
 	sec
 	ror
 	sta	MATH_VAR_L
+
+	; corpse check
+	lda	THING_STRUCT_IFLAGS,y
+	and	#THING_IFLAG_CORPSE
+	bne	@no_floor_cam
+
 :
 	; diff = projection.wh + diff
 	clc
@@ -5202,21 +5277,10 @@ thing_tick_move:
 	and	#$0F
 	sta	MATH_VAR_H
 
-	; get type
-	ldx	TICKER_STRUCT_TYPE,y
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
 	; direction check
-	lda	THTYPE_STRUCT_WATER_HEIGHT,x
-	cmp	THTYPE_STRUCT_VIEW_HEIGHT,x
+	lda	THING_STRUCT_WATER_HEIGHT,y
+	cmp	THING_STRUCT_VIEW_HEIGHT,y
 	bcc	@float
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
 
 	; on floor check
 	sec
@@ -5234,11 +5298,8 @@ thing_tick_move:
 	lda	#$00
 	sbc	MATH_VAR_H
 	sta	MATH_VAR_H
-@float:
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
 
+@float:
 	; add
 	clc
 	lda	THING_STRUCT_MZ_S,y
@@ -5689,7 +5750,7 @@ thing_tick_plyr:
 	lda	PLTICK_NTYPE
 	cmp	TICKER_STRUCT_TYPE,y
 	bne	:+
-	jmp	@no_change
+	jmp	plr_no_change
 :
 	tax
 
@@ -5704,6 +5765,14 @@ thing_tick_plyr:
 	; view height
 	lda	THTYPE_STRUCT_VIEW_HEIGHT,x
 	sta	PLTICK_VIEWH
+
+	; step height
+	lda	THTYPE_STRUCT_STEP_HEIGHT,x
+	sta	PLTICK_STEPH
+
+	; water height
+	lda	THTYPE_STRUCT_WATER_HEIGHT,x
+	sta	PLTICK_WATERH
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
@@ -5730,7 +5799,7 @@ thing_tick_plyr:
 	sbc	MATH_VAR_L
 	lda	#0
 	sbc	MATH_VAR_H
-	bpl	@no_change
+	bpl	plr_no_change
 
 	; diff = th->view_height - ti->view_height
 	sec
@@ -5767,7 +5836,7 @@ thing_tick_plyr:
 	sbc	MATH_VAR_L
 	lda	THING_STRUCT_CEILZ_H,y
 	sbc	MATH_VAR_H
-	bmi	@no_change
+	bmi	plr_no_change
 
 	; th->z = (nz * 256) | (th->z & 0xFF)
 	lda	PLTICK_NZ_L
@@ -5778,6 +5847,14 @@ thing_tick_plyr:
 	; th->height = ti->height
 	lda	PLTICK_HEIGHT
 	sta	THING_STRUCT_HEIGHT,y
+
+	; th->step_height = ti->step_height
+	lda	PLTICK_STEPH
+	sta	THING_STRUCT_STEP_HEIGHT,y
+
+	; th->water_height = ti->water_height
+	lda	PLTICK_WATERH
+	sta	THING_STRUCT_WATER_HEIGHT,y
 
 	; th->view_height = ti->view_height
 	lda	PLTICK_VIEWH
@@ -5795,7 +5872,7 @@ thing_tick_plyr:
 	lda	PLTICK_NTYPE
 	sta	TICKER_STRUCT_TYPE,y
 
-@no_change:
+plr_no_change:
 	; movement and animation
 	jsr	thing_tick_full
 
@@ -5804,3 +5881,36 @@ thing_tick_plyr:
 	sty	G_TICKER_IDX
 	jmp	thing_tick_anim
 
+;;;
+; thing ticker (dead player)
+;;;
+
+thing_tick_pded:
+	; th->pitch &= 0xF8
+	lda	THING_STRUCT_PITCH,y
+	and	#$F8
+
+	; if(th->pitch > 0x90)
+	cmp	#$90
+	beq	@pitch_ok
+	bcc	@go_up
+
+	; th->pitch -= 4
+	sbc	#4
+	bra	:+
+
+@go_up:
+	; th->pitch += 8
+	adc	#8
+:
+	sta	THING_STRUCT_PITCH,y
+
+@pitch_ok:
+	; ticcmd.pitch = th->pitch
+	sta	TICK_CMD_PITCH
+
+	; ticcmd.angle = th->angle
+	lda	THING_STRUCT_ANGLE,y
+	sta	TICK_CMD_ANGLE
+
+	jmp	plr_no_change

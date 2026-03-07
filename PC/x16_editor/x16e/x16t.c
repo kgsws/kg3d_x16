@@ -20,6 +20,7 @@
 #include "glui.h"
 #include "ui_def.h"
 
+#define NUM_THING_PROPS	(sizeof(thing_prop) / sizeof(thing_edit_prop_t))
 #define NUM_THING_ATTRS	(sizeof(thing_attr) / sizeof(thing_edit_attr_t))
 #define NUM_SHOW_FLAGS	(sizeof(thing_flag) / sizeof(thing_edit_flag_t))
 #define NUM_SHOW_ANIMS	NUM_THING_ANIMS
@@ -66,10 +67,13 @@ enum
 	ARGT_NONE,
 	ARGT_U8,
 	ARGT_S8,
+	ARGT_U16,
 	ARGT_CHANCE,
 	ARGT_SPAWN_SLOT,
 	ARGT_XY_SPREAD,
 	ARGT_BLOCK_FLAGS,
+	ARGT_PROP_TYPE,
+	ARGT_PROP_VAL,
 };
 
 enum
@@ -141,6 +145,12 @@ typedef struct
 	uint16_t offs;
 	uint16_t type;
 } thing_edit_attr_t;
+
+typedef struct
+{
+	uint8_t *const name;
+	uint32_t type;
+} thing_edit_prop_t;
 
 typedef struct
 {
@@ -237,6 +247,22 @@ static const export_type_t default_thing_info =
 	.spawn = {0xFF, 0xFF, 0xFF, 0xFF},
 };
 
+// modifiable properties
+static const thing_edit_prop_t thing_prop[] =
+{
+	{"height", ARGT_U8},
+	{"radius", ARGT_U8},
+	{"view height", ARGT_U8},
+	{"step height", ARGT_U8},
+	{"water height", ARGT_U8},
+	{"gravity", ARGT_U8},
+	{"angle", ARGT_U8},
+	{"pitch", ARGT_U8},
+	{"scale", ARGT_U8},
+	{"blocking", ARGT_BLOCK_FLAGS},
+	{"blocked by", ARGT_BLOCK_FLAGS},
+};
+
 // editable attributes
 static const thing_edit_attr_t thing_attr[] =
 {
@@ -261,7 +287,7 @@ static const thing_edit_attr_t thing_attr[] =
 	{THING_ATTR("spawn B", spawn[1]), ATTR_TYPE_TT},
 	{THING_ATTR("spawn C", spawn[2]), ATTR_TYPE_TT},
 	{THING_ATTR("spawn D", spawn[3]), ATTR_TYPE_TT},
-	// hidden must be last
+	// hidden, must be last
 	{THING_ATTR("mode", mode), ATTR_TYPE_HIDDEN},
 };
 
@@ -442,7 +468,7 @@ const state_action_def_t state_action_def[] =
 	},
 ///
 	{
-		.name = "death: simple",
+		.name = "death: base",
 		.flags = AFLG_THING,
 		.arg[0] =
 		{
@@ -453,37 +479,80 @@ const state_action_def_t state_action_def[] =
 		},
 		.arg[1] =
 		{
-			.name = "blocking",
-			.type = ARGT_BLOCK_FLAGS,
-			.def = 0,
+			.name = "flags",
+			.type = ARGT_U8,
+			.def = THING_EFLAG_PUSHABLE,
 			.lim = {0, 255}
 		},
 		.arg[2] =
 		{
-			.name = "blocked by",
-			.type = ARGT_BLOCK_FLAGS,
+			.name = "view height",
+			.type = ARGT_U8,
+			.def = 16,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "death: base (alt)",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "gravity",
+			.type = ARGT_U8,
+			.def = 128,
+			.lim = {0, 255}
+		},
+		.arg[1] =
+		{
+			.name = "flags",
+			.type = ARGT_U8,
+			.def = THING_EFLAG_PUSHABLE,
+			.lim = {0, 255}
+		},
+		.arg[2] =
+		{
+			.name = "view height",
+			.type = ARGT_U8,
+			.def = 16,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "death: heights",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "height",
+			.type = ARGT_U8,
+			.def = 64,
+			.lim = {0, 255}
+		},
+		.arg[1] =
+		{
+			.name = "step height",
+			.type = ARGT_U8,
+			.def = 12,
+			.lim = {0, 255}
+		},
+		.arg[2] =
+		{
+			.name = "water height",
+			.type = ARGT_U8,
 			.def = 0,
 			.lim = {0, 255}
 		}
 	},
 	{
-		.name = "death: radius",
+		.name = "death: blocking",
 		.flags = AFLG_THING,
 		.arg[0] =
-		{
-			.name = "gravity",
-			.type = ARGT_U8,
-			.def = 128,
-			.lim = {0, 255}
-		},
-		.arg[1] =
 		{
 			.name = "blocking",
 			.type = ARGT_BLOCK_FLAGS,
 			.def = 0,
 			.lim = {0, 255}
 		},
-		.arg[2] =
+		.arg[1] =
 		{
 			.name = "blocked by",
 			.type = ARGT_BLOCK_FLAGS,
@@ -592,6 +661,43 @@ const state_action_def_t state_action_def[] =
 			.lim = {0, 255}
 		}
 	},
+	//
+	{
+		.name = "set: property",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "which",
+			.type = ARGT_PROP_TYPE,
+			.def = 0,
+			.lim = {0, NUM_THING_PROPS}
+		},
+		.arg[1] =
+		{
+			.name = "value",
+			.type = ARGT_PROP_VAL,
+			.def = 0,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "set: flags",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "keep",
+			.type = ARGT_U8,
+			.def = 255,
+			.lim = {0, 255}
+		},
+		.arg[1] =
+		{
+			.name = "set",
+			.type = ARGT_U8,
+			.def = 0,
+			.lim = {0, 255}
+		}
+	},
 	// terminator
 	{}
 };
@@ -631,18 +737,24 @@ static const uint8_t *mode_anim_txt[] =
 // state argument type parsers
 
 static void te_arg_us8(uint8_t*);
+static void te_arg_u16(uint8_t*);
 static void te_arg_spawn(uint8_t*);
 static void te_arg_spread(uint8_t*);
-static void af_block_flags();
+static void af_block_flags(void);
+static void af_prop_type(void);
 
 const arg_parse_t arg_parse[] =
 {
-	[ARGT_U8 - 1] = {"Enter a value (%d to %d).", te_arg_us8},
-	[ARGT_S8 - 1] = {"Enter a value (%d to %d).", te_arg_us8},
-	[ARGT_CHANCE - 1] = {"Enter a value (%d to %d).", te_arg_us8},
-	[ARGT_SPAWN_SLOT - 1] = {"Enter spawn slot (A to D).", te_arg_spawn},
-	[ARGT_XY_SPREAD - 1] = {"Enter two values (0 to 15).", te_arg_spread},
-	[ARGT_BLOCK_FLAGS - 1] = {NULL, af_block_flags},
+	// HIDDEN is not defined
+	[ARGT_U8] = {"Enter a value (%d to %d).", te_arg_us8},
+	[ARGT_S8] = {"Enter a value (%d to %d).", te_arg_us8},
+	[ARGT_U16] = {"Enter a value (0 to 65535).", te_arg_u16},
+	[ARGT_CHANCE] = {"Enter a value (%d to %d).", te_arg_us8},
+	[ARGT_SPAWN_SLOT] = {"Enter spawn slot (A to D).", te_arg_spawn},
+	[ARGT_XY_SPREAD] = {"Enter two values (0 to 15).", te_arg_spread},
+	[ARGT_BLOCK_FLAGS] = {NULL, af_block_flags},
+	[ARGT_PROP_TYPE] = {NULL, af_prop_type},
+	[ARGT_PROP_VAL] = {NULL, NULL},
 };
 
 //
@@ -1154,7 +1266,7 @@ static uint32_t parse_animation_link(const uint8_t *name, uint32_t *tdx, uint32_
 //
 // update
 
-static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const state_action_def_t *sa, int32_t slot)
+static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const state_action_def_t *sa, int32_t slot, int32_t ftype)
 {
 	static uint8_t text[32];
 	const state_arg_def_t *sd;
@@ -1163,6 +1275,7 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 	{
 		uint8_t u8;
 		int8_t s8;
+		uint16_t u16;
 	} *val;
 
 	if(slot < 0)
@@ -1183,7 +1296,10 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 	sd = sa->arg + slot;
 	val = (void*)st->arg + slot;
 
-	switch(sd->type)
+	if(ftype < 0)
+		ftype = sd->type;
+
+	switch(ftype)
 	{
 		case ARGT_NONE:
 			return "---";
@@ -1192,6 +1308,9 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 		break;
 		case ARGT_S8:
 			sprintf(text, "%d", (int32_t)val->s8);
+		break;
+		case ARGT_U16:
+			sprintf(text, "%u", (uint32_t)val->u16);
 		break;
 		case ARGT_CHANCE:
 			sprintf(text, "%u / 128", (uint32_t)val->u8);
@@ -1216,6 +1335,12 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 		break;
 		case ARGT_BLOCK_FLAGS:
 			edit_put_blockbits(text, val->u8)[0] = 0;
+		break;
+		case ARGT_PROP_TYPE:
+			strcpy(text, thing_prop[val->u8].name);
+		break;
+		case ARGT_PROP_VAL:
+			make_arg_text(ti, st, sa, slot, thing_prop[st->arg[0]].type);
 		break;
 	}
 
@@ -1593,14 +1718,14 @@ u8:
 		txt++;
 
 		// arg 0
-		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 0), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
+		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 0, -1), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
 		txt->base.click = arg_func;
 		txt->color[0] = color;
 		txt->color[1] = color;
 		txt++;
 
 		// arg 1
-		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 1), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
+		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 1, -1), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
 		txt->base.click = arg_func;
 		txt->base.custom |= 0x100;
 		txt->color[0] = color;
@@ -1608,7 +1733,7 @@ u8:
 		txt++;
 
 		// arg 2
-		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 2), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
+		glui_set_text(txt, make_arg_text(&ti->info, st, sa, 2, -1), glui_font_small_kfn, GLUI_ALIGN_BOT_CENTER);
 		txt->base.click = arg_func;
 		txt->base.custom |= 0x200;
 		txt->color[0] = color;
@@ -1621,9 +1746,9 @@ u8:
 		thing_st_t *st = ta->state + show_state;
 		const state_action_def_t *sa = state_action_def + st->action;
 
-		glui_set_text(&ui_thing_state_arg0, make_arg_text(&ti->info, st, sa, -1), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
-		glui_set_text(&ui_thing_state_arg1, make_arg_text(&ti->info, st, sa, -2), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
-		glui_set_text(&ui_thing_state_arg2, make_arg_text(&ti->info, st, sa, -3), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
+		glui_set_text(&ui_thing_state_arg0, make_arg_text(&ti->info, st, sa, -1, -1), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
+		glui_set_text(&ui_thing_state_arg1, make_arg_text(&ti->info, st, sa, -2, -1), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
+		glui_set_text(&ui_thing_state_arg2, make_arg_text(&ti->info, st, sa, -3, -1), glui_font_small_kfn, GLUI_ALIGN_TOP_CENTER);
 	}
 
 	ui_thing_states.elements[0]->container.count = i * NUM_STATE_COLS;
@@ -2282,6 +2407,26 @@ static void te_arg_us8(uint8_t *text)
 	x16t_update_thing_view(0);
 }
 
+static void te_arg_u16(uint8_t *text)
+{
+	int32_t temp;
+
+	if(!text)
+		return;
+
+	if(!text[0])
+		return;
+
+	if(sscanf(text, "%d", &temp) != 1 || temp > 65535)
+	{
+		edit_status_printf("Invalid value!");
+		return;
+	}
+
+	*(uint16_t*)arg_dst = temp;
+	x16t_update_thing_view(0);
+}
+
 static void te_arg_spawn(uint8_t *text)
 {
 	uint32_t temp;
@@ -2333,6 +2478,21 @@ static void te_arg_spread(uint8_t *text)
 static void af_block_flags()
 {
 	edit_ui_blocking_select("Block bits for argument.", arg_dst, 0);
+}
+
+static void af_prop_type()
+{
+	// TODO: selector / menu
+	uint32_t val;
+
+	val = *arg_dst;
+	val++;
+	if(val >= NUM_THING_PROPS)
+		val = 0;
+
+	*arg_dst = val;
+
+	x16t_update_thing_view(0);
 }
 
 static uint32_t select_state(uint32_t idx)
@@ -2470,7 +2630,10 @@ static int32_t uin_state_arg(glui_element_t *elm, int32_t x, int32_t y)
 
 	arg_lim = ar->lim;
 
-	ap = arg_parse + arg - 1;
+	ap = arg_parse + arg;
+
+	if(!ap->func)
+		ap = arg_parse + thing_prop[st->arg[0]].type;
 
 	if(ap->text)
 	{

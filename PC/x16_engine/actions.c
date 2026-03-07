@@ -2,11 +2,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 #include "defs.h"
 #include "tick.h"
 #include "things.h"
 #include "hitscan.h"
 #include "actions.h"
+
+static const uint8_t prop_offs[] =
+{
+	offsetof(thing_t, height),
+	offsetof(thing_t, radius),
+	offsetof(thing_t, view_height),
+	offsetof(thing_t, step_height),
+	offsetof(thing_t, water_height),
+	offsetof(thing_t, gravity),
+	offsetof(thing_t, angle),
+	offsetof(thing_t, pitch),
+	offsetof(thing_t, scale),
+	offsetof(thing_t, blocking),
+	offsetof(thing_t, blockedby),
+};
 
 //
 // stuff
@@ -118,6 +134,10 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 			if(th->height >= 52)
 			{
 				th->height = 52;
+
+				if(th->counter)
+					return 0;
+
 				th->next_state = thing_anim[th->ticker.type][ANIM_RAISE].state;
 				return 1;
 			}
@@ -200,14 +220,14 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		case 8: // ticks: add
 			th->ticks += rng_val(st->arg[0]);
 		break;
-		case 9: // death: simple
-		case 10: // death: radius
+		case 9: // death: base
+		case 10: // death: base (alt)
 		{
 			th->gravity = st->arg[0];
-			th->blocking = st->arg[1];
-			th->blockedby = st->arg[2];
+			th->eflags = st->arg[1];
+			th->view_height = st->arg[2];
 
-			if(act != 9)
+			if(act == 9)
 				break;
 
 			th->eflags |= THING_EFLAG_NORADIUS;
@@ -219,17 +239,39 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				thing_apply_pos();
 		}
 		break;
-		case 11: // explosion: origin
+		case 11: // death: heights
+			if(st->arg[0])
+				th->height = st->arg[0];
+			if(st->arg[1])
+				th->step_height = st->arg[1];
+			if(st->arg[2])
+			{
+				th->water_height = st->arg[2];
+				th->eflags |= THING_EFLAG_WATERSPEC;
+			}
+		break;
+		case 12: // death: blocking
+			th->blocking = st->arg[0];
+			th->blockedby = st->arg[1];
+		break;
+		case 13: // explosion: origin
 			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2], th->origin);
 		break;
-		case 12: // explosion: target
+		case 14: // explosion: target
 			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2], th->target);
 		break;
-		case 13: // explosion: damager
+		case 15: // explosion: damager
 			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2], th->damager);
 		break;
-		case 14: // explosion: self
+		case 16: // explosion: self
 			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2], tdx);
+		break;
+		case 17: // set: property
+			*((uint8_t*)th + prop_offs[st->arg[0]]) = st->arg[1];
+		break;
+		case 18: // set: flags
+			th->eflags &= st->arg[0];
+			th->eflags |= st->arg[1];
 		break;
 	}
 

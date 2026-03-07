@@ -94,7 +94,10 @@ typedef struct
 	//
 	int32_t x, y, z; // 24 bits
 	int16_t mx, my, mz;
+	//
 	uint8_t view_height;
+	uint8_t step_height;
+	uint8_t water_height;
 	//
 	int16_t floorz, ceilingz;
 	uint8_t floors, floort;
@@ -201,6 +204,7 @@ void thing_tick_full();
 void thing_tick_move();
 void thing_tick_anim();
 void thing_tick_plyr();
+void thing_tick_pded();
 
 uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t type, uint8_t origin);
 void thing_spawn_player();

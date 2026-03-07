@@ -60,6 +60,9 @@ void tick_run()
 			case TICKER_FUNC_PLAYER:
 				thing_tick_plyr();
 			break;
+			case TICKER_FUNC_PLR_DEAD:
+				thing_tick_pded();
+			break;
 		}
 		tick_idx = next;
 	}

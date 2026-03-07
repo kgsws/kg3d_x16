@@ -154,7 +154,6 @@ static int32_t mlimit(int32_t val)
 static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz, uint32_t sflags)
 {
 	thing_t *th = thing_ptr(tdx);
-	thing_type_t *info = thing_type + th->ticker.type;
 
 	poscheck.thing = tdx;
 
@@ -166,14 +165,14 @@ static void prepare_pos_check(uint8_t tdx, int32_t nz, int32_t fz, int32_t mz, u
 
 	poscheck.th_sh = nz;
 	if(	mz >= 0 &&
-		fz - nz + info->step_height >= 0
+		fz - nz + th->step_height >= 0
 	)
-		poscheck.th_sh += info->step_height;
+		poscheck.th_sh += th->step_height;
 
 	if(	!(sflags & SECTOR_FLAG_WATER) &&
 		th->mz / 256 > -32
 	)
-		poscheck.water_height = info->water_height;
+		poscheck.water_height = th->water_height;
 	else
 		poscheck.water_height = 0xFF;
 
@@ -973,6 +972,8 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	th->z = z;
 
 	th->view_height = ti->view_height;
+	th->step_height = ti->step_height;
+	th->water_height = ti->water_height;
 
 	th->angle = 0;
 	th->pitch = 0x80;
@@ -1098,8 +1099,18 @@ void thing_damage(uint8_t tdx, uint8_t odx, uint8_t angle, uint16_t damage)
 		hp = th->health - damage;
 		if(hp <= 0)
 		{
+			if(th->ticker.func == TICKER_FUNC_PLAYER)
+			{
+				thing_t *wh = thing_ptr(0);
+				th->ticker.func = TICKER_FUNC_PLR_DEAD;
+				wh->next_state = thing_anim[wh->ticker.type][ANIM_LOWER].state;
+				wh->counter = 1;
+				wh->ticks = 1;
+			}
+
 			if(th->ticker.func < TICKER_FUNC_THING)
 				th->ticker.func |= TICKER_FUNC_ANIM;
+
 			th->health = 0;
 			th->next_state = thing_anim[th->ticker.type][ANIM_DEATH].state;
 			th->ticks = 1;
@@ -1615,11 +1626,20 @@ void thing_tick_move()
 #else
 	if(tick_idx == camera_thing)
 	{
-		projection.wh += projection.wd;
+		if(projection.wd)
+		{
+			projection.wh += projection.wd;
+			if(projection.wh > th->view_height)
+			{
+				projection.wh = th->view_height;
+				projection.wd = 0;
+			}
+		} else
 		if(projection.wh > th->view_height)
 		{
-			projection.wh = th->view_height;
-			projection.wd = 0;
+			projection.wh -= 12;
+			if(projection.wh < th->view_height)
+				projection.wh = th->view_height;
 		}
 	}
 #endif
@@ -1803,8 +1823,9 @@ apply_pos:
 	{
 #ifndef DBG_NO_CAMERA_DIP
 		// camera stuff
-		if(tick_idx == camera_thing)
-		{
+		if(	tick_idx == camera_thing &&
+			!(th->iflags & THING_IFLAG_CORPSE)
+		){
 			int32_t diff;
 
 			if(th->mz >= 0)
@@ -1874,7 +1895,7 @@ did_swap:
 		// under water
 		if(th->eflags & THING_EFLAG_WATERSPEC)
 		{
-			if(thing_type[th->ticker.type].view_height < thing_type[th->ticker.type].water_height)
+			if(th->view_height < th->water_height)
 			{
 				// sinks
 				if(zz > th->floorz)
@@ -2011,6 +2032,8 @@ void thing_tick_plyr()
 
 				th->height = ti->height;
 				th->view_height = ti->view_height;
+				th->step_height = ti->step_height;
+				th->water_height = ti->water_height;
 				th->ticker.type = ntype;
 
 				th->iflags |= THING_IFLAG_HEIGHTCHECK;
@@ -2029,3 +2052,28 @@ void thing_tick_plyr()
 	tick_idx = bkup;
 }
 
+void thing_tick_pded()
+{
+	thing_t *th = thing_ptr(tick_idx);
+	uint8_t bkup = tick_idx;
+
+	th->pitch &= 0xF8;
+
+	if(th->pitch > 0x90)
+		th->pitch -= 4;
+	else
+	if(th->pitch < 0x90)
+		th->pitch += 8;
+
+	// frozen
+	ticcmd.angle = th->angle;
+	ticcmd.pitch = th->pitch;
+
+	// movement and animation
+	thing_tick_full();
+
+	// weapon animation
+	tick_idx = 0;
+	thing_tick_anim();
+	tick_idx = bkup;
+}

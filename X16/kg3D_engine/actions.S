@@ -226,9 +226,9 @@ normal_death:
 
 	; arguments
 	pla
-	sta	THING_STRUCT_BLOCKEDBY,y
+	sta	THING_STRUCT_VIEW_HEIGHT,y
 	pla
-	sta	THING_STRUCT_BLOCKING,y
+	sta	THING_STRUCT_EFLAGS,y
 	pla
 	sta	THING_STRUCT_GRAVITY,y
 
@@ -448,12 +448,17 @@ act_wpn_lower:
 	bcs	@do_change
 
 	; done
+@no_change:
 	jmp	thing_actdone
 
 @do_change:
 	; th->height = 52
 	lda	#52
 	sta	THING_STRUCT_HEIGHT
+
+	; check death
+	lda	THING_STRUCT_COUNTER
+	bne	@no_change
 
 	; new type
 	ldy	TICKER_STRUCT_TYPE
@@ -721,18 +726,18 @@ act_tick_add:
 	jmp	thing_actdone
 
 ;;;
-; death: simple
+; death: base
 ;;;
 
-act_die_simple:
+act_die_base:
 	jsr	normal_death
 	jmp	thing_actdone
 
 ;;;
-; death: radius
+; death: base (alt)
 ;;;
 
-act_die_radius:
+act_die_alt:
 	jsr	normal_death
 
 	; th->eflags |= THING_EFLAG_NORADIUS
@@ -784,6 +789,74 @@ act_die_radius:
 	jmp	thing_actdone
 
 ;;;
+; death: heights
+;;;
+
+act_die_height:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; arguments
+	lda	THSTATE_STRUCT_ARG2,x
+	pha
+	lda	THSTATE_STRUCT_ARG1,x
+	pha
+	lda	THSTATE_STRUCT_ARG0,x
+	pha
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; th->height = st->arg[0]
+	pla
+	beq	:+
+	sta	THING_STRUCT_HEIGHT,y
+:
+	; th->step_height = st->arg[1]
+	pla
+	beq	:+
+	sta	THING_STRUCT_STEP_HEIGHT,y
+:
+	; th->water_height = st->arg[2]
+	pla
+	beq	:+
+	sta	THING_STRUCT_WATER_HEIGHT,y
+
+	; th->eflags |= THING_EFLAG_WATERSPEC
+	lda	THING_STRUCT_EFLAGS,y
+	ora	#THING_EFLAG_WATERSPEC
+	sta	THING_STRUCT_EFLAGS,y
+:
+	jmp	thing_actdone
+
+;;;
+; death: blocking
+;;;
+
+act_die_block:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; arguments
+	lda	THSTATE_STRUCT_ARG1,x
+	pha
+	lda	THSTATE_STRUCT_ARG0,x
+	pha
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; th->blocking = st->arg[0]
+	pla
+	sta	THING_STRUCT_BLOCKING,y
+
+	; th->blockedby = st->arg[1]
+	pla
+	sta	THING_STRUCT_BLOCKEDBY,y
+
+	jmp	thing_actdone
+
+;;;
 ; explosion
 ;;;
 
@@ -828,6 +901,82 @@ act_explode_self:
 	jmp	explosion_action
 
 ;;;
+; set: property
+;;;
+
+act_set_prop:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; arguments
+	lda	THSTATE_STRUCT_ARG1,x
+	pha
+	lda	THSTATE_STRUCT_ARG0,x
+	tax
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; get offset
+	lda	@prop_offs,x
+	sec
+	ror
+	sta	TMP_PTR_H
+	lda	#0
+	ror
+	sta	TMP_PTR_L
+
+	; save
+	pla
+	sta	(TMP_PTR_L),y
+
+	jmp	thing_actdone
+
+@prop_offs:
+	.byte	(THING_STRUCT_HEIGHT >> 7) & $FF
+	.byte	(THING_STRUCT_RADIUS >> 7) & $FF
+	.byte	(THING_STRUCT_VIEW_HEIGHT >> 7) & $FF
+	.byte	(THING_STRUCT_STEP_HEIGHT >> 7) & $FF
+	.byte	(THING_STRUCT_WATER_HEIGHT >> 7) & $FF
+	.byte	(THING_STRUCT_GRAVITY >> 7) & $FF
+	.byte	(THING_STRUCT_ANGLE >> 7) & $FF
+	.byte	(THING_STRUCT_PITCH >> 7) & $FF
+	.byte	(THING_STRUCT_SCALE >> 7) & $FF
+	.byte	(THING_STRUCT_BLOCKING >> 7) & $FF
+	.byte	(THING_STRUCT_BLOCKEDBY >> 7) & $FF
+
+;;;
+; set: flags
+;;;
+
+act_set_flags:
+	ldx	THTICK_ACTION_ST_IDX
+
+	; arguments
+	lda	THSTATE_STRUCT_ARG0,x
+	sta	MATH_TEMP_A
+	lda	THSTATE_STRUCT_ARG1,x
+	sta	MATH_TEMP_B
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; get
+	lda	THING_STRUCT_EFLAGS,y
+
+	; th->eflags &= st->arg[0]
+	and	MATH_TEMP_A
+
+	; th->eflags |= st->arg[1]
+	ora	MATH_TEMP_B
+
+	; set
+	sta	THING_STRUCT_EFLAGS,y
+
+	jmp	thing_actdone
+
+;;;
 ; state action table
 ;;;
 
@@ -840,23 +989,14 @@ action_table:
 	.word	act_atk_melee
 	.word	act_eff_blood
 	.word	act_tick_add
-	.word	act_die_simple
-	.word	act_die_radius
+	.word	act_die_base
+	.word	act_die_alt
+	.word	act_die_height
+	.word	act_die_block
 	.word	act_explode_origin
 	.word	act_explode_target
 	.word	act_explode_damager
 	.word	act_explode_self
-
-;;;
-; extra tables
-;;;
-
-rng_aim_tab:
-	.byte	$80
-	.byte	$81
-	.byte	$83
-	.byte	$87
-	.byte	$8F
-	.byte	$9F
-	.byte	$BF
+	.word	act_set_prop
+	.word	act_set_flags
 

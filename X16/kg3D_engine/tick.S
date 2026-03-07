@@ -98,6 +98,7 @@ tick_run:
 	.word	thing_tick_move
 	.word	thing_tick_full
 	.word	thing_tick_plyr
+	.word	thing_tick_pded
 
 ;;;
 ; create ticker

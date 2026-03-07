@@ -17,4 +17,4 @@
 .import thing_tick_move
 .import thing_tick_anim
 .import thing_tick_plyr
-
+.import thing_tick_pded
