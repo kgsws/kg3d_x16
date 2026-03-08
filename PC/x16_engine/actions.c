@@ -254,24 +254,46 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 			th->blocking = st->arg[0];
 			th->blockedby = st->arg[1];
 		break;
-		case 13: // explosion: origin
+		case 13: // death: type
+		{
+			uint32_t type = thing_type[th->ticker.type].spawn[st->arg[0]];
+			thing_type_t *info = thing_type + type;
+
+			th->ticker.type = type;
+			th->blocking = info->blocking;
+			th->blockedby = info->blockedby;
+			th->health = info->health;
+			th->height = info->height;
+			th->water_height = info->water_height;
+			th->step_height = info->step_height;
+			th->eflags = info->eflags;
+			th->gravity = info->gravity;
+		}
+		break;
+		case 14: // explosion: origin
 			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2], th->origin);
 		break;
-		case 14: // explosion: target
+		case 15: // explosion: target
 			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2], th->target);
 		break;
-		case 15: // explosion: damager
+		case 16: // explosion: damager
 			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2], th->damager);
 		break;
-		case 16: // explosion: self
+		case 17: // explosion: self
 			thing_explode(tdx, st->arg[0], st->arg[1], st->arg[2], tdx);
 		break;
-		case 17: // set: property
+		case 18: // set: property
 			*((uint8_t*)th + prop_offs[st->arg[0]]) = st->arg[1];
 		break;
-		case 18: // set: flags
+		case 19: // set: flags
 			th->eflags &= st->arg[0];
 			th->eflags |= st->arg[1];
+		break;
+		case 20: // enemy: look
+
+		break;
+		case 21: // enemy: chase
+
 		break;
 	}
 

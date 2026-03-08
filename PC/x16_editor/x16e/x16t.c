@@ -295,7 +295,7 @@ static const thing_edit_attr_t thing_attr[] =
 static const thing_edit_flag_t thing_flag[] =
 {
 	{FLAG_STR("projectile"), THING_EFLAG_PROJECTILE},
-//	{FLAG_STR("climbable"), THING_EFLAG_CLIMBABLE},
+	{FLAG_STR("nosquish"), THING_EFLAG_NOSQUISH},
 	{FLAG_STR("spriteclip"), THING_EFLAG_SPRCLIP},
 	{FLAG_STR("noradius"), THING_EFLAG_NORADIUS},
 	{FLAG_STR("waterspec"), THING_EFLAG_WATERSPEC},
@@ -560,6 +560,17 @@ const state_action_def_t state_action_def[] =
 			.lim = {0, 255}
 		}
 	},
+	{
+		.name = "death: type",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "type",
+			.type = ARGT_SPAWN_SLOT,
+			.def = 0,
+			.lim = {0, 3}
+		}
+	},
 	//
 	{
 		.name = "explode: origin",
@@ -696,6 +707,50 @@ const state_action_def_t state_action_def[] =
 			.type = ARGT_U8,
 			.def = 0,
 			.lim = {0, 255}
+		}
+	},
+	//
+	{
+		.name = "enemy: look",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "full circle",
+			.type = ARGT_U8,
+			.def = 0,
+			.lim = {0, 1}
+		},
+		.arg[1] =
+		{
+			.name = "tick rng",
+			.type = ARGT_U8,
+			.def = 3,
+			.lim = {0, 255}
+		}
+	},
+	{
+		.name = "enemy: chase",
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "distance",
+			.type = ARGT_U8,
+			.def = 0,
+			.lim = {0, 255}
+		},
+		.arg[1] =
+		{
+			.name = "R chance",
+			.type = ARGT_CHANCE,
+			.def = 0,
+			.lim = {0, 128}
+		},
+		.arg[2] =
+		{
+			.name = "M chance",
+			.type = ARGT_CHANCE,
+			.def = 0,
+			.lim = {0, 128}
 		}
 	},
 	// terminator

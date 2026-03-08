@@ -1429,7 +1429,9 @@ static void thing_select_fill()
 		glui_image_t *img;
 		glui_text_t *txt;
 
-		if(!spr->width)
+		if(	!spr->width &&
+			!ti->name.text[0]
+		)
 			continue;
 
 		txt = (glui_text_t*)*elm;
@@ -1448,27 +1450,32 @@ static void thing_select_fill()
 		img = (glui_image_t*)*elm;
 		elm++;
 
-		img->shader = SHADER_FRAGMENT_PALETTE;
-		img->gltex = x16_thing_texture + tdx;
+		img->gltex = NULL;
 
-		if(spr->width > spr->height)
+		if(spr->width)
 		{
-			img->base.width = 128;
-			img->base.height = 128 * ((float)spr->height / (float)spr->width);
-		} else
-		{
-			img->base.width = 128 * ((float)spr->width / (float)spr->height);
-			img->base.height = 128;
+			img->shader = SHADER_FRAGMENT_PALETTE;
+			img->gltex = x16_thing_texture + tdx;
+
+			if(spr->width > spr->height)
+			{
+				img->base.width = 128;
+				img->base.height = 128 * ((float)spr->height / (float)spr->width);
+			} else
+			{
+				img->base.width = 128 * ((float)spr->width / (float)spr->height);
+				img->base.height = 128;
+			}
+
+			img->base.x = txt->base.x + (TEXTURE_ENTRY_W - img->base.width) / 2;
+			img->base.y = txt->base.y + (TEXTURE_ENTRY_W - img->base.height) / 2;
+
+			img->coord.s[0] = 0.0f;
+			img->coord.s[1] = (float)spr->width / (float)spr->stride;
+
+			img->coord.t[0] = 0.0f;
+			img->coord.t[1] = 1.0f;
 		}
-
-		img->base.x = txt->base.x + (TEXTURE_ENTRY_W - img->base.width) / 2;
-		img->base.y = txt->base.y + (TEXTURE_ENTRY_W - img->base.height) / 2;
-
-		img->coord.s[0] = 0.0f;
-		img->coord.s[1] = (float)spr->width / (float)spr->stride;
-
-		img->coord.t[0] = 0.0f;
-		img->coord.t[1] = 1.0f;
 
 		i++;
 	}
@@ -3406,8 +3413,12 @@ uint8_t *edit_put_blockbits(uint8_t *dst, uint8_t bits)
 	{
 		uint8_t bb = blocking_name[i][0];
 
+		if(i == 6)
+			bb = 'x';
+
 		if(bits & (1 << i))
 			bb &= ~0x20;
+
 		*dst++ = bb;
 		*dst++ = '|';
 	}

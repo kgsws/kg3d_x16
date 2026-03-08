@@ -857,6 +857,103 @@ act_die_block:
 	jmp	thing_actdone
 
 ;;;
+; death: blocking
+;;;
+
+act_die_type:
+	; type
+	ldx	THTICK_ACTION_ST_IDX
+	lda	THSTATE_STRUCT_ARG0,x
+	ora	#>THTYPE_STRUCT_SPAWN_A
+	sta	@opcode_spawn+2
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; type = thing_type[th->ticker.type].spawn[st->arg[0]]
+@opcode_spawn:
+	ldx	THTYPE_STRUCT_SPAWN_A	; modified address
+
+	; <blocking>
+	lda	THTYPE_STRUCT_BLOCKING,x
+	pha
+
+	; <blocked by>
+	lda	THTYPE_STRUCT_BLOCKEDBY,x
+	pha
+
+	; <health>
+	lda	THTYPE_STRUCT_HEALTH_L,x
+	pha
+	lda	THTYPE_STRUCT_HEALTH_H,x
+	pha
+
+	; <height>
+	lda	THTYPE_STRUCT_HEIGHT,x
+	pha
+
+	; <water height>
+	lda	THTYPE_STRUCT_WATER_HEIGHT,x
+	pha
+
+	; <step height>
+	lda	THTYPE_STRUCT_STEP_HEIGHT,x
+	pha
+
+	; <eflags>
+	lda	THTYPE_STRUCT_EFLAGS,x
+	pha
+
+	; <gravity>
+	lda	THTYPE_STRUCT_GRAVITY,x
+	pha
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; <gravity>
+	pla
+	sta	THING_STRUCT_GRAVITY,y
+
+	; <eflags>
+	pla
+	sta	THING_STRUCT_EFLAGS,y
+
+	; <step height>
+	pla
+	sta	THING_STRUCT_STEP_HEIGHT,y
+
+	; <water height>
+	pla
+	sta	THING_STRUCT_WATER_HEIGHT,y
+
+	; <height>
+	pla
+	sta	THING_STRUCT_HEIGHT,y
+
+	; <health>
+	pla
+	sta	THING_STRUCT_HEALTH_H,y
+	pla
+	sta	THING_STRUCT_HEALTH_L,y
+
+	; <blocked by>
+	pla
+	sta	THING_STRUCT_BLOCKEDBY,y
+
+	; <blocking>
+	pla
+	sta	THING_STRUCT_BLOCKING,y
+
+	; type
+	txa
+	sta	TICKER_STRUCT_TYPE,y
+
+	jmp	thing_actdone
+
+;;;
 ; explosion
 ;;;
 
@@ -993,6 +1090,7 @@ action_table:
 	.word	act_die_alt
 	.word	act_die_height
 	.word	act_die_block
+	.word	act_die_type
 	.word	act_explode_origin
 	.word	act_explode_target
 	.word	act_explode_damager
