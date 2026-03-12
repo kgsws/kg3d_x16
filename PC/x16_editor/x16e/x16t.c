@@ -462,7 +462,7 @@ const state_action_def_t state_action_def[] =
 		{
 			.name = "rng",
 			.type = ARGT_U8,
-			.def = 1,
+			.def = 3,
 			.lim = {1, 255}
 		}
 	},
@@ -711,6 +711,15 @@ const state_action_def_t state_action_def[] =
 	},
 	//
 	{
+		.name = "aim: angle",
+		.flags = AFLG_THING
+	},
+	{
+		.name = "aim: attack",
+		.flags = AFLG_THING
+	},
+	//
+	{
 		.name = "enemy: look",
 		.flags = AFLG_THING,
 		.arg[0] =
@@ -724,7 +733,7 @@ const state_action_def_t state_action_def[] =
 		{
 			.name = "tick rng",
 			.type = ARGT_U8,
-			.def = 3,
+			.def = 7,
 			.lim = {0, 255}
 		}
 	},

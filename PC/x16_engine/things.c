@@ -22,30 +22,6 @@ typedef struct
 	uint8_t midhit;
 } portal_t;
 
-typedef struct
-{
-	uint8_t *vis_tab;
-	int16_t floorz, ceilingz;
-	int16_t tfz, tcz;
-	int16_t th_zh, th_sh;
-	uint8_t portal_rd, portal_wr;
-	uint8_t floors, floort;
-	uint8_t ceilings, ceilingt;
-	uint8_t thing;
-	uint8_t water_height;
-	uint8_t blockedby;
-	uint8_t noradius;
-	uint8_t moving;
-	uint8_t radius, height;
-	uint8_t sector, slot;
-	uint8_t islink;
-	uint8_t pthit, ptwall;
-	uint8_t htype, hidx;
-	uint8_t hitang;
-	uint8_t midhit, midsec;
-	uint8_t vis_bit;
-} pos_check_t;
-
 //
 
 static uint8_t thing_data[8192];
@@ -74,7 +50,7 @@ uint8_t camera_damage;
 static portal_t portals[256];
 
 // position check stuff
-static pos_check_t poscheck;
+pos_check_t poscheck;
 
 //
 //

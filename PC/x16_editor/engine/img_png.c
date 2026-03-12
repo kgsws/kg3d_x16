@@ -1,6 +1,35 @@
 #include "inc.h"
 #include "image.h"
 
+int32_t img_offs_x;
+int32_t img_offs_y;
+
+//
+// stuff
+
+static int chunk_cb(png_struct *png_ptr, png_unknown_chunkp chunk)
+{
+	int16_t temp;
+
+	if(chunk->name[0] != 'g')
+		return -1;
+	if(chunk->name[1] != 'r')
+		return -1;
+	if(chunk->name[2] != 'A')
+		return -1;
+	if(chunk->name[3] != 'b')
+		return -1;
+	if(chunk->size != 8)
+		return -1;
+
+	temp = chunk->data[3] | (chunk->data[2] << 8);
+	img_offs_x = temp;
+	temp = chunk->data[7] | (chunk->data[6] << 8);
+	img_offs_y = temp;
+
+	return 1;
+}
+
 //
 // API
 
@@ -38,6 +67,11 @@ image_t *img_png_load(const char *file, uint32_t paletted)
 		fclose(f);
 		return NULL;
 	}
+
+	img_offs_x = 0x10000;
+	img_offs_y = 0x10000;
+	png_set_keep_unknown_chunks(png_ptr, 1, NULL, 0);
+	png_set_read_user_chunk_fn(png_ptr, NULL, chunk_cb);
 
 	info_ptr = png_create_info_struct(png_ptr);
 	if(!info_ptr)

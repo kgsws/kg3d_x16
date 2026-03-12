@@ -18,6 +18,11 @@ typedef struct image_s
 
 //
 
+extern int32_t img_offs_x;
+extern int32_t img_offs_y;
+
+//
+
 image_t *img_png_load(const char *file, uint32_t paletted);
 uint32_t img_png_save(const char *file, image_t *img, uint32_t format);
 

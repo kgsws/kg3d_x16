@@ -1091,8 +1091,11 @@
 							},
 							{
 								"name": "ui_gfx_sprite_info",
-								"x": 512,
-								"y": 208,
+								"x": 408,
+								"y": 192,
+								"width": 192,
+								"height": 32,
+								"align": "center",
 								"text": true
 							},
 							{

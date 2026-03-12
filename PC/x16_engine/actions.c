@@ -47,23 +47,33 @@ static void aim_rng(thing_t *th, uint8_t *res, uint32_t arg)
 		res[1] = spread(res[1], arg >> 4);
 }
 
-void check_weapon_th(thing_t **ptr)
+static void check_weapon_th(thing_t **ptr)
 {
 	if(*ptr == (thing_t*)ticker)
 		*ptr = (thing_t*)&ticker[player_thing];
 }
 
-//
-// HACK
-
-static void slide_door_hack(sector_t *sec, map_secobj_t *so, int16_t pos)
+static void skip_state(thing_t *th)
 {
-	wall_t *wall = map_walls[so->bank] + so->first;
+	thing_state_t *st = thing_state + (th->next_state & (MAX_X16_STATES-1));
+	th->next_state = st->next;
+	th->next_state |= (st->frm_nxt & 0xE0) << 3;
+	th->next_state |= (st->action & 0x80) << 8;
+}
 
-	wall = map_walls[so->bank] + wall->next;
-	wall->vtx.y = so->y + pos;
-	wall = map_walls[so->bank] + wall->next;
-	wall->vtx.y = so->y + pos;
+static uint32_t vis_check(uint32_t s0, uint32_t s1)
+{
+	uint8_t *tab = map_vis_tab + ((s1 & 0x1F) * 256);
+	return tab[s0] & (1 << (s1 >> 5));
+}
+
+static uint32_t ang_check(uint32_t t0, uint32_t t1)
+{
+	thing_t *th = thing_ptr(t0);
+	thing_t *ht = thing_ptr(t1);
+	p2a_coord.x = ht->x / 256 - th->x / 256;
+	p2a_coord.y = ht->y / 256 - th->y / 256;
+	return point_to_angle() >> 4;
 }
 
 //
@@ -289,11 +299,101 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 			th->eflags &= st->arg[0];
 			th->eflags |= st->arg[1];
 		break;
-		case 20: // enemy: look
-
+		case 20: // aim: angle
+			if(th->target)
+				th->angle = ang_check(tdx, th->target);
 		break;
-		case 21: // enemy: chase
+		case 21: // aim: attack
+			// TODO: sight check full aim
+			if(th->target)
+				th->angle = ang_check(tdx, th->target);
+			skip_state(th);
+			return 1;
+		break;
+		case 22: // enemy: look
+		{
+			uint8_t ang;
 
+			if(!vis_check(thingsec[tdx][0], thingsec[player_thing][0]))
+				break;
+
+			ang = ang_check(tdx, player_thing);
+			if(	(ang + 0x40 - th->angle) & 0x80 &&
+				!st->arg[0]
+			)
+				break;
+
+			th->target = player_thing;
+			th->angle = ang & 0xF0;
+			th->counter = 15;
+
+			th->next_state = thing_anim[th->ticker.type][ANIM_MOVE].state;
+			return 1;
+		}
+		break;
+		case 23: // enemy: chase
+		{
+			uint8_t ang;
+			int32_t nx, ny;
+			thing_type_t *info;
+
+			if(!th->target)
+			{
+				th->next_state = thing_anim[th->ticker.type][ANIM_SPAWN].state;
+				return 1;
+			}
+
+			if(!vis_check(thingsec[tdx][0], thingsec[th->target][0]))
+				break;
+
+			if(	st->arg[1] &&
+				(rng_get() & 0x7F) < st->arg[1]
+			){
+				th->counter = 10;
+				th->next_state = thing_anim[th->ticker.type][ANIM_FIRE].state;
+				return 1;
+			}
+
+			if(	st->arg[2] &&
+				(rng_get() & 0x7F) < st->arg[2]
+			){
+				th->counter = 10;
+				th->next_state = thing_anim[th->ticker.type][ANIM_MELEE].state;
+				return 1;
+			}
+
+			th->counter--;
+			if(!th->counter)
+			{
+				th->counter = 10 + (rng_get() & 7);
+				th->angle = ang_check(tdx, th->target);
+				th->angle -= 0x0F;
+				th->angle += rng_get() & 0x1F;
+			}
+
+			info = thing_type + th->ticker.type;
+			nx = th->x + tab_sin[th->angle] * info->speed;
+			ny = th->y + tab_cos[th->angle] * info->speed;
+			if(thing_check_pos(tdx, nx / 256, ny / 256, th->z / 256, 0))
+			{
+				th->x = nx;
+				th->y = ny;
+				thing_apply_pos();
+				break;
+			}
+
+			if(rng_get() < 80)
+			{
+				th->angle = poscheck.hitang + 0x40;
+				break;
+			}
+
+			ang = ang_check(tdx, th->target);
+
+			ang = (poscheck.hitang + 0x40) - ang;
+			ang &= 0x80;
+			th->angle = poscheck.hitang ^ ang;
+		}
 		break;
 	}
 

@@ -7315,6 +7315,12 @@ static void fs_sprite(uint8_t *file)
 
 	backup = *vi;
 
+	if(img_offs_x < 0x10000)
+	{
+		vi->sw.ox = img_offs_x - img->width / 2;
+		vi->sw.oy = img_offs_y - img->height;
+	}
+
 	if(stex_sprite_texture(img, sp))
 	{
 		*vi = backup;
