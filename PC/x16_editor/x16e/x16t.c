@@ -68,6 +68,8 @@ enum
 	ARGT_U8,
 	ARGT_S8,
 	ARGT_U16,
+	ARGT_BOOL,
+	ARGT_DIST,
 	ARGT_CHANCE,
 	ARGT_SPAWN_SLOT,
 	ARGT_XY_SPREAD,
@@ -712,11 +714,25 @@ const state_action_def_t state_action_def[] =
 	//
 	{
 		.name = "aim: angle",
-		.flags = AFLG_THING
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "instant",
+			.type = ARGT_BOOL,
+			.def = 0,
+			.lim = {0, 1}
+		}
 	},
 	{
 		.name = "aim: attack",
-		.flags = AFLG_THING
+		.flags = AFLG_THING,
+		.arg[0] =
+		{
+			.name = "instant",
+			.type = ARGT_BOOL,
+			.def = 0,
+			.lim = {0, 1}
+		}
 	},
 	//
 	{
@@ -724,10 +740,10 @@ const state_action_def_t state_action_def[] =
 		.flags = AFLG_THING,
 		.arg[0] =
 		{
-			.name = "full circle",
+			.name = "mode",
 			.type = ARGT_U8,
 			.def = 0,
-			.lim = {0, 1}
+			.lim = {0, 2}
 		},
 		.arg[1] =
 		{
@@ -742,21 +758,21 @@ const state_action_def_t state_action_def[] =
 		.flags = AFLG_THING,
 		.arg[0] =
 		{
-			.name = "distance",
-			.type = ARGT_U8,
-			.def = 0,
+			.name = "R distance",
+			.type = ARGT_DIST,
+			.def = 64,
 			.lim = {0, 255}
 		},
 		.arg[1] =
 		{
-			.name = "R chance",
-			.type = ARGT_CHANCE,
+			.name = "M distance",
+			.type = ARGT_DIST,
 			.def = 0,
-			.lim = {0, 128}
+			.lim = {0, 255}
 		},
 		.arg[2] =
 		{
-			.name = "M chance",
+			.name = "R chance",
 			.type = ARGT_CHANCE,
 			.def = 0,
 			.lim = {0, 128}
@@ -802,6 +818,7 @@ static const uint8_t *mode_anim_txt[] =
 
 static void te_arg_us8(uint8_t*);
 static void te_arg_u16(uint8_t*);
+static void te_arg_dist(uint8_t*);
 static void te_arg_spawn(uint8_t*);
 static void te_arg_spread(uint8_t*);
 static void af_block_flags(void);
@@ -813,6 +830,8 @@ const arg_parse_t arg_parse[] =
 	[ARGT_U8] = {"Enter a value (%d to %d).", te_arg_us8},
 	[ARGT_S8] = {"Enter a value (%d to %d).", te_arg_us8},
 	[ARGT_U16] = {"Enter a value (0 to 65535).", te_arg_u16},
+	[ARGT_BOOL] = {"Enter a value (0 or 1).", te_arg_us8},
+	[ARGT_DIST] = {"Enter a value (0 to 1020).", te_arg_dist},
 	[ARGT_CHANCE] = {"Enter a value (%d to %d).", te_arg_us8},
 	[ARGT_SPAWN_SLOT] = {"Enter spawn slot (A to D).", te_arg_spawn},
 	[ARGT_XY_SPREAD] = {"Enter two values (0 to 15).", te_arg_spread},
@@ -1378,6 +1397,12 @@ static const uint8_t *make_arg_text(export_type_t *ti, thing_st_t *st, const sta
 		break;
 		case ARGT_CHANCE:
 			sprintf(text, "%u / 128", (uint32_t)val->u8);
+		break;
+		case ARGT_BOOL:
+			sprintf(text, "%s", val->u8 ? "true" : "false");
+		break;
+		case ARGT_DIST:
+			sprintf(text, "%u", (uint32_t)val->u8 * 4);
 		break;
 		case ARGT_SPAWN_SLOT:
 			if(val->u8 >= THING_MAX_SPAWN_TYPES)
@@ -2488,6 +2513,26 @@ static void te_arg_u16(uint8_t *text)
 	}
 
 	*(uint16_t*)arg_dst = temp;
+	x16t_update_thing_view(0);
+}
+
+static void te_arg_dist(uint8_t *text)
+{
+	int32_t temp;
+
+	if(!text)
+		return;
+
+	if(!text[0])
+		return;
+
+	if(sscanf(text, "%d", &temp) != 1 || temp < 0 || temp > 1023)
+	{
+		edit_status_printf("Invalid value!");
+		return;
+	}
+
+	*arg_dst = temp >> 2;
 	x16t_update_thing_view(0);
 }
 

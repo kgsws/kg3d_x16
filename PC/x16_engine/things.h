@@ -154,7 +154,9 @@ typedef struct
 	uint8_t ticks;
 	uint16_t next_state;
 	//
+	uint8_t chaseang;
 	uint8_t marked;
+	uint16_t dist;
 } thing_t;
 
 typedef union

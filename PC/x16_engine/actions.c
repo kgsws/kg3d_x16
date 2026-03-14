@@ -9,6 +9,8 @@
 #include "hitscan.h"
 #include "actions.h"
 
+static int32_t dist_calc;
+
 static const uint8_t prop_offs[] =
 {
 	offsetof(thing_t, height),
@@ -74,6 +76,20 @@ static uint32_t ang_check(uint32_t t0, uint32_t t1)
 	p2a_coord.x = ht->x / 256 - th->x / 256;
 	p2a_coord.y = ht->y / 256 - th->y / 256;
 	return point_to_angle() >> 4;
+}
+
+static void get_dist(uint32_t t0, uint32_t t1)
+{
+	if(dist_calc >= 0)
+		return;
+
+	thing_t *th = thing_ptr(t0);
+	thing_t *ht = thing_ptr(t1);
+
+	p2a_coord.x = ht->x / 256 - th->x / 256;
+	p2a_coord.y = ht->y / 256 - th->y / 256;
+
+	dist_calc = point_to_dist();
 }
 
 //
@@ -301,20 +317,35 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		break;
 		case 20: // aim: angle
 			if(th->target)
+			{
 				th->angle = ang_check(tdx, th->target);
+				th->pitch = 0x80;
+			}
+			if(st->arg[0])
+			{
+				skip_state(th);
+				return 1;
+			}
 		break;
 		case 21: // aim: attack
-			// TODO: sight check full aim
 			if(th->target)
-				th->angle = ang_check(tdx, th->target);
-			skip_state(th);
-			return 1;
+				th->angle = ang_check(tdx, th->target); // TODO: sight check full aim
+			if(st->arg[0])
+			{
+				skip_state(th);
+				return 1;
+			}
 		break;
 		case 22: // enemy: look
 		{
+			thing_t *ht;
 			uint8_t ang;
 
 			if(!vis_check(thingsec[tdx][0], thingsec[player_thing][0]))
+				break;
+
+			ht = thing_ptr(th->target);
+			if(ht->iflags & THING_IFLAG_CORPSE)
 				break;
 
 			ang = ang_check(tdx, player_thing);
@@ -324,7 +355,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				break;
 
 			th->target = player_thing;
-			th->angle = ang & 0xF0;
+			th->chaseang = ang & 0xF0;
 			th->counter = 15;
 
 			th->next_state = thing_anim[th->ticker.type][ANIM_MOVE].state;
@@ -333,47 +364,68 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		break;
 		case 23: // enemy: chase
 		{
+			thing_t *ht;
 			uint8_t ang;
 			int32_t nx, ny;
 			thing_type_t *info;
 
 			if(!th->target)
 			{
+stop:
 				th->next_state = thing_anim[th->ticker.type][ANIM_SPAWN].state;
 				return 1;
 			}
 
+			ht = thing_ptr(th->target);
+			if(ht->iflags & THING_IFLAG_CORPSE)
+				goto stop;
+
 			if(!vis_check(thingsec[tdx][0], thingsec[th->target][0]))
 				break;
 
-			if(	st->arg[1] &&
-				(rng_get() & 0x7F) < st->arg[1]
+			dist_calc = -1;
+
+			if(	st->arg[2] &&
+				(rng_get() & 0x7F) < st->arg[2]
 			){
+				get_dist(tdx, th->target);
+				th->dist = dist_calc;
 				th->counter = 10;
 				th->next_state = thing_anim[th->ticker.type][ANIM_FIRE].state;
 				return 1;
 			}
 
-			if(	st->arg[2] &&
-				(rng_get() & 0x7F) < st->arg[2]
-			){
-				th->counter = 10;
-				th->next_state = thing_anim[th->ticker.type][ANIM_MELEE].state;
-				return 1;
+			if(st->arg[1])
+			{
+				get_dist(tdx, th->target);
+				if(st->arg[1] * 4 - dist_calc >= 0)
+				{
+					th->dist = dist_calc;
+					th->counter = 10;
+					th->next_state = thing_anim[th->ticker.type][ANIM_MELEE].state;
+					return 1;
+				}
 			}
+
+			th->angle = th->chaseang;
 
 			th->counter--;
 			if(!th->counter)
 			{
+				get_dist(tdx, th->target);
+				if(dist_calc - st->arg[0] * 4 < 0)
+					p2a_coord.a ^= 0x80;
+
 				th->counter = 10 + (rng_get() & 7);
-				th->angle = ang_check(tdx, th->target);
-				th->angle -= 0x0F;
-				th->angle += rng_get() & 0x1F;
+				th->chaseang = p2a_coord.a;
+				th->chaseang -= 0x0F;
+				th->chaseang += rng_get() & 0x1F;
+				th->angle = th->chaseang;
 			}
 
 			info = thing_type + th->ticker.type;
-			nx = th->x + tab_sin[th->angle] * info->speed;
-			ny = th->y + tab_cos[th->angle] * info->speed;
+			nx = th->x + tab_sin[th->chaseang] * info->speed;
+			ny = th->y + tab_cos[th->chaseang] * info->speed;
 			if(thing_check_pos(tdx, nx / 256, ny / 256, th->z / 256, 0))
 			{
 				th->x = nx;
@@ -384,15 +436,20 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 
 			if(rng_get() < 80)
 			{
-				th->angle = poscheck.hitang + 0x40;
+				th->chaseang = poscheck.hitang + 0x40;
+				th->angle = th->chaseang;
 				break;
 			}
 
-			ang = ang_check(tdx, th->target);
+			get_dist(tdx, th->target);
+			if(dist_calc - st->arg[0] * 4 < 0)
+				p2a_coord.a ^= 0x80;
 
+			ang = p2a_coord.a;
 			ang = (poscheck.hitang + 0x40) - ang;
 			ang &= 0x80;
-			th->angle = poscheck.hitang ^ ang;
+			th->chaseang = poscheck.hitang ^ ang;
+			th->angle = th->chaseang;
 		}
 		break;
 	}
