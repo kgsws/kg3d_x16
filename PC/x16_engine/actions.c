@@ -339,25 +339,45 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		case 22: // enemy: look
 		{
 			thing_t *ht;
-			uint8_t ang;
+
+			if(th->damager)
+			{
+				th->target = th->damager;
+				th->damager = 0;
+				goto activate;
+			}
 
 			if(!vis_check(thingsec[tdx][0], thingsec[player_thing][0]))
 				break;
 
-			ht = thing_ptr(th->target);
+			ht = thing_ptr(player_thing);
 			if(ht->iflags & THING_IFLAG_CORPSE)
 				break;
 
-			ang = ang_check(tdx, player_thing);
-			if(	(ang + 0x40 - th->angle) & 0x80 &&
-				!st->arg[0]
-			)
-				break;
+			if(th->maparg)
+			{
+				dist_calc = -1;
+				get_dist(tdx, player_thing);
+
+				if(dist_calc > 192)
+				{
+					if(	th->maparg > 1 &&
+						(p2a_coord.a + 0x40 - th->angle) & 0x80
+					)
+						break;
+
+					hitscan_sight_ex(tdx, player_thing, p2a_coord.a, dist_calc);
+					if(hitscan.pbot >= hitscan.ptop)
+						break;
+				}
+
+				th->chaseang = p2a_coord.a & 0xF0;
+			}
 
 			th->target = player_thing;
-			th->chaseang = ang & 0xF0;
-			th->counter = 15;
 
+activate:
+			th->counter = 15;
 			th->next_state = thing_anim[th->ticker.type][ANIM_MOVE].state;
 			return 1;
 		}
@@ -372,6 +392,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 			if(!th->target)
 			{
 stop:
+				th->damager = 0;
 				th->next_state = thing_anim[th->ticker.type][ANIM_SPAWN].state;
 				return 1;
 			}

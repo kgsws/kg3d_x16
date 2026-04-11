@@ -3979,22 +3979,26 @@ static uint32_t load_map()
 	// things
 	for(uint32_t i = 0; i < map_head.count_things; i++)
 	{
-		map_thing_t th;
+		map_thing_t mt;
+		thing_t *th;
 		int32_t type;
 		uint8_t ti;
 
-		if(read(fd, &th, sizeof(th)) != sizeof(th))
+		if(read(fd, &mt, sizeof(mt)) != sizeof(mt))
 			goto error;
 
-		type = thing_find_type(th.hash);
+		type = thing_find_type(mt.hash);
 		if(type < 0)
 			goto error;
 
 		if(load_thing_sprites(type, 0))
 			goto error;
 
-		ti = thing_spawn((int32_t)th.x << 8, (int32_t)th.y << 8, (int32_t)th.z << 8, (int32_t)th.sector, type, 0);
-		thing_ptr(ti)->angle = th.angle;
+		ti = thing_spawn((int32_t)mt.x << 8, (int32_t)mt.y << 8, (int32_t)mt.z << 8, (int32_t)mt.sector, type, 0);
+		th = thing_ptr(ti);
+		th->angle = mt.angle;
+		th->chaseang = mt.angle;
+		th->maparg = 2;//mt.extra;
 	}
 
 	// done

@@ -1074,6 +1074,16 @@ act_set_flags:
 	jmp	thing_actdone
 
 ;;;
+;
+;;;
+
+act_aim_angle:
+act_aim_attack:
+act_enemy_look:
+act_enemy_chase:
+	jmp	thing_actdone
+
+;;;
 ; state action table
 ;;;
 
@@ -1097,4 +1107,8 @@ action_table:
 	.word	act_explode_self
 	.word	act_set_prop
 	.word	act_set_flags
+	.word	act_aim_angle
+	.word	act_aim_attack
+	.word	act_enemy_look
+	.word	act_enemy_chase
 

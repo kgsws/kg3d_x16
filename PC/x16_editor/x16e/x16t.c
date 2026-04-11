@@ -740,13 +740,6 @@ const state_action_def_t state_action_def[] =
 		.flags = AFLG_THING,
 		.arg[0] =
 		{
-			.name = "mode",
-			.type = ARGT_U8,
-			.def = 0,
-			.lim = {0, 2}
-		},
-		.arg[1] =
-		{
 			.name = "tick rng",
 			.type = ARGT_U8,
 			.def = 7,

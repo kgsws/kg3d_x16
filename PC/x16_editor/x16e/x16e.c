@@ -101,7 +101,7 @@ typedef struct
 	uint8_t angle;
 	uint8_t flags;
 	uint8_t extra;
-} __attribute__((packed)) thing_t;
+} __attribute__((packed)) map_thing_t;
 
 typedef struct
 {
@@ -1268,7 +1268,7 @@ void x16_export_map()
 			if(	th->pos.sector &&
 				th->prop.type < MAX_X16_THING_TYPES
 			){
-				thing_t mt;
+				map_thing_t mt;
 
 				mt.hash = thing_info[th->prop.type].name.hash;
 				mt.x = th->pos.x;
@@ -1291,7 +1291,7 @@ void x16_export_map()
 
 	// export OK
 printf("EXPORTED OK; sec %u ln %u th %u wb %u es %u\n", edit_list_sector.count, count_walls, count_things, count_wall_banks, count_extra_storage);
-printf("sec %u wall %u th %u\n", sizeof(sector_t), sizeof(wall_t), sizeof(thing_t));
+printf("sec %u wall %u th %u\n", sizeof(sector_t), sizeof(wall_t), sizeof(map_thing_t));
 /*
 	sprintf(edit_info_box_text,	"Sector count: %u\n"
 					"Wall count: %u\n"

@@ -1068,10 +1068,15 @@ ex_map_load:
 	; set thing angle
 	lda	MAP_TEMP_THING_ANGLE
 	sta	THING_STRUCT_ANGLE,x
+	sta	THING_STRUCT_CHASEANG,x
 
 	; set thing pitch
 	lda	#$80
 	sta	THING_STRUCT_PITCH,x
+
+	; set thing extra
+	lda	MAP_TEMP_THING_EXTRA
+	sta	THING_STRUCT_MAPARG,x
 
 	; next thing
 	dec	MAP_TEMP_COUNT_THING
@@ -1735,6 +1740,7 @@ load_wall:
 	bcc	@skip_light
 
 	; advance WRAM pointer (temp)
+	sec
 	lda	MAP_WALL_DLEN
 	beq	:+
 	clc
@@ -2363,6 +2369,7 @@ load_wspr:
 
 load_sprite_pixels:
 	; advance WRAM pointer (temp)
+	sec
 	lda	MAP_WALL_DLEN
 	beq	:+
 	clc
