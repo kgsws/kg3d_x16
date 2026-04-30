@@ -219,6 +219,10 @@ thing_spawn_org:
 	lda	ARG_THING_Z_H
 	sta	THING_STRUCT_Z_H,x
 
+	; pitch
+	lda	#$80
+	sta	THING_STRUCT_PITCH,x
+
 	; ticks
 	lda	#1
 	sta	THING_STRUCT_TICKS,x

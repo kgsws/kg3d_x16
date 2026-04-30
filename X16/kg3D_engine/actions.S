@@ -16,7 +16,7 @@
 ; NOTES: action callback
 ;;;
 ; X and Y can be trashed
-; Y - the thing; 0 = player weapon; (also stored in THTICK_ACTION_TDX)
+; Y - the thing; 0 = player weapon; (also stored in G_TICKER_IDX)
 ; THTICK_ACTION_ST_IDX : THTICK_ACTION_ST_BNK - current state (also current bank)
 ; jump to 'thing_actdone' to continue; BANK can be trashed
 ; jump to 'thing_actnext'; X is LO, A is HI of new animation, BANK_THING_INFO must be set
@@ -49,6 +49,96 @@ action_xy:
 	lda	THING_STRUCT_Y_H,y
 	sta	ARG_THING_Y_H
 
+	rts
+
+;;;
+; get distance between two things
+;;;
+; X - thing
+; Y - thing
+
+get_dist:
+	; if(dist_calc >= 0)
+	lda	MATH_VAR_H
+	bpl	@skip
+
+	; backup
+	lda	REG_RAM_BANK
+	pha
+	phx
+
+	; p2a_coord.x = ht->x / 256 - th->x / 256
+	sec
+	lda	THING_STRUCT_X_L,y
+	sbc	THING_STRUCT_X_L,x
+	sta	MATH_P2A_X_L
+	lda	THING_STRUCT_X_H,y
+	sbc	THING_STRUCT_X_H,x
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = ht->y / 256 - th->y / 256
+	sec
+	lda	THING_STRUCT_Y_L,y
+	sbc	THING_STRUCT_Y_L,x
+	sta	MATH_P2A_Y_L
+	lda	THING_STRUCT_Y_H,y
+	sbc	THING_STRUCT_Y_H,x
+	sta	MATH_P2A_Y_H
+
+	; dist_calc = point_to_dist()
+	jsr	math_p2d
+
+	; restore
+	plx
+	pla
+	sta	REG_RAM_BANK
+@skip:
+	rts
+
+;;;
+; visibility table check
+;;;
+; Y - thing
+; X - thing (trashed)
+
+vis_check:
+	lda	REG_RAM_BANK
+	pha
+
+	; thing sectors bank
+	lda	#BANK_THING_SECTORS
+	sta	REG_RAM_BANK
+
+	; Y thing sector
+	lda	$B000,y
+	sta	TMP_PTR_L
+
+	; X thing sector
+	lda	$B000,x
+	tax
+
+	; addr HI
+	and	#$1F
+	ora	#$A0
+	sta	TMP_PTR_H
+
+	; (1 << (s1 >> 5)
+	lda	TAB_BANK,x
+	tax
+	lda	TAB_POW2,x
+
+	; vistab bank
+	ldx	#BANK_VISTAB
+	stx	REG_RAM_BANK
+
+	; restore
+	plx
+
+	; check
+	and	(TMP_PTR_L)
+
+	; done
+	stx	REG_RAM_BANK
 	rts
 
 ;;;
@@ -1079,8 +1169,131 @@ act_set_flags:
 
 act_aim_angle:
 act_aim_attack:
+	jmp	thing_actdone
+;;;
+; enemy: look
+;;;
+
 act_enemy_look:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; if(th->damager)
+	lda	THING_STRUCT_TH_DAMAGER,y
+	beq	:+
+
+	; th->target = th->damager
+	sta	THING_STRUCT_TH_TARGET,y
+
+	; th->damager = 0
+	lda	#0
+	sta	THING_STRUCT_TH_DAMAGER,y
+
+	bra	@activate
+:
+	; if(ht->iflags & THING_IFLAG_CORPSE)
+	ldx	G_PLAYER_THING
+	lda	THING_STRUCT_IFLAGS,x
+	and	#THING_IFLAG_CORPSE
+	beq	:+
+@done:
+	jmp	thing_actdone
+:
+	; if(!vis_check(thingsec[tdx][0], thingsec[player_thing][0]))
+	jsr	vis_check
+	beq	@done
+
+	; the thing
+	ldx	G_TICKER_IDX
+
+	; if(th->maparg)
+	lda	THING_STRUCT_MAPARG,x
+	beq	@skip_sight
+
+	; dist_calc = -1
+	lda	#$FF
+	sta	MATH_VAR_H
+
+	; get_dist(tdx, player_thing)
+	ldy	G_PLAYER_THING
+	jsr	get_dist
+
+	; th->chaseang = p2a_coord.a & 0xF0
+	lda	MATH_VAR_U
+	and	#$F0
+	sta	THING_STRUCT_CHASEANG,x
+
+	; if(dist_calc > 192)
+	lda	MATH_VAR_H
+	bne	:+
+	lda	MATH_VAR_L
+	cmp	#193
+	bcc	@skip_sight
+:
+	; th->maparg > 1
+	lda	THING_STRUCT_MAPARG,x
+	dea
+	beq	:+
+
+	; (p2a_coord.a + 0x40 - th->angle) & 0x80
+	clc
+	lda	MATH_VAR_U
+	sta	ARG_HITSCAN_ANGLE
+	adc	#$40
+	sec
+	sbc	THING_STRUCT_ANGLE,x
+	bmi	@done
+:
+	; hitscan_sight_ex(tdx, player_thing, p2a_coord.a, dist_calc)
+	ldy	G_TICKER_IDX
+	jsr	action_xy
+	ldx	G_PLAYER_THING
+	lda	MATH_VAR_L
+	sta	HITSCAN_SIGHT_DIST_L
+	lda	MATH_VAR_H
+	sta	HITSCAN_SIGHT_DIST_H
+	jsr	hitscan_sight_ex
+
+	; if(hitscan.pbot >= hitscan.ptop)
+	lda	HITSCAN_SIGHT_PBOT
+	cmp	HITSCAN_SIGHT_PTOP
+	bcs	@done
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	ldx	G_TICKER_IDX
+
+@skip_sight:
+	; th->target = player_thing
+	lda	G_PLAYER_THING
+	sta	THING_STRUCT_TH_TARGET,x
+
+@activate:
+	; th->counter = 15
+	lda	#15
+	sta	THING_STRUCT_COUNTER,x
+
+	; type
+	ldy	TICKER_STRUCT_TYPE,x
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; th->next_state = thing_anim[th->ticker.type][ANIM_MOVE].state
+	ldx	THTYPE_ANIM_MOVE_L,y
+	lda	THTYPE_ANIM_MOVE_H,y
+	jmp	thing_actnext
+
+;;;
+;
+;;;
+
 act_enemy_chase:
+act_enemy_pain:
 	jmp	thing_actdone
 
 ;;;
@@ -1111,4 +1324,5 @@ action_table:
 	.word	act_aim_attack
 	.word	act_enemy_look
 	.word	act_enemy_chase
+	.word	act_enemy_pain
 

@@ -1188,11 +1188,11 @@ hs_skip_sobj:
 	lda	MATH_VAR_U
 	sta	HITSCAN_NEW_ANGLE
 
-	; hit = angle - thang
+	; hit = angle - hang
 	cmp	ARG_HITSCAN_ANGLE
 	bmi	@no_hit
 
-	; hit |= thang - last_angle
+	; hit |= hang - last_angle
 	lda	ARG_HITSCAN_ANGLE
 	cmp	HITSCAN_LAST_ANGLE
 	bpl	@cb_wall
@@ -1472,6 +1472,7 @@ hitscan_sight_ex:
 ;;;
 
 hitscan_sight_check:
+	; TODO
 	rts
 
 ;;;

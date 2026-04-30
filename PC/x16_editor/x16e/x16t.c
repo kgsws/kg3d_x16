@@ -771,6 +771,10 @@ const state_action_def_t state_action_def[] =
 			.lim = {0, 128}
 		}
 	},
+	{
+		.name = "enemy: pain",
+		.flags = AFLG_THING,
+	},
 	// terminator
 	{}
 };

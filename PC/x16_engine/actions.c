@@ -347,17 +347,19 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 				goto activate;
 			}
 
-			if(!vis_check(thingsec[tdx][0], thingsec[player_thing][0]))
-				break;
-
 			ht = thing_ptr(player_thing);
 			if(ht->iflags & THING_IFLAG_CORPSE)
+				break;
+
+			if(!vis_check(thingsec[tdx][0], thingsec[player_thing][0]))
 				break;
 
 			if(th->maparg)
 			{
 				dist_calc = -1;
 				get_dist(tdx, player_thing);
+
+				th->chaseang = p2a_coord.a & 0xF0;
 
 				if(dist_calc > 192)
 				{
@@ -370,8 +372,6 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 					if(hitscan.pbot >= hitscan.ptop)
 						break;
 				}
-
-				th->chaseang = p2a_coord.a & 0xF0;
 			}
 
 			th->target = player_thing;
@@ -410,6 +410,11 @@ stop:
 				(rng_get() & 0x7F) < st->arg[2]
 			){
 				get_dist(tdx, th->target);
+
+				hitscan_sight_ex(tdx, th->target, p2a_coord.a, dist_calc);
+				if(hitscan.pbot >= hitscan.ptop)
+					goto skip_atk;
+
 				th->dist = dist_calc;
 				th->counter = 10;
 				th->next_state = thing_anim[th->ticker.type][ANIM_FIRE].state;
@@ -421,6 +426,10 @@ stop:
 				get_dist(tdx, th->target);
 				if(st->arg[1] * 4 - dist_calc >= 0)
 				{
+					hitscan_sight_ex(tdx, th->target, p2a_coord.a, dist_calc);
+					if(hitscan.pbot >= hitscan.ptop)
+						goto skip_atk;
+
 					th->dist = dist_calc;
 					th->counter = 10;
 					th->next_state = thing_anim[th->ticker.type][ANIM_MELEE].state;
@@ -428,6 +437,7 @@ stop:
 				}
 			}
 
+skip_atk:
 			th->angle = th->chaseang;
 
 			th->counter--;
@@ -472,6 +482,11 @@ stop:
 			th->chaseang = poscheck.hitang ^ ang;
 			th->angle = th->chaseang;
 		}
+		break;
+		case 24: // enemy: pain
+			if(th->target)
+				break;
+			th->target = th->damager;
 		break;
 	}
 

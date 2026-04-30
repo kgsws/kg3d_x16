@@ -1070,12 +1070,9 @@ ex_map_load:
 	sta	THING_STRUCT_ANGLE,x
 	sta	THING_STRUCT_CHASEANG,x
 
-	; set thing pitch
-	lda	#$80
-	sta	THING_STRUCT_PITCH,x
-
 	; set thing extra
-	lda	MAP_TEMP_THING_EXTRA
+;	lda	MAP_TEMP_THING_EXTRA
+lda #2
 	sta	THING_STRUCT_MAPARG,x
 
 	; next thing

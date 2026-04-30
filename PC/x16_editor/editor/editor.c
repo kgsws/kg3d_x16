@@ -3979,7 +3979,7 @@ uint32_t edit_get_special_thing(const uint8_t *name)
 {
 	internal_thing_t *it = internal_thing;
 
-	for(uint32_t i; i < sizeof(internal_thing) / sizeof(internal_thing_t); i++)
+	for(uint32_t i = 0; i < sizeof(internal_thing) / sizeof(internal_thing_t); i++)
 	{
 		if(!strcmp(it->name, name))
 			return it->type;
