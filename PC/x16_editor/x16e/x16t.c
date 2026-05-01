@@ -1179,32 +1179,6 @@ static int32_t cbor_cb_thing_single(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t typ
 		if(ti->name.text[0])
 			ti->name.hash = x16c_crc(ti->name.text, -1, THING_CRC_XOR);
 
-		for(uint32_t i = 0; i < NUM_THING_ANIMS; i++)
-		{
-			thing_anim_t *ta = ti->anim + i;
-			thing_anim_t *tao;
-			uint32_t tdx, adx;
-			uint32_t is_weapon;
-
-			if(ta->count >= 0)
-				continue;
-
-			ta->count = 0;
-
-			is_weapon = THING_CHECK_WEAPON_SPRITE(i, cbor_main_index);
-
-			if(	!parse_animation_link(ta->load_link, &tdx, &adx, is_weapon) &&
-				is_weapon == THING_CHECK_WEAPON_SPRITE(adx, tdx)
-			){
-				tao = thing_info[tdx].anim + adx;
-				if(tao->count >= 0 || tao == ta)
-				{
-					ta->link.thing = tdx;
-					ta->link.anim = 0x80 | adx;
-				}
-			}
-		}
-
 		return 1;
 	}
 
@@ -2838,7 +2812,40 @@ void x16t_load(const uint8_t *file)
 		ctx.max_recursion = 16;
 		ret = kgcbor_parse_object(&ctx, edit_cbor_buffer, size);
 		if(!ret)
+		{
+			for(uint32_t ii = 0; ii < MAX_X16_THING_TYPES; ii++)
+			{
+				thing_def_t *ti = thing_info + ii;
+
+				for(uint32_t i = 0; i < NUM_THING_ANIMS; i++)
+				{
+					thing_anim_t *ta = ti->anim + i;
+					thing_anim_t *tao;
+					uint32_t tdx, adx;
+					uint32_t is_weapon;
+
+					if(ta->count >= 0)
+						continue;
+
+					ta->count = 0;
+
+					is_weapon = THING_CHECK_WEAPON_SPRITE(i, ii);
+
+					if(	!parse_animation_link(ta->load_link, &tdx, &adx, is_weapon) &&
+						is_weapon == THING_CHECK_WEAPON_SPRITE(adx, tdx)
+					){
+						tao = thing_info[tdx].anim + adx;
+						if(tao->count >= 0 || tao == ta)
+						{
+							ta->link.thing = tdx;
+							ta->link.anim = 0x80 | adx;
+						}
+					}
+				}
+			}
+
 			return;
+		}
 	}
 
 	thing_cleanup();
@@ -3596,6 +3603,36 @@ void x16t_export()
 			tdst[j * 256] = tsrc[j];
 	}
 
+	// fix animation links
+	for(uint32_t i = 0; i < MAX_X16_THING_TYPES; i++)
+	{
+		thing_def_t *ti = thing_info + i;
+		uint8_t *tan0 = thing_data + i + 128; // thing animations LO; 0xA080
+		uint8_t *tan1 = thing_data + i + 128 + NUM_THING_ANIMS * 256; // thing animations HI; 0xA880
+		uint8_t *tan2 = thing_data + i + 128 + NUM_THING_ANIMS * 256 * 2; // thing animation sizes; 0xB080
+
+		for(uint32_t j = 0; j < NUM_THING_ANIMS; j++)
+		{
+			thing_anim_t *ta = ti->anim + j;
+			thing_anim_t *tao;
+			uint32_t state, bright;
+
+			if(ta->count >= 0)
+				continue;
+
+			tao = thing_info[ta->link.thing].anim + (ta->link.anim & 0x7F);
+
+			ta->index = tao->index;
+
+			state = tao->index;
+			bright = tao->state[0].frame & 0x80;
+
+			tan0[j * 256] = state;
+			tan1[j * 256] = (state >> 8) | bright;
+			tan2[j * 256] = tao->count;
+		}
+	}
+
 	// fix animation jumps
 	for(uint32_t i = 0; i < state_idx; i++)
 	{
@@ -3616,33 +3653,6 @@ void x16t_export()
 
 			dst->next = next;
 			dst->frm_nxt |= ((next >> 3) & 0xE0);
-		}
-	}
-
-	// fix animation links
-	for(uint32_t i = 0; i < MAX_X16_THING_TYPES; i++)
-	{
-		thing_def_t *ti = thing_info + i;
-		uint8_t *tan0 = thing_data + i + 128; // thing animations LO; 0xA080
-		uint8_t *tan1 = thing_data + i + 128 + NUM_THING_ANIMS * 256; // thing animations HI; 0xA880
-		uint8_t *tan2 = thing_data + i + 128 + NUM_THING_ANIMS * 256 * 2; // thing animation sizes; 0xB080
-
-		for(uint32_t j = 0; j < NUM_THING_ANIMS; j++)
-		{
-			thing_anim_t *ta = ti->anim + j;
-			uint32_t state, bright;
-
-			if(ta->count >= 0)
-				continue;
-
-			ta = thing_info[ta->link.thing].anim + (ta->link.anim & 0x7F);
-
-			state = ta->index;
-			bright = ta->state[0].frame & 0x80;
-
-			tan0[j * 256] = state;
-			tan1[j * 256] = (state >> 8) | bright;
-			tan2[j * 256] = ta->count;
 		}
 	}
 

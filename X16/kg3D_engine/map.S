@@ -1082,6 +1082,7 @@ lda #2
 :
 	; close file
 	lda	#MAP_FILE_HANDLE
+	sta	TAB_FILE_HANDLE
 	jsr	file_close
 
 	;;;;

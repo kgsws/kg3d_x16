@@ -10,6 +10,7 @@
 
 .export hitscan_cb_wall
 .export hitscan_func
+.export hitscan_sight_xy
 .export hitscan_sight_ex
 .export hitscan_sight_check
 .export hitscan_attack
@@ -1350,6 +1351,10 @@ hs_check_sobj:
 ; this is run directly from explosion code
 ; Y - origin
 ; X - target
+
+hitscan_sight_xy:
+	; get XY
+	jsr	action_xy
 
 hitscan_sight_ex:
 	sty	HITSCAN_ORIGIN

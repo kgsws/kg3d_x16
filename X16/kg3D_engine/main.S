@@ -20,6 +20,7 @@
 .export func_jsr
 .export load_mapfs
 .export load_render
+.export reset_map
 .export rng_get
 .export rng_val
 .export get_hex
@@ -72,7 +73,7 @@ start:
 	;; GAME LOOP
 	;;;;
 
-@game_loop:
+game_loop:
 	jsr	render_view
 	jsr	video_swap
 
@@ -116,7 +117,7 @@ start:
 ;	dbg_framerate
 
 	;;
-	bra @game_loop
+	bra game_loop
 
 ;;;
 ; clear bank
@@ -243,6 +244,29 @@ copy_loop:
 	bne	copy_loop
 
 	rts
+
+reset_map:
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
+	; disable cache write
+	stz	VERA_FX_CTRL
+
+	; palette
+	lda	#0
+	sta	G_PALETTE_NOW
+	jsr	video_palette
+
+	; load map
+	jsr	load_mapfs
+	jsr	map_load
+	jsr	load_render
+
+	; game reset
+	ldx	#$FF
+	txs
+	jmp	game_loop
 
 ;;;
 ; return RNG byte and advance pointer

@@ -11,6 +11,7 @@
 .include "video.inc"
 .include "input.inc"
 .include "text.inc"
+.include "map.inc"
 
 .export menu_init
 .export menu_toggle
@@ -1052,6 +1053,14 @@ sel_video_set:
 	; draw items
 	jmp	menu_update
 
+;;;
+;; TODO
+;;;
+
+sel_new_game:
+	jsr	menu_toggle
+	jmp	reset_map
+
 ;;;;;;;;;;;;;;;;;;;;;
 
 ;;;
@@ -1348,7 +1357,7 @@ mptr_main:
 	.word	$0000	; replaced with LOGO
 	; item 0
 	.word	mtxt_new_game
-	.word	mptr_dummy & $7FFF ; TODO
+	.word	sel_new_game ; TODO
 	; item 1
 	.word	mtxt_options
 	.word	mptr_options & $7FFF

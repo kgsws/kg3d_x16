@@ -5,6 +5,7 @@
 .import func_jsr
 .import load_mapfs
 .import load_render
+.import reset_map
 .import rng_get
 .import rng_val
 .import get_hex

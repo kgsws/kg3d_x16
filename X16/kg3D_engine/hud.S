@@ -212,9 +212,9 @@ hud_stuff:
 	asl	ARG_HUD_D
 	lda	TAB_HUD_STYLE_AM_X0
 	sta	ARG_HUD_X
-	lda	#$A7
+	lda	G_LEVEL_TICK_L	; #$A7
 	sta	ARG_HUD_VAL_L
-	lda	#$01
+	lda	G_LEVEL_TICK_M	; #$01
 	sta	ARG_HUD_VAL_H
 	jsr	write_num
 

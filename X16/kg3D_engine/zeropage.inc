@@ -26,6 +26,9 @@ TMP_REND_WPN_LIGHT = $20
 TMP_REND_WPN_IDX = $21
 
 ; state action temp storage
+TMP_ACTION_ARG0 = $1E
+TMP_ACTION_ARG1 = $1F
+TMP_ACTION_ARG2 = $20
 TMP_ACTION_TICKADD = $21
 
 ; pointers

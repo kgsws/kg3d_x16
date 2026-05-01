@@ -60,7 +60,7 @@ static void skip_state(thing_t *th)
 	thing_state_t *st = thing_state + (th->next_state & (MAX_X16_STATES-1));
 	th->next_state = st->next;
 	th->next_state |= (st->frm_nxt & 0xE0) << 3;
-	th->next_state |= (st->action & 0x80) << 8;
+//	th->next_state |= (st->action & 0x80) << 8;
 }
 
 static uint32_t vis_check(uint32_t s0, uint32_t s1)
@@ -69,7 +69,7 @@ static uint32_t vis_check(uint32_t s0, uint32_t s1)
 	return tab[s0] & (1 << (s1 >> 5));
 }
 
-static uint32_t ang_check(uint32_t t0, uint32_t t1)
+static uint32_t get_angle(uint32_t t0, uint32_t t1)
 {
 	thing_t *th = thing_ptr(t0);
 	thing_t *ht = thing_ptr(t1);
@@ -318,7 +318,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		case 20: // aim: angle
 			if(th->target)
 			{
-				th->angle = ang_check(tdx, th->target);
+				th->angle = get_angle(tdx, th->target);
 				th->pitch = 0x80;
 			}
 			if(st->arg[0])
@@ -329,7 +329,7 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 		break;
 		case 21: // aim: attack
 			if(th->target)
-				th->angle = ang_check(tdx, th->target); // TODO: sight check full aim
+				th->angle = get_angle(tdx, th->target); // TODO: sight check full aim
 			if(st->arg[0])
 			{
 				skip_state(th);
@@ -349,10 +349,15 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 
 			ht = thing_ptr(player_thing);
 			if(ht->iflags & THING_IFLAG_CORPSE)
+			{
+nosee:
+				if(st->arg[0])
+					th->ticks += rng_val(st->arg[0]);
 				break;
+			}
 
 			if(!vis_check(thingsec[tdx][0], thingsec[player_thing][0]))
-				break;
+				goto nosee;
 
 			if(th->maparg)
 			{
@@ -366,11 +371,11 @@ uint32_t action_func(uint8_t tdx, uint32_t act, thing_state_t *st)
 					if(	th->maparg > 1 &&
 						(p2a_coord.a + 0x40 - th->angle) & 0x80
 					)
-						break;
+						goto nosee;
 
 					hitscan_sight_ex(tdx, player_thing, p2a_coord.a, dist_calc);
 					if(hitscan.pbot >= hitscan.ptop)
-						break;
+						goto nosee;
 				}
 			}
 
@@ -468,7 +473,7 @@ skip_atk:
 			if(rng_get() < 80)
 			{
 				th->chaseang = poscheck.hitang + 0x40;
-				th->angle = th->chaseang;
+				// th->angle = th->chaseang;
 				break;
 			}
 

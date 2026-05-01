@@ -3,6 +3,7 @@
 .import hitscan_func
 .import hitscan_func_ex
 .import hitscan_sight_check
+.import hitscan_sight_xy
 .import hitscan_sight_ex
 .import hitscan_attack
 .import hitscan_angles
