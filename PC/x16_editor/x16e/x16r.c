@@ -18,11 +18,7 @@
 
 #define H_FOV	0x0200
 
-#define PLX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0000)
-#define PHX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0220)
-#define PVX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0640)
-#define PSX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0A01)
-#define PTX_CODE_BASE	(offsetof(tables_1100_t, pxloop) + 0x1100 + 0x0FD2)
+#define DRAW_CODE_BASE(p)	(offsetof(tables_1100_t, pxloop) + 0x1100 + ((p) - tables_1100.pxloop))
 #define COLORMAP_ZP	0x22
 #define LIGHTMAP_ZP	0x24
 #define VIDEO_PAGE_L	0x50
@@ -2245,6 +2241,11 @@ void x16r_generate()
 {
 	uint8_t *ptr;
 	uint32_t last;
+	uint32_t plx_code_base;
+	uint32_t phx_code_base;
+	uint32_t pvx_code_base;
+	uint32_t psx_code_base;
+	uint32_t ptx_code_base;
 
 	edit_busy_window("Generating tables ...");
 
@@ -2326,6 +2327,63 @@ void x16r_generate()
 	for(uint32_t i = 0; i < 160; i++)
 		tables_1100.xoffs_h[i] = (i & 0xC0) >> 1;
 
+	// pixel loop (horizontal low detail)
+	ptr = tables_1100.pxloop;
+	plx_code_base = DRAW_CODE_BASE(ptr);
+	for(uint32_t i = 0; i < 64; i++)
+	{
+		if(i == 32)
+			ptr = put_code(ptr, pxaddA, sizeof(pxaddA));
+
+		ptr = put_code(ptr, pxloop, sizeof(pxloop));
+	}
+	ptr = put_code(ptr, pxaddB, sizeof(pxaddB));
+//	printf("plloop end 0x%04X\n", ptr - tables_1100.pxloop);
+
+	// pixel loop (horizontal and vertical)
+	phx_code_base = DRAW_CODE_BASE(ptr);
+	for(uint32_t i = 0; i < 248; i++)
+	{
+		if(i == 64)
+			ptr = put_code(ptr, pxaddA, sizeof(pxaddA));
+		else
+		if(i == 128)
+		{
+			ptr = put_code(ptr, pxaddB, sizeof(pxaddB));
+			pvx_code_base = DRAW_CODE_BASE(ptr);
+		}
+
+		ptr = put_code(ptr, pxloop, sizeof(pxloop));
+	}
+	*ptr++ = 0x60; // RTS
+//	printf("pxloop end 0x%04X\n", ptr - tables_1100.pxloop);
+
+	// pixel loop (sky)
+	psx_code_base = DRAW_CODE_BASE(ptr);
+	for(uint32_t i = 0; i < 248; i++)
+	{
+		ptr = put_code(ptr, pxsky, sizeof(pxsky));
+		if(i >= 119)
+			ptr[-1] = 0xC8; // INY
+	}
+	*ptr++ = 0x60; // RTS
+//	printf("psky end 0x%04X\n", ptr - tables_1100.pxloop);
+
+	// pixel loop (thing sprite)
+	ptx_code_base = DRAW_CODE_BASE(ptr);
+	for(uint32_t i = 0; i < 128; i++)
+		ptr = put_code(ptr, pxspr, sizeof(pxspr));
+	*ptr++ = 0x60; // RTS
+//	printf("pthg end 0x%04X\n", ptr - tables_1100.pxloop);
+
+#if 0
+	printf("0x%04X\n", plx_code_base - offsetof(tables_1100_t, pxloop) - 0x1100);
+	printf("0x%04X\n", phx_code_base - offsetof(tables_1100_t, pxloop) - 0x1100);
+	printf("0x%04X\n", pvx_code_base - offsetof(tables_1100_t, pxloop) - 0x1100);
+	printf("0x%04X\n", psx_code_base - offsetof(tables_1100_t, pxloop) - 0x1100);
+	printf("0x%04X\n", ptx_code_base - offsetof(tables_1100_t, pxloop) - 0x1100);
+#endif
+
 	// pixel jump offsets (vertical)
 	// this uses line length as offset
 	for(uint32_t i = 0; i < 128; i++)
@@ -2333,7 +2391,7 @@ void x16r_generate()
 		uint16_t jmp;
 		uint32_t idx = i <= 120 ? i : 0;
 
-		jmp = PVX_CODE_BASE + (120 - idx) * sizeof(pxloop);
+		jmp = pvx_code_base + (120 - idx) * sizeof(pxloop);
 		tables_1100.pvxjmp_l[i] = jmp;
 		tables_1100.pvxjmp_h[i] = jmp >> 8;
 	}
@@ -2353,7 +2411,7 @@ void x16r_generate()
 		else
 			extra = sizeof(pxaddA) + sizeof(pxaddB);
 
-		jmp = PHX_CODE_BASE + idx * sizeof(pxloop) + extra;
+		jmp = phx_code_base + idx * sizeof(pxloop) + extra;
 		tables_1100.phxjmp_l[i] = jmp;
 		tables_1100.phxjmp_h[i] = jmp >> 8;
 	}
@@ -2372,7 +2430,7 @@ void x16r_generate()
 		else
 			extra = sizeof(pxaddA) + sizeof(pxaddB);
 
-		jmp = PLX_CODE_BASE + i * sizeof(pxloop) + extra;
+		jmp = plx_code_base + i * sizeof(pxloop) + extra;
 		tables_1100.plxjmp_l[i] = jmp;
 		tables_1100.plxjmp_h[i] = jmp >> 8;
 	}
@@ -2384,7 +2442,7 @@ void x16r_generate()
 		uint16_t jmp;
 		uint32_t idx = (119 - i) & 0xFF;
 
-		jmp = PSX_CODE_BASE + idx * sizeof(pxsky);
+		jmp = psx_code_base + idx * sizeof(pxsky);
 		tables_1100.psxjmp_l[i] = jmp;
 		tables_1100.psxjmp_h[i] = jmp >> 8;
 	}
@@ -2396,57 +2454,12 @@ void x16r_generate()
 		uint16_t jmp;
 		uint32_t idx = i <= 120 ? i : 0;
 
-		jmp = PTX_CODE_BASE + ((120 - idx) + 8) * sizeof(pxspr);
+		jmp = ptx_code_base + ((120 - idx) + 8) * sizeof(pxspr);
 		tables_1100.ptxjmp_l[i] = jmp;
 		tables_1100.ptxjmp_h[i] = jmp >> 8;
 	}
-	tables_1100.ptxjmp_l[127] = PTX_CODE_BASE & 0xFF;
-	tables_1100.ptxjmp_h[127] = PTX_CODE_BASE >> 8;
-
-	// pixel loop (horizontal low detail)
-	ptr = tables_1100.pxloop;
-	for(uint32_t i = 0; i < 64; i++)
-	{
-		if(i == 32)
-			ptr = put_code(ptr, pxaddA, sizeof(pxaddA));
-
-		ptr = put_code(ptr, pxloop, sizeof(pxloop));
-	}
-	ptr = put_code(ptr, pxaddB, sizeof(pxaddB));
-//	printf("plloop end 0x%04X\n", ptr - tables_1100.pxloop);
-
-	// pixel loop (horizontal and vertical)
-	for(uint32_t i = 0; i < 248; i++)
-	{
-		if(i == 64)
-			ptr = put_code(ptr, pxaddA, sizeof(pxaddA));
-		else
-		if(i == 128)
-			ptr = put_code(ptr, pxaddB, sizeof(pxaddB));
-
-//		if(i == 128)
-//			printf("px split 0x%04X\n", ptr - tables_1100.pxloop);
-
-		ptr = put_code(ptr, pxloop, sizeof(pxloop));
-	}
-	*ptr++ = 0x60; // RTS
-//	printf("pxloop end 0x%04X\n", ptr - tables_1100.pxloop);
-
-	// pixel loop (sky)
-	for(uint32_t i = 0; i < 248; i++)
-	{
-		ptr = put_code(ptr, pxsky, sizeof(pxsky));
-		if(i >= 119)
-			ptr[-1] = 0xC8; // INY
-	}
-	*ptr++ = 0x60; // RTS
-//	printf("psky end 0x%04X\n", ptr - tables_1100.pxloop);
-
-	// pixel loop (thing sprite)
-	for(uint32_t i = 0; i < 128; i++)
-		ptr = put_code(ptr, pxspr, sizeof(pxspr));
-	*ptr++ = 0x60; // RTS
-//	printf("pthg end 0x%04X\n", ptr - tables_1100.pxloop);
+	tables_1100.ptxjmp_l[127] = ptx_code_base & 0xFF;
+	tables_1100.ptxjmp_h[127] = ptx_code_base >> 8;
 
 	// sign extension
 	for(uint32_t i = 0; i < 256; i++)

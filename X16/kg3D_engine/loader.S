@@ -451,7 +451,7 @@ entry:
 	.word	$0706
 	.word	text_demo_wait0
 	jsr	write_text
-	.word	$080C
+	.word	$0810
 	.word	text_demo_wait1
 	jsr	write_text
 	.word	$0A0A
@@ -1144,7 +1144,7 @@ text_error_tab_end:
 text_demo_wait0:
 	.asciiz	"This is a work in progress, there"
 text_demo_wait1:
-	.asciiz	"isn't any gameplay ... yet."
+	.asciiz	"isn't much to do ... yet."
 text_demo_wait3:
 	.asciiz	"Use numbers to switch weapons."
 text_demo_wait4:
