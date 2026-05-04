@@ -108,29 +108,11 @@ enum
 
 enum
 {
-	CBOR_PLANE4_WIDTH,
-	CBOR_PLANE4_HEIGHT,
-	CBOR_PLANE4_DATA,
-	CBOR_PLANE4_VARIANTS,
+	CBOR_PLANE_WIDTH,
+	CBOR_PLANE_HEIGHT,
+	CBOR_PLANE_DATA,
 	//
-	NUM_CBOR_PLANE4
-};
-
-enum
-{
-	CBOR_PLANE8_WIDTH,
-	CBOR_PLANE8_HEIGHT,
-	CBOR_PLANE8_DATA,
-	//
-	NUM_CBOR_PLANE8
-};
-
-enum
-{
-	CBOR_PLANE_VARIANT_DATA,
-	CBOR_PLANE_VARIANT_EFFECT,
-	//
-	NUM_CBOR_PLANE_VARIANT
+	NUM_CBOR_PLANE
 };
 
 enum
@@ -294,8 +276,6 @@ typedef struct
 	{
 		struct
 		{
-			uint16_t bright;
-			uint8_t data[16];
 			uint8_t effect[4];
 		} pl;
 		struct
@@ -335,7 +315,6 @@ typedef struct
 			// walls, sprites
 			uint32_t stex_total;
 			uint32_t stex_used;
-			uint32_t stex_fullbright;
 		};
 	};
 	variant_info_t variant[MAX_X16_VARIANTS];
@@ -450,29 +429,10 @@ typedef struct
 
 typedef struct
 {
-	uint32_t hash;
-	uint16_t bright;
-	uint8_t data[16];
-	uint8_t effect[4];
-} __attribute__((packed)) export_plane_variant_t;
-
-typedef struct
-{
 	uint8_t map_base;
 	uint8_t num_variants;
-	union
-	{
-		struct
-		{
-			uint8_t data[64 * 64 / 2];
-			export_plane_variant_t variant[MAX_X16_VARIANTS_PLN];
-		} bpp4;
-		struct
-		{
-			uint8_t data[64 * 64];
-			uint8_t effect[4];
-		} bpp8;
-	};
+	uint8_t data[64 * 64];
+	uint8_t effect[4];
 } export_plane_t;
 
 //
@@ -492,8 +452,6 @@ static uint32_t palette_clipboard[256];
 
 uint8_t x16_light_data[256 * MAX_X16_LIGHTS];
 
-uint8_t x16_colormap_data[32 * MAX_X16_GL_CMAPS];
-
 editor_texture_t editor_texture[MAX_EDITOR_TEXTURES];
 uint32_t editor_texture_count;
 
@@ -501,7 +459,6 @@ editor_light_t editor_light[MAX_X16_LIGHTS];
 uint32_t x16_num_lights;
 
 static variant_list_t x16_plane[MAX_X16_PLANES];
-static uint_fast8_t plane_8bpp;
 static uint_fast8_t plane_display;
 
 static variant_list_t x16_wall[MAX_X16_WALLS];
@@ -533,10 +490,8 @@ static nums_char_t nums_char[NUMS_CHAR_COUNT];
 
 static hud_cfg_t hud_cfg;
 
-static uint32_t base_height_cmaps;
-
-static uint16_t stex_source[STEX_PIXEL_LIMIT * 2];
-static uint16_t stex_data[STEX_PIXEL_LIMIT];
+static uint8_t stex_source[STEX_PIXEL_LIMIT * 2];
+static uint8_t stex_data[STEX_PIXEL_LIMIT];
 static uint16_t stex_space[STEX_PIXEL_LIMIT / 256];
 static uint32_t stex_size;
 static uint32_t stex_total;
@@ -549,7 +504,7 @@ static uint_fast8_t effect_idx;
 
 uint32_t x16g_state_res[3];
 int32_t x16g_state_offs[2];
-uint16_t *x16g_state_data_ptr;
+uint8_t *x16g_state_data_ptr;
 uint32_t *x16g_state_offs_ptr;
 
 static uint8_t gfx_path[EDIT_MAX_FILE_PATH];
@@ -756,7 +711,7 @@ static const uint8_t *const plane_effect_name[8] =
 	[X16G_PL_EFFECT_RANDOM] = "random",
 	[X16G_PL_EFFECT_CIRCLE] = "the 'O'",
 	[X16G_PL_EFFECT_EIGHT] = "the '8'",
-	[X16G_PL_EFFECT_ANIMATE] = "animation",
+	[4] = "INVALID",
 	[5] = "INVALID",
 	[6] = "INVALID",
 	[7] = "INVALID",
@@ -845,22 +800,15 @@ static gltex_info_t gltex_info[NUM_X16G_GLTEX] =
 	{
 		.width = 256,
 		.height = MAX_X16_LIGHTS,
-		.format = GL_LUMINANCE,
+		.format = GL_RED,
 		.data = x16_light_data
 	},
 	[X16G_GLTEX_LIGHT_TEX] =
 	{
 		.width = 16,
 		.height = MAX_X16_LIGHTS * 16,
-		.format = GL_LUMINANCE,
+		.format = GL_RED,
 		.data = x16_light_data
-	},
-	[X16G_GLTEX_COLORMAPS] =
-	{
-		.width = 16,
-		.height = MAX_X16_GL_CMAPS,
-		.format = GL_LUMINANCE_ALPHA,
-		.data = x16_colormap_data
 	},
 	[X16G_GLTEX_NOW_PALETTE] =
 	{
@@ -873,16 +821,16 @@ static gltex_info_t gltex_info[NUM_X16G_GLTEX] =
 	{
 		.width = 16,
 		.height = 16,
-		.format = GL_LUMINANCE,
+		.format = GL_RED,
 		.data = x16_light_data
 	},
 	[X16G_GLTEX_SHOW_TEXTURE] =
 	{
-		.format = GL_LUMINANCE,
+		.format = GL_RED,
 	},
 	[X16G_GLTEX_BRIGHT_COLORS] =
 	{
-		.format = GL_LUMINANCE,
+		.format = GL_RED,
 	},
 	[X16G_GLTEX_UNK_TEXTURE] =
 	{
@@ -1062,78 +1010,29 @@ static edit_cbor_obj_t cbor_light[] =
 	[NUM_CBOR_LIGHT] = {}
 };
 
-static edit_cbor_obj_t cbor_plane4[] =
+static edit_cbor_obj_t cbor_plane[] =
 {
-	[CBOR_PLANE4_WIDTH] =
+	[CBOR_PLANE_WIDTH] =
 	{
 		.name = "width",
 		.nlen = 5,
 		.type = EDIT_CBOR_TYPE_U32,
 	},
-	[CBOR_PLANE4_HEIGHT] =
+	[CBOR_PLANE_HEIGHT] =
 	{
 		.name = "height",
 		.nlen = 6,
 		.type = EDIT_CBOR_TYPE_U32,
 	},
-	[CBOR_PLANE4_DATA] =
+	[CBOR_PLANE_DATA] =
 	{
 		.name = "data",
 		.nlen = 4,
 		.type = EDIT_CBOR_TYPE_BINARY,
-	},
-	[CBOR_PLANE4_VARIANTS] =
-	{
-		.name = "variants",
-		.nlen = 8,
-		.type = EDIT_CBOR_TYPE_OBJECT,
+		.extra = 64 * 64
 	},
 	// terminator
-	[NUM_CBOR_PLANE4] = {}
-};
-
-static edit_cbor_obj_t cbor_plane8[] =
-{
-	[CBOR_PLANE8_WIDTH] =
-	{
-		.name = "width",
-		.nlen = 5,
-		.type = EDIT_CBOR_TYPE_U32,
-	},
-	[CBOR_PLANE8_HEIGHT] =
-	{
-		.name = "height",
-		.nlen = 6,
-		.type = EDIT_CBOR_TYPE_U32,
-	},
-	[CBOR_PLANE8_DATA] =
-	{
-		.name = "data",
-		.nlen = 4,
-		.type = EDIT_CBOR_TYPE_BINARY,
-	},
-	// terminator
-	[NUM_CBOR_PLANE8] = {}
-};
-
-static edit_cbor_obj_t cbor_plane_var[] =
-{
-	[CBOR_PLANE_VARIANT_DATA] =
-	{
-		.name = "data",
-		.nlen = 4,
-		.type = EDIT_CBOR_TYPE_BINARY,
-		.extra = 2 + 16
-	},
-	[CBOR_PLANE_VARIANT_EFFECT] =
-	{
-		.name = "effect",
-		.nlen = 6,
-		.type = EDIT_CBOR_TYPE_BINARY,
-		.extra = 4
-	},
-	// terminator
-	[NUM_CBOR_PLANE_VARIANT] = {}
+	[NUM_CBOR_PLANE] = {}
 };
 
 static edit_cbor_obj_t cbor_stex[] =
@@ -1647,61 +1546,9 @@ static int32_t cbor_gfx_light(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 	return 1;
 }
 
-static int32_t cbor_gfx_plane_variant_stuff(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
-{
-	edit_cbor_branch(cbor_plane_var, type, key, ctx->key_len, value, ctx->val_len);
-	return 1;
-}
-
-static int32_t cbor_gfx_plane_variant(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
-{
-	variant_list_t *pl = cbor_load_object;
-
-	if(type != KGCBOR_TYPE_OBJECT)
-		return 1;
-
-	if(ctx->key_len >= LEN_X16_VARIANT_NAME)
-		return 1;
-
-	if(cbor_entry_index >= MAX_X16_VARIANTS_PLN)
-		return 1;
-
-	memset(pl->variant[cbor_entry_index].name, 0, LEN_X16_VARIANT_NAME);
-	memcpy(pl->variant[cbor_entry_index].name, key, ctx->key_len);
-	pl->variant[cbor_entry_index].hash = x16c_crc(pl->variant[cbor_entry_index].name, -1, VAR_CRC_XOR);
-
-	if(edit_check_name(pl->variant[cbor_entry_index].name, 0))
-		return 1;
-
-	cbor_plane_var[CBOR_PLANE_VARIANT_DATA].ptr = (void*)&pl->variant[cbor_entry_index].pl.bright;
-	cbor_plane_var[CBOR_PLANE_VARIANT_EFFECT].ptr = (void*)&pl->variant[cbor_entry_index].pl.effect;
-
-	cbor_entry_index++;
-
-	ctx->entry_cb = cbor_gfx_plane_variant_stuff;
-
-	return 0;
-}
-
 static int32_t cbor_gfx_plane_entry(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcbor_value_t *value)
 {
-	if(type == KGCBOR_TYPE_OBJECT)
-	{
-		// special check for 'variants' only present in 4bpp planes
-		if(	ctx->key_len == cbor_plane4[CBOR_PLANE4_VARIANTS].nlen &&
-			!memcmp(key, cbor_plane4[CBOR_PLANE4_VARIANTS].name, cbor_plane4[CBOR_PLANE4_VARIANTS].nlen)
-		){
-			// handle variant list
-			cbor_entry_index = 0;
-			ctx->entry_cb = cbor_gfx_plane_variant;
-			return 0;
-		}
-
-		return 1;
-	}
-
-	edit_cbor_branch(cbor_plane8, type, key, ctx->key_len, value, ctx->val_len);
-
+	edit_cbor_branch(cbor_plane, type, key, ctx->key_len, value, ctx->val_len);
 	return 1;
 }
 
@@ -1714,14 +1561,7 @@ static int32_t cbor_gfx_plane(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 
 		if(!cbor_load_object->width && !cbor_load_object->height)
 		{
-			// empty plane; check bit depth
-			if(cbor_entry_index >= 0)
-				// save variant count
-				cbor_load_object->max = cbor_entry_index;
-			else
-				// mark as 8bpp
-				cbor_load_object->now = MAX_X16_VARIANTS_PLN;
-			// save amount
+			// empty plane
 			gfx_idx[GFX_MODE_PLANES].max = cbor_main_index;
 		} else
 		if(check_plane_resolution(cbor_load_object->width, cbor_load_object->height))
@@ -1730,39 +1570,8 @@ static int32_t cbor_gfx_plane(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 			memset(cbor_load_object, 0, sizeof(variant_list_t));
 			cbor_main_index--;
 		} else
-		{
 			// save amount
 			gfx_idx[GFX_MODE_PLANES].max = cbor_main_index;
-
-			// check bit depth
-			if(cbor_entry_index >= 0)
-			{
-				// expand 4bpp to 8bpp
-				variant_list_t *pl = cbor_load_object;
-				uint32_t size = pl->width * pl->height;
-				uint8_t *dst = pl->data + size;
-				uint8_t *src = pl->data + size / 2;
-
-				// save variant count
-				pl->max = cbor_entry_index;
-
-				for(uint32_t i = 0; i < size / 2; i++)
-				{
-					uint8_t in;
-
-					src--;
-					in = *src;
-
-					dst--;
-					*dst = in >> 4;
-
-					dst--;
-					*dst = in & 15;
-				}
-			} else
-				// mark as 8bpp
-				cbor_load_object->now = MAX_X16_VARIANTS_PLN;
-		}
 
 		cbor_load_object = NULL;
 
@@ -1789,10 +1598,9 @@ static int32_t cbor_gfx_plane(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 		cbor_entry_index = -1;
 		cbor_load_object = pl;
 
-		cbor_plane8[CBOR_PLANE8_WIDTH].u32 = &pl->width;
-		cbor_plane8[CBOR_PLANE8_HEIGHT].u32 = &pl->height;
-		cbor_plane8[CBOR_PLANE8_DATA].ptr = pl->data;
-		cbor_plane8[CBOR_PLANE8_DATA].extra = 64 * 64;
+		cbor_plane[CBOR_PLANE_WIDTH].u32 = &pl->width;
+		cbor_plane[CBOR_PLANE_HEIGHT].u32 = &pl->height;
+		cbor_plane[CBOR_PLANE_DATA].ptr = pl->data;
 		cbor_main_index++;
 
 		ctx->entry_cb = cbor_gfx_plane_entry;
@@ -1978,7 +1786,7 @@ static int32_t cbor_gfx_wall(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 		cbor_load_object = wa;
 
 		cbor_stex[CBOR_STEX_DATA].ptr = wa->data;
-		cbor_stex[CBOR_STEX_DATA].extra = STEX_PIXEL_LIMIT * 2;
+		cbor_stex[CBOR_STEX_DATA].extra = STEX_PIXEL_LIMIT;
 		cbor_main_index++;
 
 		cbor_stex_is_sprite = 0;
@@ -2435,20 +2243,6 @@ static void negpos_offset(float *val)
 		*val -= 1.0f;
 }
 
-static void generate_colormap(uint32_t idx, uint8_t *data, uint16_t bright)
-{
-	uint8_t *dst;
-
-	dst = x16_colormap_data;
-	dst += idx * 32;
-
-	for(uint32_t i = 0; i < 16; i++)
-	{
-		*dst++ = *data++;
-		*dst++ = !!(bright & (1 << i)) * 255;
-	}
-}
-
 static void rgb2hsv(float *restrict rgb, float *restrict hsv)
 {
 	float cmin, cmax, delta, hue, sat;
@@ -2876,8 +2670,7 @@ static uint32_t find_plane_texture(uint8_t *name)
 	{
 		editor_texture_t *et = editor_texture + i;
 
-		if(	et->type != X16G_TEX_TYPE_PLANE_8BPP &&
-			et->type != X16G_TEX_TYPE_PLANE_4BPP &&
+		if(	et->type != X16G_TEX_TYPE_PLANE &&
 			et->type != X16G_TEX_TYPE_RGB
 		)
 			continue;
@@ -2909,9 +2702,7 @@ static uint32_t find_wall_texture(uint8_t *name)
 
 		if(!strcmp(et->name, name))
 		{
-			if(	et->type == X16G_TEX_TYPE_PLANE_8BPP ||
-				et->type == X16G_TEX_TYPE_PLANE_4BPP
-			)
+			if(et->type == X16G_TEX_TYPE_PLANE)
 				fallback = i;
 			else
 				return i;
@@ -3015,9 +2806,9 @@ static void set_gfx_mode(uint32_t mode)
 
 static void stex_reset(uint8_t *source, uint32_t count)
 {
+	stex_fullbright = 0;
 	stex_size = 0;
 	stex_total = 0;
-	stex_fullbright = 1;
 
 	memcpy(stex_source, source, count * 2);
 
@@ -3027,10 +2818,10 @@ static void stex_reset(uint8_t *source, uint32_t count)
 	memset(stex_data, 0, sizeof(stex_data));
 }
 
-static int32_t stex_insert(uint16_t *data, uint32_t len)
+static int32_t stex_insert(uint8_t *data, uint32_t len)
 {
-	uint16_t *ptr = stex_data;
-	uint16_t *fitp = NULL;
+	uint8_t *ptr = stex_data;
+	uint8_t *fitp = NULL;
 	uint16_t *fits = NULL;
 	uint32_t offs, used;
 
@@ -3041,7 +2832,7 @@ static int32_t stex_insert(uint16_t *data, uint32_t len)
 	{
 		int32_t used = 256 - (int32_t)stex_space[i];
 		int32_t check = used - len;
-		uint16_t *src = ptr;
+		uint8_t *src = ptr;
 
 		if(!fitp && stex_space[i] >= len)
 		{
@@ -3054,7 +2845,7 @@ static int32_t stex_insert(uint16_t *data, uint32_t len)
 
 		for(uint32_t j = 0; j <= check; j++)
 		{
-			if(!memcmp(src, data, len * 2))
+			if(!memcmp(src, data, len))
 			{
 				// found matching data
 				return src - stex_data;
@@ -3070,13 +2861,8 @@ static int32_t stex_insert(uint16_t *data, uint32_t len)
 	// mark used length
 	*fits -= len;
 
-	// copy new data and check fullbright
-	for(uint32_t i = 0; i < len; i++)
-	{
-		fitp[i] = data[i];
-		if(!(data[i] & 0xFF00))
-			stex_fullbright = 0;
-	}
+	// copy new data
+	memcpy(fitp, data, len);
 
 	// done
 	offs = fitp - stex_data;
@@ -3134,10 +2920,9 @@ static uint32_t stex_remake_columns(variant_list_t *vl)
 	}
 
 	// apply new data
-	memcpy(vl->data, stex_data, stex_size * 2);
+	memcpy(vl->data, stex_data, stex_size);
 	vl->stex_used = stex_size;
 	vl->stex_total = stex_total;
-	vl->stex_fullbright = stex_fullbright;
 
 	for(uint32_t i = 0; i < vl->max; i++)
 	{
@@ -3150,7 +2935,7 @@ static uint32_t stex_remake_columns(variant_list_t *vl)
 	return 0;
 }
 
-static uint16_t stex_read_color(uint32_t **src, uint32_t width)
+static uint8_t stex_read_color(uint32_t **src, uint32_t width)
 {
 	uint16_t color;
 	uint32_t in;
@@ -3159,32 +2944,25 @@ static uint16_t stex_read_color(uint32_t **src, uint32_t width)
 	*src = *src + width;
 
 	if(!(in & 0xFF000000))
-		return 0xFF00;
+		return 0x00;
 
-	if((in & 0xFF000000) == 0xFF000000)
-		color = 0;
-	else
-		color = 0xFF00;
-
-	color |= x16g_palette_match(in, 1);
-
-	return color;
+	return x16g_palette_match(in, 1);
 }
 
-static uint32_t stex_wall_masked_row(uint16_t *dst, uint16_t *src, uint32_t height)
+static uint32_t stex_wall_masked_row(uint8_t *dst, uint8_t *src, uint32_t height)
 {
-	uint16_t *px = src;
-	uint16_t *last, *head, *top;
+	uint8_t *px = src;
+	uint8_t *last, *head, *top;
 	uint32_t len;
 
 	// add dummy transparent pixel
-	src[height] = 0xFF00;
+	src[height] = 0x00;
 
 	// find first non-transparent pixel
-	for(uint32_t y = 0; y < height && *px == 0xFF00; y++)
+	for(uint32_t y = 0; y < height && *px == 0x00; y++)
 		px++;
 
-	if(*px != 0xFF00)
+	if(*px != 0x00)
 	{
 		// make full column
 		top = px;
@@ -3195,17 +2973,17 @@ static uint32_t stex_wall_masked_row(uint16_t *dst, uint16_t *src, uint32_t heig
 		// find last non-transparent pixel
 		while(px < src + height)
 		{
-			if(*px != 0xFF00)
+			if(*px != 0x00)
 				last = px;
 			px++;
 		}
 
 		// pixel count
 		len = 1 + last - top;
-		head[0] = 0xFF00 | len;
+		head[0] = len;
 
 		// bottom offset
-		head[1] = 0xFF00 | (src + height - last - 1);
+		head[1] = (src + height - last - 1);
 
 		// copy pixels
 		for(uint32_t i = 0; i < len; i++)
@@ -3213,16 +2991,16 @@ static uint32_t stex_wall_masked_row(uint16_t *dst, uint16_t *src, uint32_t heig
 
 		// append transparent pixels
 		// this hides imprecise scaling
-		*dst++ = 0xFF00;
-		*dst++ = 0xFF00;
-		*dst++ = 0xFF00;
+		*dst++ = 0x00;
+		*dst++ = 0x00;
+		*dst++ = 0x00;
 
 		// get length
 		len += 5;
 	} else
 	{
 		// make generic "empty column"
-		*dst++ = 0xFF00;
+		*dst++ = 0x00;
 		len = 1;
 	}
 
@@ -3234,9 +3012,9 @@ static uint32_t stex_wall_texture_32(image_t *img, variant_list_t *wl)
 	variant_info_t *vi = wl->variant + wl->now;
 	uint32_t offset = wl->stex_used;
 	uint32_t *src = (uint32_t*)img->data;
-	uint16_t *dst = stex_source + offset;
+	uint8_t *dst = stex_source + offset;
 	uint32_t is_masked = 0;
-	uint16_t data[256];
+	uint8_t data[256];
 
 	vi->sw.width = img->width;
 	vi->sw.stride = (img->width + 3) & ~3;
@@ -3305,9 +3083,9 @@ static uint32_t stex_wall_texture_8(image_t *img, variant_list_t *wl)
 	variant_info_t *vi = wl->variant + wl->now;
 	uint32_t offset = wl->stex_used;
 	uint8_t *src = img->data;
-	uint16_t *dst = stex_source + offset;
+	uint8_t *dst = stex_source + offset;
 	uint32_t is_masked = 0;
-	uint16_t data[256];
+	uint8_t data[256];
 
 	vi->sw.width = img->width;
 	vi->sw.stride = (img->width + 3) & ~3;
@@ -3358,9 +3136,7 @@ static uint32_t stex_wall_texture_8(image_t *img, variant_list_t *wl)
 
 		for(uint32_t y = 0; y < img->height; y++)
 		{
-			uint16_t in = *ss;
-			if(!in)
-				in = 0xFF00;
+			uint8_t in = *ss;
 			data[y] = in;
 			ss += img->width;
 		}
@@ -3385,10 +3161,10 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 	variant_info_t *vi = sp->variant + sp->now;
 	uint32_t offset = sp->stex_used;
 	void *src = img->data;
-	uint16_t *dst = stex_source + offset;
+	uint8_t *dst = stex_source + offset;
 	uint32_t last_used = 0;
 	uint32_t xx = 0;
-	uint16_t data[256];
+	uint8_t data[256];
 
 	// save info
 	vi->sw.width = img->width;
@@ -3396,14 +3172,14 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 	vi->sw.height = img->height;
 
 	// add dummy transparent pixel
-	data[img->height] = 0xFF00;
+	data[img->height] = 0x00;
 
 	// go trough columns
 	for(uint32_t x = 0; x < img->width; x++)
 	{
-		uint16_t *special = NULL;
-		uint16_t *px = data;
-		uint16_t *last, *head, *top;
+		uint8_t *special = NULL;
+		uint8_t *px = data;
+		uint8_t *last, *head, *top;
 		uint32_t len;
 
 		// generate full column
@@ -3421,22 +3197,22 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 			uint32_t *ss = src;
 			src += sizeof(uint32_t);
 			for(uint32_t y = 0; y < img->height; y++)
-				data[y] = stex_read_color(&ss, img->width) | 0xFF00;
+				data[y] = stex_read_color(&ss, img->width);
 		}
 
 		px = data;
 
 		// find first non-transparent pixel
-		for(uint32_t y = 0; y < img->height && *px == 0xFF00; y++)
+		for(uint32_t y = 0; y < img->height && *px == 0x00; y++)
 			px++;
 
-		if(input_shift && *px != 0xFF00)
+		if(input_shift && *px != 0x00)
 		{
 			special = px;
 			px = data;
 		}
 
-		if(*px != 0xFF00 || special)
+		if(*px != 0x00 || special)
 		{
 			last_used = x + 1;
 
@@ -3456,7 +3232,7 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 				// find last non-transparent pixel
 				while(px < data + img->height)
 				{
-					if(*px != 0xFF00)
+					if(*px != 0x00)
 						last = px;
 					px++;
 				}
@@ -3464,10 +3240,10 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 
 			// pixel count
 			len = 1 + last - top;
-			head[0] = 0xFF00 | len;
+			head[0] = len;
 
 			// bottom offset
-			head[1] = 0xFF00 | (data + img->height - last - 1);
+			head[1] = (data + img->height - last - 1);
 
 			// copy pixels
 			for(uint32_t i = 0; i < len; i++)
@@ -3475,9 +3251,9 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 
 			// append transparent pixels
 			// this hides imprecise scaling
-			*dst++ = 0xFF00;
-			*dst++ = 0xFF00;
-			*dst++ = 0xFF00;
+			*dst++ = 0x00;
+			*dst++ = 0x00;
+			*dst++ = 0x00;
 
 			// get length
 			len += 5;
@@ -3485,7 +3261,7 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 		if(last_used)
 		{
 			// make generic "empty column"
-			*dst++ = 0xFF00;
+			*dst++ = 0x00;
 			len = 1;
 		} else
 		{
@@ -3523,10 +3299,10 @@ static void stex_parse_columns(variant_list_t *vl, variant_info_t *vi)
 {
 	for(uint32_t x = 0; x < vi->sw.width; x++)
 	{
-		uint16_t *ptr = (uint16_t*)vl->data + vi->sw.offset[x];
+		uint8_t *ptr = vl->data + vi->sw.offset[x];
 		uint8_t len, offs;
 
-		if(ptr >= (uint16_t*)vl->data + STEX_PIXEL_LIMIT)
+		if(ptr >= vl->data + STEX_PIXEL_LIMIT)
 		{
 is_invalid:
 			// bad data; make empty
@@ -3536,33 +3312,28 @@ is_invalid:
 			break;
 		}
 
-		if((*ptr & 0xFF00) != 0xFF00)
-			goto is_invalid;
-
 		len = *ptr++;
 		if(len)
 		{
-			if((*ptr & 0xFF00) != 0xFF00)
-				goto is_invalid;
 			offs = *ptr++;
 
 			if(len + offs > vi->sw.height)
 				goto is_invalid;
 
 			ptr += len;
-			if(ptr + 3 > (uint16_t*)vl->data + STEX_PIXEL_LIMIT)
+			if(ptr + 3 > vl->data + STEX_PIXEL_LIMIT)
 				goto is_invalid;
 
 			// check for transparent pixels
-			if(*ptr != 0xFF00)
+			if(*ptr != 0x00)
 				goto is_invalid;
 
 			ptr++;
-			if(*ptr != 0xFF00)
+			if(*ptr != 0x00)
 				goto is_invalid;
 
 			ptr++;
-			if(*ptr != 0xFF00)
+			if(*ptr != 0x00)
 				goto is_invalid;
 
 			vi->sw.length[x] = len + 5;
@@ -3573,8 +3344,6 @@ is_invalid:
 
 static uint32_t stex_export_cbor(kgcbor_gen_t *gen, variant_list_t *vl, uint32_t count, uint32_t is_sprite)
 {
-	uint8_t temp[STEX_PIXEL_LIMIT];
-
 	if(kgcbor_put_object(gen, count))
 		return 1;
 
@@ -3583,21 +3352,8 @@ static uint32_t stex_export_cbor(kgcbor_gen_t *gen, variant_list_t *vl, uint32_t
 		if(kgcbor_put_string(gen, vl->name, -1))
 			return 1;
 
-		if(is_sprite)
-		{
-			uint8_t *dst = temp;
-			uint16_t *src = (uint16_t*)vl->data;
-
-			for(uint32_t i = 0; i < vl->stex_used; i++)
-				*dst++ = *src++;
-
-			cbor_stex[CBOR_STEX_DATA].ptr = temp;
-			cbor_stex[CBOR_STEX_DATA].extra = vl->stex_used;
-		} else
-		{
-			cbor_stex[CBOR_STEX_DATA].ptr = vl->data;
-			cbor_stex[CBOR_STEX_DATA].extra = vl->stex_used * 2;
-		}
+		cbor_stex[CBOR_STEX_DATA].ptr = vl->data;
+		cbor_stex[CBOR_STEX_DATA].extra = vl->stex_used;
 
 		if(edit_cbor_export(cbor_stex, NUM_CBOR_STEX, gen))
 			return 1;
@@ -3653,16 +3409,16 @@ static uint32_t stex_export_cbor(kgcbor_gen_t *gen, variant_list_t *vl, uint32_t
 	return 0;
 }
 
-static void stex_generate_wall(variant_list_t *wa, variant_info_t *va, uint16_t *data)
+static void stex_generate_wall(variant_list_t *wa, variant_info_t *va, uint8_t *data)
 {
 	if(va->sw.masked)
 	{
-		memset(data, 0, va->sw.width * va->sw.height * sizeof(uint16_t));
+		memset(data, 0, va->sw.width * va->sw.height);
 
 		for(uint32_t x = 0; x < va->sw.width; x++)
 		{
-			uint16_t *src = (uint16_t*)wa->data + va->sw.offset[x];
-			uint16_t *dst;
+			uint8_t *src = wa->data + va->sw.offset[x];
+			uint8_t *dst;
 			uint8_t offs, len;
 
 			len = *src++;
@@ -3688,29 +3444,23 @@ static void stex_generate_wall(variant_list_t *wa, variant_info_t *va, uint16_t 
 
 	for(uint32_t x = 0; x < va->sw.width; x++)
 	{
-		uint16_t *dst = data++;
-		uint16_t *src = (uint16_t*)wa->data + va->sw.offset[x];
+		uint8_t *dst = data++;
+		uint8_t *src = wa->data + va->sw.offset[x];
 
 		for(uint32_t y = 0; y < va->sw.height; y++)
 		{
-			uint16_t in = *src++;
-			uint8_t pal = in & 0xFF;
-
-			if(x16_palette_bright[pal >> 4] & (1 << (pal & 15)))
-				in |= 0xFF00;
-
-			*dst = in;
+			*dst = *src++;
 			dst += va->sw.stride;
 		}
 	}
 }
 
-static void stex_generate_sprite(variant_list_t *wa, variant_info_t *va, uint16_t *data)
+static void stex_generate_sprite(variant_list_t *wa, variant_info_t *va, uint8_t *data)
 {
 	for(uint32_t x = 0; x < va->sw.width; x++)
 	{
-		uint16_t *src = (uint16_t*)wa->data + va->sw.offset[x];
-		uint16_t *dst;
+		uint8_t *src = wa->data + va->sw.offset[x];
+		uint8_t *dst;
 		uint8_t offs, len;
 
 		len = *src++;
@@ -3723,14 +3473,8 @@ static void stex_generate_sprite(variant_list_t *wa, variant_info_t *va, uint16_
 
 			for(uint32_t i = 0; i < len; i++)
 			{
-				uint16_t in = *src++;
-				uint8_t pal = in & 0xFF;
-
-				if(!(x16_palette_bright[pal >> 4] & (1 << (pal & 15))))
-					in &= 0x00FF;
-
 				dst -= va->sw.stride;
-				*dst = in;
+				*dst = *src++;
 			}
 		}
 
@@ -3755,7 +3499,7 @@ static void stex_x16_export_wall(uint8_t *buffer, uint8_t *txt)
 			continue;
 
 		*ptr++ = vl->stex_used >> 8;
-		*ptr++ = vl->max | (vl->stex_fullbright * 0x80);
+		*ptr++ = vl->max;
 
 		memcpy(ptr, vl->data, vl->stex_used * 2);
 		ptr += vl->stex_used * 2;
@@ -3846,7 +3590,7 @@ static void stex_x16_export_sprite(uint8_t *buffer, uint8_t *txt)
 		src = (uint16_t*)vl->data;
 		for(uint32_t i = 0; i < vl->stex_used; i++)
 		{
-			if(*src == 0xFF00)
+			if(*src == 0x00)
 			{
 				stopoffs = i;
 				break;
@@ -4138,7 +3882,7 @@ static int32_t swpn_count_valid(variant_list_t *ws, uint32_t *bitmap, int32_t *i
 //
 // variant lists
 
-static void vlist_new(uint32_t type, uint8_t *name, variant_list_t *vl, ui_idx_t *idx, uint32_t now)
+static void vlist_new(uint32_t type, uint8_t *name, variant_list_t *vl, ui_idx_t *idx)
 {
 	const vlist_type_t *vt = vlist_type + type;
 	variant_list_t *ret;
@@ -4174,7 +3918,7 @@ static void vlist_new(uint32_t type, uint8_t *name, variant_list_t *vl, ui_idx_t
 	ret->width = 0;
 	ret->height = 0;
 	ret->max = 0;
-	ret->now = now;
+	ret->now = 0;
 
 	memset(ret->variant, 0, sizeof(variant_info_t) * MAX_X16_VARIANTS);
 
@@ -4472,18 +4216,6 @@ static void gfx_load(const uint8_t *file)
 		for(uint32_t i = 0; i < gfx_idx[GFX_MODE_SPRITES].max; i++)
 		{
 			variant_list_t *vl = x16_sprite + i;
-			uint8_t *src;
-			uint16_t *dst;
-
-			// expand data
-			src = vl->data + STEX_PIXEL_LIMIT;
-			dst = (uint16_t*)vl->data + STEX_PIXEL_LIMIT;
-			for(uint32_t i = 0; i < STEX_PIXEL_LIMIT; i++)
-			{
-				dst--;
-				src--;
-				*dst = *src | 0xFF00;
-			}
 
 			// check columns and calculate lengths
 			for(uint32_t j = 0; j < vl->max; j++)
@@ -4633,6 +4365,7 @@ static const uint8_t *update_gfx_lights(ui_idx_t *idx)
 
 static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 {
+	uint8_t *src;
 	variant_list_t *pl;
 	gltex_info_t *gi;
 	uint8_t *data, *ptr;
@@ -4647,11 +4380,6 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 	if(!idx)
 	{
 		ui_gfx_plane_texture.base.disabled = 1;
-		ui_gfx_plane_cmaps.base.disabled = 1;
-		ui_gfx_plane_variant_name.base.disabled = 1;
-		ui_gfx_plane_variant_pl.base.disabled = 1;
-		ui_gfx_plane_variant_pr.base.disabled = 1;
-		ui_gfx_plane_variant_box.base.disabled = 1;
 		return NULL;
 	}
 
@@ -4666,112 +4394,27 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 
 	gltex_info[X16G_GLTEX_SHOW_TEXTURE].data = pl->data;
 
-	if(pl->now >= MAX_X16_VARIANTS_PLN)
-	{
-		// 8bpp
-		uint8_t idx = 0;
-		uint8_t *src;
+	// 8bpp
 
-		effect = pl->variant[0].pl.effect;
+	effect = pl->variant[0].pl.effect;
 
-		ui_gfx_plane_import_raw.base.disabled = 0;
-		ui_gfx_plane_variant.base.disabled = 1;
-		ui_gfx_plane_renvar.base.disabled = 1;
-		ui_gfx_plane_delvar.base.disabled = 1;
-
-		ui_gfx_plane_variant_pl.base.disabled = 1;
-		ui_gfx_plane_variant_pr.base.disabled = 1;
-		ui_gfx_plane_variant_name.base.disabled = 1;
-		ui_gfx_plane_variant_box.base.disabled = 1;
-		ui_gfx_plane_cmaps.base.disabled = 1;
 //		ui_gfx_plane_texture.base.x = 512;
-		ui_gfx_plane_texture.shader = SHADER_FRAGMENT_PALETTE;
+	ui_gfx_plane_texture.shader = SHADER_FRAGMENT_PALETTE;
 
-		if(plane_display)
-		{
-			src = pl->data;
-			ptr = data;
-			for(uint32_t i = 0; i < pl->width * pl->height; i++)
-			{
-				uint8_t in = *src++;
-				if(x16_palette_bright[in >> 4] & (1 << (in & 15)))
-					*ptr++ = in;
-				else
-					*ptr++ = 0;
-			}
-
-			gltex_info[X16G_GLTEX_SHOW_TEXTURE].data = data;
-		}
-
-		ui_gfx_plane_cmaps.base.height = base_height_cmaps * 16;
-		ui_gfx_plane_cmaps.coord.t[0] = 0.0f;
-		ui_gfx_plane_cmaps.coord.t[1] = 1.0f;
-	} else
+	if(plane_display)
 	{
-		// 4bpp
-		ui_gfx_plane_import_raw.base.disabled = 1;
-		ui_gfx_plane_variant.base.disabled = 0;
-		ui_gfx_plane_renvar.base.disabled = 0;
-		ui_gfx_plane_delvar.base.disabled = 0;
-
-		ui_gfx_plane_variant_box.base.disabled = 0;
-//		ui_gfx_plane_texture.base.x = 256;
-		ui_gfx_plane_texture.shader = plane_display ? SHADER_FRAGMENT_COLORMAP_LIGHT : SHADER_FRAGMENT_COLORMAP;
-
-		if(pl->max)
-		{
-			ui_gfx_plane_variant_pl.base.disabled = 0;
-			ui_gfx_plane_variant_pr.base.disabled = 0;
-			ui_gfx_plane_variant_pl.base.y = 12 + base_height_cmaps * pl->now;
-			ui_gfx_plane_variant_pr.base.y = 12 + base_height_cmaps * pl->now;
-			ui_gfx_plane_cmaps.base.disabled = 0;
-			ui_gfx_plane_variant_name.base.disabled = 0;
-			generate_colormap(0, pl->variant[pl->now].pl.data, pl->variant[pl->now].pl.bright);
-			x16g_update_texture(X16G_GLTEX_COLORMAPS);
-			effect = pl->variant[pl->now].pl.effect;
-		} else
-		{
-			ui_gfx_plane_variant_pl.base.disabled = 1;
-			ui_gfx_plane_variant_pr.base.disabled = 1;
-			ui_gfx_plane_cmaps.base.disabled = 1;
-			ui_gfx_plane_variant_name.base.disabled = 1;
-		}
-
-		glui_set_text(&ui_gfx_plane_variant_name, pl->variant[pl->now].name, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
-
+		src = pl->data;
 		ptr = data;
-
-		for(uint32_t i = 0; i < pl->max; i++)
+		for(uint32_t i = 0; i < pl->width * pl->height; i++)
 		{
-			uint8_t *tmp = ptr;
-
-			for(uint32_t j = 0; j < 16 * 9; j++)
-				*ptr++ = pl->variant[i].pl.data[(j / 3) & 15];
-
-			if(pl->variant[i].pl.bright)
-			{
-				tmp += 16 * 3 + 1;
-				for(uint32_t j = 0; j < 16; j++)
-				{
-					if(pl->variant[i].pl.bright & (1 << j))
-					{
-						uint8_t ii = tmp[j * 3];
-						tmp[j * 3] = 0;
-					}
-				}
-				tmp += 16 * 3 * 2;
-			}
+			uint8_t in = *src++;
+			if(x16_palette_bright[in >> 4] & (1 << (in & 15)))
+				*ptr++ = in;
+			else
+				*ptr++ = 0;
 		}
 
-		gi = gltex_info + X16G_GLTEX_BRIGHT_COLORS;
-		gi->width = 16 * 3;
-		gi->height = MAX_X16_VARIANTS_PLN * 3;
-		gi->data = data;
-		x16g_update_texture(X16G_GLTEX_BRIGHT_COLORS);
-
-		ui_gfx_plane_cmaps.base.height = base_height_cmaps * pl->max;
-		ui_gfx_plane_cmaps.coord.t[0] = 0.0f;
-		ui_gfx_plane_cmaps.coord.t[1] = (float)pl->max / (float)MAX_X16_VARIANTS_PLN;
+		gltex_info[X16G_GLTEX_SHOW_TEXTURE].data = data;
 	}
 
 	if(plane_display)
@@ -4784,7 +4427,7 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 		gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 		gi->width = pl->width;
 		gi->height = pl->height;
-		gi->format = GL_LUMINANCE;
+		gi->format = GL_RED;
 		x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
 
 		scale = pl->height > 128 ? 2 : 3;
@@ -4853,15 +4496,6 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 				sprintf(text, "Scale Y: %d", temp);
 				glui_set_text((void*)ui_gfx_plane_effect.elements[3], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 			break;
-			case X16G_PL_EFFECT_ANIMATE:
-				if(!effect[2])
-					effect[2]++;
-				temp = effect[2] + 1;
-				sprintf(text, "Frames: %d", temp);
-				glui_set_text((void*)ui_gfx_plane_effect.elements[2], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-				sprintf(text, "Start: %u", effect[3]);
-				glui_set_text((void*)ui_gfx_plane_effect.elements[3], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-			break;
 		}
 	}
 
@@ -4897,16 +4531,9 @@ static const uint8_t *update_gfx_walls(ui_idx_t *idx)
 		ui_gfx_wall_info.color[1] = 0xFF0000CC;
 		glui_set_text(&ui_gfx_wall_info, "This texture is empty!", glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 	} else
-	if(!wa->stex_fullbright)
 	{
 		ui_gfx_wall_display.base.disabled = 0;
 		glui_set_text(&ui_gfx_wall_display, wall_display ? "Show: only fullbright" : "Show: everything", glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-	} else
-	{
-		ui_gfx_wall_info.base.disabled = 0;
-		ui_gfx_wall_info.color[0] = 0xFF00CCCC;
-		ui_gfx_wall_info.color[1] = 0xFF00CCCC;
-		glui_set_text(&ui_gfx_wall_info, "This texture is fullbright.", glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 	}
 
 	if(wa->max)
@@ -4933,12 +4560,12 @@ static const uint8_t *update_gfx_walls(ui_idx_t *idx)
 			sprintf(text, "%u x %u\nvariant: %u / %u", va->sw.width, va->sw.height, wa->now + 1, wa->max);
 			glui_set_text(&ui_gfx_wall_resolution, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
-			stex_generate_wall(wa, va, (uint16_t*)data);
+			stex_generate_wall(wa, va, data);
 
 			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 			gi->width = va->sw.width;
 			gi->height = va->sw.height;
-			gi->format = GL_LUMINANCE_ALPHA;
+			gi->format = GL_RED;
 			gi->data = data;
 			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
 
@@ -5057,12 +4684,12 @@ static const uint8_t *update_gfx_sprites(ui_idx_t *idx)
 			sprintf(text, "%u x %u", va->sw.width, va->sw.height);
 			glui_set_text(&ui_gfx_sprite_resolution, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
-			stex_generate_sprite(sp, va, (uint16_t*)data);
+			stex_generate_sprite(sp, va, data);
 
 			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 			gi->width = va->sw.stride;
 			gi->height = va->sw.height;
-			gi->format = GL_LUMINANCE_ALPHA;
+			gi->format = GL_RED;
 			gi->data = data;
 			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
 
@@ -5173,29 +4800,25 @@ static void generate_wpn_part_rect(wpnspr_part_t *pr, uint32_t now)
 	}
 }
 
-static uint16_t *generate_wpn_preview(variant_info_t *va, uint8_t *source, int32_t *box)
+static uint8_t *generate_wpn_preview(variant_info_t *va, uint8_t *source, int32_t *box)
 {
-	uint16_t *data = (uint16_t*)edit_cbor_buffer;
+	uint8_t *data = edit_cbor_buffer;
 	int32_t x0 = 65535;
 	int32_t x1 = -65535;
 	int32_t y0 = 65535;
 	int32_t y1 = -65535;
 	uint32_t valid = 0;
 
-	memset(data, 0, 256 * 256 * 2);
+	memset(data, 0, 256 * 256);
 
 	for(uint32_t i = 0; i < UI_WPN_PARTS; i++)
 	{
 		wpnspr_part_t *part = va->ws.part + i;
-		uint16_t bright = 0;
 		uint32_t base = va->ws.dstart + part->offset;
 		int32_t xx, yy;
 
 		if(!part->width)
 			continue;
-
-		if(part->flags & WPN_PART_FLAG_BRIGHT)
-			bright = 0xFF00;
 
 		xx = 48 + part->x;
 		yy = 68 + part->y;
@@ -5216,7 +4839,7 @@ static uint16_t *generate_wpn_preview(variant_info_t *va, uint8_t *source, int32
 		{
 			for(uint32_t y = 0; y < part->height; y++)
 			{
-				uint16_t *dst = data + xx + (yy + y) * 256 + part->width;
+				uint8_t *dst = data + xx + (yy + y) * 256 + part->width;
 				uint8_t *src = source + base + y * part->width;
 
 				for(uint32_t x = 0; x < part->width; x++)
@@ -5224,7 +4847,7 @@ static uint16_t *generate_wpn_preview(variant_info_t *va, uint8_t *source, int32
 					uint8_t in = *src++;
 					dst--;
 					if(in)
-						*dst = bright | in;
+						*dst = in;
 				}
 				dst += part->width * 2;
 			}
@@ -5232,14 +4855,14 @@ static uint16_t *generate_wpn_preview(variant_info_t *va, uint8_t *source, int32
 		{
 			for(uint32_t y = 0; y < part->height; y++)
 			{
-				uint16_t *dst = data + xx + (yy + y) * 256;
+				uint8_t *dst = data + xx + (yy + y) * 256;
 				uint8_t *src = source + base + y * part->width;
 
 				for(uint32_t x = 0; x < part->width; x++)
 				{
 					uint8_t in = *src++;
 					if(in)
-						*dst = bright | in;
+						*dst = in;
 					dst++;
 				}
 			}
@@ -5374,7 +4997,7 @@ static const uint8_t *update_gfx_weapons(ui_idx_t *idx)
 			if(!empty)
 			{
 				gltex_info_t *gi;
-				uint16_t *data;
+				uint8_t *data;
 
 				ui_gfx_wpn_info.base.disabled = 0;
 				ui_gfx_wpn_info.color[0] = 0xFF44EE44;
@@ -5411,7 +5034,7 @@ static const uint8_t *update_gfx_weapons(ui_idx_t *idx)
 					gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 					gi->width = 256;
 					gi->height = 256;
-					gi->format = GL_LUMINANCE_ALPHA;
+					gi->format = GL_RED;
 					gi->data = data;
 					x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
 				}
@@ -5449,7 +5072,7 @@ static const uint8_t *update_gfx_skies(ui_idx_t *idx)
 	gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 	gi->width = 512;
 	gi->height = 120;
-	gi->format = GL_LUMINANCE;
+	gi->format = GL_RED;
 	gi->data = sky->data;
 	x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
 
@@ -5929,7 +5552,7 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 	const hud_element_t *elm = hud_element + idx->now;
 	gltex_info_t *gi;
 	void *data;
-	uint16_t *cmap;
+	uint8_t *cmap;
 	uint8_t text[32];
 
 	for(uint32_t i = 0; i < NUM_HUD_ELM; i++)
@@ -5956,24 +5579,24 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 		gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 		gi->width = elm->width;
 		gi->height = elm->height;
-		gi->format = GL_LUMINANCE;
+		gi->format = GL_RED;
 		gi->data = data;
 		x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
 
 		ui_gfx_hud_texture.base.width = gi->width * elm->scale;
 		ui_gfx_hud_texture.base.height = gi->height * elm->scale;
 		ui_gfx_hud_texture.base.disabled = 0;
-		ui_gfx_hud_texture.shader = SHADER_FRAGMENT_COLORMAP;
+		ui_gfx_hud_texture.shader = SHADER_FRAGMENT_PALETTE_LIGHT;
 
 		free(data);
 
-		// update colormap
-		cmap = (uint16_t*)x16_colormap_data;
+		// update font color
+		cmap = x16_light_data;
 		*cmap++ = 0;
 		for(uint32_t i = 1; i < 16; i++)
 			*cmap++ = i + hud_display * 16;
 
-		x16g_update_texture(X16G_GLTEX_COLORMAPS);
+		x16g_update_texture(X16G_GLTEX_SHOW_LIGHT);
 	}
 
 	if(elm->pregen)
@@ -5985,7 +5608,7 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE_ALT;
 			gi->width = 160;
 			gi->height = 120;
-			gi->format = GL_LUMINANCE;
+			gi->format = GL_RED;
 			gi->data = data;
 			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE_ALT);
 
@@ -6530,7 +6153,7 @@ int32_t uin_gfx_light_b(glui_element_t *elm, int32_t x, int32_t y)
 
 static void te_plane_new(uint8_t *text)
 {
-	vlist_new(VLIST_PLANE, text, x16_plane, gfx_idx + GFX_MODE_PLANES, plane_8bpp);
+	vlist_new(VLIST_PLANE, text, x16_plane, gfx_idx + GFX_MODE_PLANES);
 }
 
 static void te_plane_rename(uint8_t *text)
@@ -6554,9 +6177,8 @@ static void fs_plane(uint8_t *file)
 	uint32_t *src;
 	uint32_t size;
 	variant_list_t *pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
-	uint32_t pal = pl->now < MAX_X16_VARIANTS_PLN;
 
-	img = img_png_load(file, pal);
+	img = img_png_load(file, 0);
 	if(!img)
 	{
 		edit_status_printf("Error loading PNG file!");
@@ -6571,69 +6193,10 @@ static void fs_plane(uint8_t *file)
 	}
 
 	size = img->width * img->height;
+	src = (uint32_t*)img->data;
 
-	if(pl->now >= MAX_X16_VARIANTS_PLN)
-	{
-		uint32_t *src = (uint32_t*)img->data;
-		uint8_t colors[16];
-		uint32_t count = 0;
-
-		for(uint32_t i = 0; i < size; i++)
-			pl->data[i] = x16g_palette_match(*src++, 1);
-
-		for(uint32_t i = 0; i < size; i++)
-		{
-			uint8_t cc = pl->data[i];
-			uint32_t j;
-
-			for(j = 0; j < count; j++)
-				if(colors[j] == cc)
-					break;
-
-			if(j < count)
-				continue;
-
-			if(count < 16)
-				colors[count] = cc;
-			count++;
-			if(count > 16)
-				break;
-		}
-
-		if(count <= 16)
-			edit_status_printf("This image uses %u colors and could be converted to 4bpp.", count);
-	} else
-	{
-		variant_info_t *pv;
-		uint8_t *color = img->palette;
-		uint8_t *src = img->data;
-
-		if(img->palcount > 16)
-		{
-			edit_status_printf("Image contains more than 16 colors!");
-			free(img);
-			return;
-		}
-
-		pv = pl->variant + pl->now;
-		pv->pl.bright = 0;
-		memset(pv->pl.data, 0, 16);
-
-		for(uint32_t i = 0; i < 16; i++)
-		{
-			uint32_t cc;
-
-			cc = *color++;
-			cc |= *color++ << 8;
-			cc |= *color++ << 16;
-			cc |= 0xFF000000;
-
-			pv->pl.data[i] = x16g_palette_match(cc, 1);
-		}
-
-		for(uint32_t i = 0; i < size; i++)
-			pl->data[i] = *src++;
-	}
+	for(uint32_t i = 0; i < size; i++)
+		pl->data[i] = x16g_palette_match(*src++, 1);
 
 	pl->width = img->width;
 	pl->height = img->height;
@@ -6713,7 +6276,7 @@ static void te_effect_scale(uint8_t *text)
 	update_gfx_mode(0);
 }
 
-int32_t uin_gfx_plane_new4(glui_element_t *elm, int32_t x, int32_t y)
+int32_t uin_gfx_plane_new(glui_element_t *elm, int32_t x, int32_t y)
 {
 	if(gfx_idx[GFX_MODE_PLANES].max >= MAX_X16_PLANES)
 	{
@@ -6721,21 +6284,6 @@ int32_t uin_gfx_plane_new4(glui_element_t *elm, int32_t x, int32_t y)
 		return 1;
 	}
 
-	plane_8bpp = 0;
-	edit_ui_textentry("Enter plane name.", LEN_X16_TEXTURE_NAME, te_plane_new);
-
-	return 1;
-}
-
-int32_t uin_gfx_plane_new8(glui_element_t *elm, int32_t x, int32_t y)
-{
-	if(gfx_idx[GFX_MODE_PLANES].max >= MAX_X16_PLANES)
-	{
-		edit_status_printf("Too many planes!");
-		return 1;
-	}
-
-	plane_8bpp = MAX_X16_VARIANTS_PLN;
 	edit_ui_textentry("Enter plane name.", LEN_X16_TEXTURE_NAME, te_plane_new);
 
 	return 1;
@@ -6768,9 +6316,6 @@ int32_t uin_gfx_plane_import(glui_element_t *elm, int32_t x, int32_t y)
 
 	pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
 
-	if(pl->now < MAX_X16_VARIANTS_PLN && !pl->max)
-		return 1;
-
 	edit_ui_file_select("Select PNG to load plane from.", X16_DIR_DATA PATH_SPLIT_STR, ".png", fs_plane);
 
 	return 1;
@@ -6785,64 +6330,7 @@ int32_t uin_gfx_plane_import_raw(glui_element_t *elm, int32_t x, int32_t y)
 
 	pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
 
-	if(pl->now < MAX_X16_VARIANTS_PLN && !pl->max)
-		return 1;
-
 	edit_ui_file_select("Select PNG to load plane from.", X16_DIR_DATA PATH_SPLIT_STR, ".png", fs_plane_raw);
-
-	return 1;
-}
-
-int32_t uin_gfx_plane_variant(glui_element_t *elm, int32_t x, int32_t y)
-{
-	variant_list_t *pl;
-
-	if(!gfx_idx[GFX_MODE_PLANES].max)
-		return 1;
-
-	pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
-
-	if(pl->max >= MAX_X16_VARIANTS_PLN)
-	{
-		edit_status_printf("Too many variants!");
-		return 1;
-	}
-
-	edit_ui_textentry("Enter variant name.", LEN_X16_TEXTURE_NAME, te_plane_variant_new);
-
-	return 1;
-}
-
-int32_t uin_gfx_plane_renvar(glui_element_t *elm, int32_t x, int32_t y)
-{
-	variant_list_t *pl;
-
-	if(!gfx_idx[GFX_MODE_PLANES].max)
-		return 1;
-
-	pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
-
-	if(!pl->max)
-		return 1;
-
-	edit_ui_textentry("Enter variant name.", LEN_X16_TEXTURE_NAME, te_plane_variant_rename);
-
-	return 1;
-}
-
-int32_t uin_gfx_plane_delvar(glui_element_t *elm, int32_t x, int32_t y)
-{
-	variant_list_t *pl;
-
-	if(!gfx_idx[GFX_MODE_PLANES].max)
-		return 1;
-
-	pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
-
-	if(!pl->max)
-		return 1;
-
-	edit_ui_question("Delete variant?", "Do you really want to delete this variant?\nThis operation is irreversible!", qe_delete_plane_variant);
 
 	return 1;
 }
@@ -6866,13 +6354,7 @@ int32_t uin_gfx_plane_effect_btn(glui_element_t *elm, int32_t x, int32_t y)
 
 	pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
 
-	if(pl->now < MAX_X16_VARIANTS_PLN)
-	{
-		if(!pl->max)
-			return 1;
-		effect = pl->variant[pl->now].pl.effect;
-	} else
-		effect = pl->variant[0].pl.effect;
+	effect = pl->variant[0].pl.effect;
 
 	switch(btn)
 	{
@@ -6894,10 +6376,7 @@ int32_t uin_gfx_plane_effect_btn(glui_element_t *elm, int32_t x, int32_t y)
 				effect[1] = 0xFC;
 
 			if(	effect[1] & 0x80 &&
-				(
-					(effect[0] & X16G_MASK_PL_EFFECT) == X16G_PL_EFFECT_ANIMATE ||
-					(effect[0] & X16G_MASK_PL_EFFECT) == X16G_PL_EFFECT_RANDOM
-				)
+				(effect[0] & X16G_MASK_PL_EFFECT) == X16G_PL_EFFECT_RANDOM
 			)
 				effect[1] = 0;
 		break;
@@ -6913,20 +6392,6 @@ int32_t uin_gfx_plane_effect_btn(glui_element_t *elm, int32_t x, int32_t y)
 
 					effect[2] = (temp & 0x01) | ((temp << 5) & 0xC0);
 				break;
-				case X16G_PL_EFFECT_ANIMATE:
-					if(btn == 3)
-					{
-						effect[3]++;
-						if(effect[3] > MAX_X16_VARIANTS_PLN)
-							effect[3] = 0;
-					} else
-					{
-						temp = (effect[2] + 1) * 2;
-						if(temp > MAX_X16_VARIANTS_PLN)
-							temp = 2;
-						effect[2] = temp - 1;
-					}
-				break;
 				default:
 					effect_dest = effect;
 					effect_idx = btn;
@@ -6941,41 +6406,12 @@ int32_t uin_gfx_plane_effect_btn(glui_element_t *elm, int32_t x, int32_t y)
 	return 1;
 }
 
-int32_t uin_gfx_plane_colormap(glui_element_t *elm, int32_t x, int32_t y)
-{
-	variant_list_t *pl;
-	int32_t idx;
-
-	if(!gfx_idx[GFX_MODE_PLANES].max)
-		return 1;
-
-	pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
-	if(!pl->max)
-		return 1;
-
-	idx = y / base_height_cmaps;
-
-	if(idx >= pl->max)
-		return 1;
-
-	if(pl->now == idx)
-	{
-		idx = x / base_height_cmaps;
-		pl->variant[pl->now].pl.bright ^= 1 << idx;
-	} else
-		pl->now = idx;
-
-	update_gfx_mode(0);
-
-	return 1;
-}
-
 //
 // input: walls
 
 static void te_wall_new(uint8_t *text)
 {
-	vlist_new(VLIST_WALL, text, x16_wall, gfx_idx + GFX_MODE_WALLS, 0);
+	vlist_new(VLIST_WALL, text, x16_wall, gfx_idx + GFX_MODE_WALLS);
 }
 
 static void te_wall_rename(uint8_t *text)
@@ -7053,27 +6489,6 @@ static void qe_delete_wall_variant(uint32_t res)
 	if(!res)
 		return;
 	vlist_var_del(x16_wall, gfx_idx + GFX_MODE_WALLS);
-}
-
-static void qe_fullbright_wall_all(uint32_t res)
-{
-	uint16_t *ptr;
-	variant_list_t *wa;
-
-	if(!res)
-		return;
-
-	wa = x16_wall + gfx_idx[GFX_MODE_WALLS].now;
-	ptr = (uint16_t*)wa->data;
-
-	for(uint32_t i = 0; i < wa->stex_used; i++)
-	{
-		*ptr = *ptr | 0xFF00;
-		ptr++;
-	}
-
-	stex_remake_columns(wa);
-	update_gfx_mode(0);
 }
 
 int32_t uin_gfx_wall_new(glui_element_t *elm, int32_t x, int32_t y)
@@ -7186,16 +6601,6 @@ int32_t uin_gfx_wall_display(glui_element_t *elm, int32_t x, int32_t y)
 	return 1;
 }
 
-int32_t uin_gfx_wall_fullbright_all(glui_element_t *elm, int32_t x, int32_t y)
-{
-	if(!gfx_idx[GFX_MODE_WALLS].max)
-		return 1;
-
-	edit_ui_question("Make fullbright?", "Do you really want to make all variants fullbright?\nThis operation is irreversible!", qe_fullbright_wall_all);
-
-	return 1;
-}
-
 int32_t uin_gfx_wall_animation_btn(glui_element_t *elm, int32_t x, int32_t y)
 {
 	variant_list_t *wa;
@@ -7279,7 +6684,7 @@ int32_t uin_gfx_wall_right(glui_element_t *elm, int32_t x, int32_t y)
 
 static void te_sprite_new(uint8_t *text)
 {
-	vlist_new(VLIST_SPRITE, text, x16_sprite, gfx_idx + GFX_MODE_SPRITES, 0);
+	vlist_new(VLIST_SPRITE, text, x16_sprite, gfx_idx + GFX_MODE_SPRITES);
 }
 
 static void te_sprite_rename(uint8_t *text)
@@ -7709,7 +7114,7 @@ int32_t uin_gfx_sprite_right(glui_element_t *elm, int32_t x, int32_t y)
 
 static void te_weapon_new(uint8_t *text)
 {
-	vlist_new(VLIST_WEAPON, text, x16_weapon, gfx_idx + GFX_MODE_WEAPONS, 0);
+	vlist_new(VLIST_WEAPON, text, x16_weapon, gfx_idx + GFX_MODE_WEAPONS);
 }
 
 static void te_weapon_rename(uint8_t *text)
@@ -7753,7 +7158,7 @@ static void fs_weapon(uint8_t *file)
 	gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 	gi->width = img->width;
 	gi->height = img->height;
-	gi->format = GL_LUMINANCE;
+	gi->format = GL_RED;
 	gi->data = stex_source;
 	x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
 
@@ -8910,14 +8315,9 @@ uint32_t x16g_init()
 	glBindTexture(GL_TEXTURE_2D, x16_gl_tex[X16G_GLTEX_NOW_PALETTE]);
 
 	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, x16_gl_tex[X16G_GLTEX_COLORMAPS]);
-
-	glActiveTexture(GL_TEXTURE3);
 	glBindTexture(GL_TEXTURE_2D, x16_gl_tex[X16G_GLTEX_LIGHTS]);
 
 	glActiveTexture(GL_TEXTURE0);
-
-	base_height_cmaps = ui_gfx_plane_cmaps.base.height / MAX_X16_VARIANTS_PLN;
 
 	for(uint32_t i = 0; i < NUM_X16G_GLTEX; i++)
 	{
@@ -8991,7 +8391,6 @@ void x16g_mode_set()
 	system_input = (void*)edit_ui_input;
 	system_tick = x16g_tick;
 
-	shader_buffer.colormap = COLORMAP_IDX(0);
 	shader_buffer.lightmap = LIGHTMAP_IDX(0);
 
 	update_gfx_mode(0);
@@ -9028,6 +8427,9 @@ void x16g_generate()
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_PLANES].max; i++)
 	{
 		variant_list_t *pl = x16_plane + i;
+		editor_texture_t *et = editor_texture + editor_texture_count;
+		uint16_t *dst = (uint16_t*)data;
+		uint8_t *src;
 
 		if(gi >= MAX_EDITOR_TEXTURES)
 			break;
@@ -9038,72 +8440,36 @@ void x16g_generate()
 		if(!pl->height)
 			continue;
 
-		if(pl->now >= MAX_X16_VARIANTS_PLN)
+		// 8bpp
+		src = pl->data;
+
+		for(uint32_t i = 0; i < pl->width * pl->height; i++)
 		{
-			// 8bpp
-			editor_texture_t *et = editor_texture + editor_texture_count;
-			uint16_t *dst = (uint16_t*)data;
-			uint8_t *src = pl->data;
+			uint16_t color = *src++;
 
-			for(uint32_t i = 0; i < pl->width * pl->height; i++)
-			{
-				uint16_t color = *src++;
+			if(x16_palette_bright[color >> 4] & (1 << (color & 15)))
+				color |= 0xFF00;
 
-				if(x16_palette_bright[color >> 4] & (1 << (color & 15)))
-					color |= 0xFF00;
-
-				*dst++ = color;
-			}
-
-			glBindTexture(GL_TEXTURE_2D, x16_editor_gt[gi]);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, pl->width, pl->height, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, data);
-
-			strcpy(et->name, pl->name);
-			et->nhash = pl->hash;
-			et->vhash = 0;
-			et->type = X16G_TEX_TYPE_PLANE_8BPP;
-			et->width = pl->width;
-			et->height = pl->height;
-			et->gltex = x16_editor_gt[gi];
-			et->data = pl->data;
-			et->effect = pl->variant[0].pl.effect;
-			et->animate = NULL;
-
-			editor_texture_count++;
-			if(editor_texture_count >= MAX_EDITOR_TEXTURES)
-				break;
-		} else
-		for(uint32_t j = 0; j < pl->max; j++)
-		{
-			// 4bpp
-			variant_info_t *pi = pl->variant + j;
-			editor_texture_t *et = editor_texture + editor_texture_count;
-
-			glBindTexture(GL_TEXTURE_2D, x16_editor_gt[gi]);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, pl->width, pl->height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, pl->data);
-
-			sprintf(et->name, "%s\n%s", pl->name, pi->name);
-			et->nhash = pl->hash;
-			et->vhash = pi->hash;
-			et->cmap = ci;
-			et->type = X16G_TEX_TYPE_PLANE_4BPP;
-			et->width = pl->width;
-			et->height = pl->height;
-			et->gltex = x16_editor_gt[gi];
-			et->data = pl->data;
-			et->effect = pi->pl.effect;
-			et->animate = NULL;
-
-			generate_colormap(ci, pi->pl.data, pi->pl.bright);
-
-			ci++;
-			if(ci >= MAX_X16_GL_CMAPS)
-				break;
-
-			editor_texture_count++;
-			if(editor_texture_count >= MAX_EDITOR_TEXTURES)
-				break;
+			*dst++ = color;
 		}
+
+		glBindTexture(GL_TEXTURE_2D, x16_editor_gt[gi]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, pl->width, pl->height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+
+		strcpy(et->name, pl->name);
+		et->nhash = pl->hash;
+		et->vhash = 0;
+		et->type = X16G_TEX_TYPE_PLANE;
+		et->width = pl->width;
+		et->height = pl->height;
+		et->gltex = x16_editor_gt[gi];
+		et->data = pl->data;
+		et->effect = pl->variant[0].pl.effect;
+		et->animate = NULL;
+
+		editor_texture_count++;
+		if(editor_texture_count >= MAX_EDITOR_TEXTURES)
+			break;
 
 		gi++;
 	}
@@ -9125,7 +8491,6 @@ void x16g_generate()
 			sprintf(et->name, "%s\n%s", wa->name, wv->name);
 			et->nhash = wa->hash;
 			et->vhash = wv->hash;
-			et->cmap = -1;
 			et->type = wv->sw.masked ? X16G_TEX_TYPE_WALL_MASKED : X16G_TEX_TYPE_WALL;
 			et->width = wv->sw.width;
 			et->height = wv->sw.height;
@@ -9135,10 +8500,10 @@ void x16g_generate()
 			et->effect = NULL;
 			et->animate = wv->sw.anim;
 
-			stex_generate_wall(wa, wv, (uint16_t*)data);
+			stex_generate_wall(wa, wv, data);
 
 			glBindTexture(GL_TEXTURE_2D, x16_editor_gt[gi]);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, wv->sw.width, wv->sw.height, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, data);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, wv->sw.width, wv->sw.height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
 
 			gi++;
 			if(gi >= MAX_EDITOR_TEXTURES)
@@ -9215,9 +8580,6 @@ void x16g_generate()
 		x16_num_sprlnk++;
 	}
 	x16_num_sprlnk_wpn = x16_num_sprlnk - x16_num_sprlnk_thg;
-
-	// update colormaps
-	x16g_update_texture(X16G_GLTEX_COLORMAPS);
 
 	// update lights
 	recalc_lights();
@@ -9407,62 +8769,25 @@ void x16g_export()
 		{
 			case 256:
 				stuff.ep.map_base = 0b11101010;
-				make_plane_tiles(stuff.ep.bpp8.data, pl->data, 256, 16);
+				make_plane_tiles(stuff.ep.data, pl->data, 256, 16);
 			break;
 			case 128:
 				stuff.ep.map_base = 0b11101110;
-				make_plane_tiles(stuff.ep.bpp8.data, pl->data, 128, 32);
+				make_plane_tiles(stuff.ep.data, pl->data, 128, 32);
 			break;
 			case 64:
 				stuff.ep.map_base = 0b11101001;
-				make_plane_tiles(stuff.ep.bpp8.data, pl->data, 64, 64);
+				make_plane_tiles(stuff.ep.data, pl->data, 64, 64);
 			break;
 			default:
 			continue;
 		}
 
-		if(pl->now >= MAX_X16_VARIANTS_PLN)
-		{
-			// 8bpp
-			size = 2 + 64 * 64 + 4;
-			stuff.ep.num_variants = 0xF0;
-			memcpy(stuff.ep.bpp8.effect, pl->variant[0].pl.effect, 4);
-			stuff.ep.bpp8.effect[1] += ANIM_TIME_EXPORT_OFFSET;
-		} else
-		{
-			// 4bpp
-			uint8_t *src = stuff.ep.bpp8.data;
-
-			if(!pl->max)
-				continue;
-
-			stuff.ep.num_variants = pl->max;
-
-			for(uint32_t k = 0; k < 64 * 64 / 2; k++)
-			{
-				uint8_t out;
-
-				out = *src++;
-				out |= *src++ << 4;
-
-				stuff.ep.bpp4.data[k] = out;
-			}
-
-			size = 2 + 64 * 64 / 2;
-			size += pl->max * sizeof(export_plane_variant_t);
-
-			for(uint32_t j = 0; j < pl->max; j++)
-			{
-				variant_info_t *pv = pl->variant + j;
-				export_plane_variant_t *ev = stuff.ep.bpp4.variant + j;
-
-				ev->hash = pv->hash;
-				ev->bright = pv->pl.bright;
-				memcpy(ev->data, pv->pl.data, 16);
-				memcpy(ev->effect, pv->pl.effect, 4);
-				ev->effect[1] += ANIM_TIME_EXPORT_OFFSET;
-			}
-		}
+		// 8bpp
+		size = 2 + 64 * 64 + 4;
+		stuff.ep.num_variants = 0xF0;
+		memcpy(stuff.ep.effect, pl->variant[0].pl.effect, 4);
+		stuff.ep.effect[1] += ANIM_TIME_EXPORT_OFFSET;
 
 		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.PLN", pl->hash);
 		edit_save_file(txt, &stuff.ep, size);
@@ -9777,13 +9102,13 @@ uint32_t x16g_generate_state_texture(uint32_t idx, uint32_t frm, uint32_t rot)
 		x16g_state_offs[0] = match_perfect->sw.ox;
 		x16g_state_offs[1] = match_perfect->sw.oy;
 
-		stex_generate_sprite(sp, match_perfect, (uint16_t*)data);
+		stex_generate_sprite(sp, match_perfect, data);
 
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, match_perfect->sw.stride, match_perfect->sw.height, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, data);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, match_perfect->sw.stride, match_perfect->sw.height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
 
 		free(data);
 
-		x16g_state_data_ptr = (uint16_t*)sp->data;
+		x16g_state_data_ptr = sp->data;
 		x16g_state_offs_ptr = match_perfect->sw.offset;
 
 		return 0;
@@ -9796,7 +9121,7 @@ uint32_t x16g_generate_weapon_texture(uint32_t idx, uint32_t frm, int32_t *box)
 {
 	variant_list_t *ws = x16_weapon + editor_sprlink[idx].idx;
 	int32_t pick = -1;
-	uint16_t *data;
+	uint8_t *data;
 
 	if(frm >= MAX_X16_SPRITE_FRAMES)
 	{
@@ -9831,7 +9156,7 @@ uint32_t x16g_generate_weapon_texture(uint32_t idx, uint32_t frm, int32_t *box)
 	if(!data)
 		return 1;
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, 256, 256, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, data);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 256, 256, 0, GL_RED, GL_UNSIGNED_BYTE, data);
 
 	return 0;
 }
@@ -9970,52 +9295,12 @@ const uint8_t *x16g_save(const uint8_t *file)
 
 		kgcbor_put_string(&gen, pl->name, -1);
 
-		if(pl->now < MAX_X16_VARIANTS_PLN)
-		{
-			// 4bpp
-			size = pl->width * pl->height / 2;
+		// 8bpp
+		cbor_plane[CBOR_PLANE_WIDTH].u32 = &pl->width;
+		cbor_plane[CBOR_PLANE_HEIGHT].u32 = &pl->height;
+		cbor_plane[CBOR_PLANE_DATA].ptr = pl->data;
 
-			src = pl->data;
-			dst = wbuf;
-
-			for(uint32_t i = 0; i < size; i++)
-			{
-				uint8_t temp;
-				temp = *src++;
-				temp |= *src++ << 4;
-				*dst++ = temp;
-			}
-
-			cbor_plane4[CBOR_PLANE4_WIDTH].u32 = &pl->width;
-			cbor_plane4[CBOR_PLANE4_HEIGHT].u32 = &pl->height;
-			cbor_plane4[CBOR_PLANE4_DATA].ptr = wbuf;
-			cbor_plane4[CBOR_PLANE4_DATA].extra = size;
-
-			edit_cbor_export(cbor_plane4, NUM_CBOR_PLANE4, &gen);
-
-			// variants
-			kgcbor_put_string(&gen, cbor_plane4[CBOR_PLANE4_VARIANTS].name, cbor_plane4[CBOR_PLANE4_VARIANTS].nlen);
-			kgcbor_put_object(&gen, pl->max);
-
-			for(uint32_t j = 0; j < pl->max; j++)
-			{
-				kgcbor_put_string(&gen, pl->variant[j].name, -1);
-
-				cbor_plane_var[CBOR_PLANE_VARIANT_DATA].ptr = (void*)&pl->variant[j].pl.bright;
-				cbor_plane_var[CBOR_PLANE_VARIANT_EFFECT].ptr = (void*)&pl->variant[j].pl.effect;
-
-				edit_cbor_export(cbor_plane_var, NUM_CBOR_PLANE_VARIANT, &gen);
-			}
-		} else
-		{
-			// 8bpp
-			cbor_plane8[CBOR_PLANE8_WIDTH].u32 = &pl->width;
-			cbor_plane8[CBOR_PLANE8_HEIGHT].u32 = &pl->height;
-			cbor_plane8[CBOR_PLANE8_DATA].ptr = pl->data;
-			cbor_plane8[CBOR_PLANE8_DATA].extra = pl->width * pl->height;
-
-			edit_cbor_export(cbor_plane8, NUM_CBOR_PLANE8, &gen);
-		}
+		edit_cbor_export(cbor_plane, NUM_CBOR_PLANE, &gen);
 	}
 
 	/// walls

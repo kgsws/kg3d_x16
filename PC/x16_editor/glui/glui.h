@@ -60,7 +60,6 @@ typedef struct glui_image_s
 {
 	glui_base_t base;
 	uint32_t shader;
-	float colormap;
 	uint32_t *gltex;
 	struct
 	{

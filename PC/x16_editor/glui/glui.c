@@ -172,7 +172,6 @@ void glui_df_image(glui_element_t *elm, int32_t x, int32_t y)
 
 	shader_buffer.mode.vertex = 0;
 	shader_buffer.mode.fragment = elm->image.shader;
-	shader_buffer.colormap = elm->image.colormap;
 	shader_buffer.lightmap = 0;
 	shader_changed = 1;
 

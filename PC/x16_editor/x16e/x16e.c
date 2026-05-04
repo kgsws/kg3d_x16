@@ -359,7 +359,7 @@ static int32_t mark_texture(uint32_t idx, uint32_t light)
 	{
 		if(marked_variant[i].nhash == et->nhash)
 		{
-			if(et->type == X16G_TEX_TYPE_PLANE_8BPP)
+			if(et->type == X16G_TEX_TYPE_PLANE)
 				return i;
 			if(marked_variant[i].vhash == et->vhash)
 				return i;

@@ -3,9 +3,7 @@ enum
 {
 	SHADER_FRAGMENT_RGB,
 	SHADER_FRAGMENT_PALETTE,
-	SHADER_FRAGMENT_COLORMAP,
 	SHADER_FRAGMENT_PALETTE_LIGHT,
-	SHADER_FRAGMENT_COLORMAP_LIGHT,
 	SHADER_FRAGMENT_COLOR,
 	SHADER_FRAGMENT_COLOR_ALPHA,
 };
@@ -64,7 +62,6 @@ typedef struct
 	shader_shading_info_t shading;
 	shader_scaling_info_t scaling;
 	shader_clip_info_t clipping;
-	float colormap;
 	float lightmap;
 	shader_mode_t mode;
 } shader_buffer_t;

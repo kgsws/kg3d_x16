@@ -547,34 +547,28 @@
 						"elements":
 						[
 							{
-								"name": "ui_gfx_plane_variant_name",
-								"x": 512,
-								"y": 68,
-								"text": true,
-								"color": "bright"
-							},
-							{
-								"click": "uin_gfx_plane_new4",
+								"name": "ui_gfx_plane_import_raw",
+								"click": "uin_gfx_plane_import_raw",
 								"x": 200,
 								"y": 96,
 								"width": 192,
 								"height": 32,
 								"align": "center",
 								"background": ["btnbg", "gray"],
-								"text": "New 4bpp plane",
+								"text": "Import PNG RAW",
 								"font": "medium",
 								"color": ["bright", "white"],
 								"text align": "center center"
 							},
 							{
-								"click": "uin_gfx_plane_new8",
+								"click": "uin_gfx_plane_new",
 								"x": 408,
 								"y": 96,
 								"width": 192,
 								"height": 32,
 								"align": "center",
 								"background": ["btnbg", "gray"],
-								"text": "New 8bpp plane",
+								"text": "New plane",
 								"font": "medium",
 								"color": ["bright", "white"],
 								"text align": "center center"
@@ -613,63 +607,7 @@
 								"height": 32,
 								"align": "center",
 								"background": ["btnbg", "gray"],
-								"text": "Import PNG Auto",
-								"font": "medium",
-								"color": ["bright", "white"],
-								"text align": "center center"
-							},
-							{
-								"name": "ui_gfx_plane_import_raw",
-								"click": "uin_gfx_plane_import_raw",
-								"x": 408,
-								"y": 144,
-								"width": 192,
-								"height": 32,
-								"align": "center",
-								"background": ["btnbg", "gray"],
-								"text": "Import PNG RAW",
-								"font": "medium",
-								"color": ["bright", "white"],
-								"text align": "center center"
-							},
-							{
-								"name": "ui_gfx_plane_variant",
-								"click": "uin_gfx_plane_variant",
-								"x": 408,
-								"y": 144,
-								"width": 192,
-								"height": 32,
-								"align": "center",
-								"background": ["btnbg", "gray"],
-								"text": "New variant",
-								"font": "medium",
-								"color": ["bright", "white"],
-								"text align": "center center"
-							},
-							{
-								"name": "ui_gfx_plane_renvar",
-								"click": "uin_gfx_plane_renvar",
-								"x": 616,
-								"y": 144,
-								"width": 192,
-								"height": 32,
-								"align": "center",
-								"background": ["btnbg", "gray"],
-								"text": "Rename variant",
-								"font": "medium",
-								"color": ["bright", "white"],
-								"text align": "center center"
-							},
-							{
-								"name": "ui_gfx_plane_delvar",
-								"click": "uin_gfx_plane_delvar",
-								"x": 824,
-								"y": 144,
-								"width": 192,
-								"height": 32,
-								"align": "center",
-								"background": ["btnbg", "gray"],
-								"text": "Delete variant",
+								"text": "Import PNG",
 								"font": "medium",
 								"color": ["bright", "white"],
 								"text align": "center center"
@@ -741,36 +679,6 @@
 								]
 							},
 							{
-								"name": "ui_gfx_plane_variant_box",
-								"x": 848,
-								"y": 252,
-								"width": 296,
-								"height": 296,
-								"align": "center",
-								"background": "back",
-								"elements":
-								[
-									{
-										"name": "ui_gfx_plane_variant_pl",
-										"disabled": true,
-										"x": 0,
-										"text": ">",
-										"font": "huge",
-										"text align": "right center",
-										"color": "bright"
-									},
-									{
-										"name": "ui_gfx_plane_variant_pr",
-										"disabled": true,
-										"x": 296,
-										"text": "<",
-										"font": "huge",
-										"text align": "left center",
-										"color": "bright"
-									}
-								]
-							},
-							{
 								"name": "ui_gfx_plane_texture",
 								"x": 512,
 								"y": 448,
@@ -778,17 +686,6 @@
 								"height": 384,
 								"align": "center center",
 								"image": "&x16_gl_tex[X16G_GLTEX_SHOW_TEXTURE]",
-								"shader": "palette"
-							},
-							{
-								"name": "ui_gfx_plane_cmaps",
-								"click": "uin_gfx_plane_colormap",
-								"x": 848,
-								"y": 256,
-								"width": 288,
-								"height": 288,
-								"align": "center",
-								"image": "&x16_gl_tex[X16G_GLTEX_BRIGHT_COLORS]",
 								"shader": "palette"
 							}
 						]
@@ -911,7 +808,7 @@
 								"height": 32,
 								"align": "center",
 								"background": ["btnbg", "gray"],
-								"text": "Import PNG auto",
+								"text": "Import PNG",
 								"font": "medium",
 								"color": ["bright", "white"],
 								"text align": "center center"
@@ -951,19 +848,6 @@
 								"align": "center",
 								"background": ["btnbg", "gray"],
 								"text": "Delete variant",
-								"font": "medium",
-								"color": ["bright", "white"],
-								"text align": "center center"
-							},
-							{
-								"click": "uin_gfx_wall_fullbright_all",
-								"x": 824,
-								"y": 192,
-								"width": 192,
-								"height": 32,
-								"align": "center",
-								"background": ["btnbg", "gray"],
-								"text": "Make all fullbright",
 								"font": "medium",
 								"color": ["bright", "white"],
 								"text align": "center center"
@@ -1203,7 +1087,7 @@
 								"height": 32,
 								"align": "center",
 								"background": ["btnbg", "gray"],
-								"text": "Import PNG auto",
+								"text": "Import PNG",
 								"font": "medium",
 								"color": ["bright", "white"],
 								"text align": "center center"

@@ -15,7 +15,6 @@ layout(std140) uniform shader_stuff
 	vec4 plane0;
 	vec4 plane1;
 	// remapping
-	float cmap;
 	float lmap;
 	// mode
 	int mode_vertex;

@@ -232,12 +232,8 @@ void r_draw_plane(kge_sector_t *sector, uint32_t plane)
 		{
 			case X16G_TEX_TYPE_WALL:
 			case X16G_TEX_TYPE_WALL_MASKED:
-			case X16G_TEX_TYPE_PLANE_8BPP:
+			case X16G_TEX_TYPE_PLANE:
 				shader_buffer.mode.fragment = SHADER_FRAGMENT_PALETTE_LIGHT;
-			break;
-			case X16G_TEX_TYPE_PLANE_4BPP:
-				shader_buffer.colormap = COLORMAP_IDX(et->cmap);
-				shader_buffer.mode.fragment = SHADER_FRAGMENT_COLORMAP_LIGHT;
 			break;
 			default:
 				shader_buffer.mode.fragment = SHADER_FRAGMENT_RGB;
@@ -378,12 +374,8 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 	{
 		case X16G_TEX_TYPE_WALL:
 		case X16G_TEX_TYPE_WALL_MASKED:
-		case X16G_TEX_TYPE_PLANE_8BPP:
+		case X16G_TEX_TYPE_PLANE:
 			shader_buffer.mode.fragment = SHADER_FRAGMENT_PALETTE_LIGHT;
-		break;
-		case X16G_TEX_TYPE_PLANE_4BPP:
-			shader_buffer.colormap = COLORMAP_IDX(et->cmap);
-			shader_buffer.mode.fragment = SHADER_FRAGMENT_COLORMAP_LIGHT;
 		break;
 		default:
 			shader_buffer.mode.fragment = SHADER_FRAGMENT_RGB;
@@ -396,7 +388,7 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 	glBindTexture(GL_TEXTURE_2D, et->gltex);
 	shader_update();
 
-	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && (et->type == X16G_TEX_TYPE_PLANE_8BPP || et->type == X16G_TEX_TYPE_PLANE_4BPP))
+	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && et->type == X16G_TEX_TYPE_PLANE)
 	{
 		w = et->height;
 		h = et->width;
@@ -446,7 +438,7 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 		}
 	}
 
-	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && (et->type == X16G_TEX_TYPE_PLANE_8BPP || et->type == X16G_TEX_TYPE_PLANE_4BPP))
+	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && et->type == X16G_TEX_TYPE_PLANE)
 	{
 		gl_vertex_buf[0].t = tr;
 		gl_vertex_buf[0].s = tb;

@@ -960,7 +960,6 @@ static void texture_select_fill()
 		glui_image_t *img;
 		glui_text_t *txt;
 		uint32_t shader;
-		float colormap = 0;
 
 		switch(et->type)
 		{
@@ -972,16 +971,10 @@ static void texture_select_fill()
 			case X16G_TEX_TYPE_WALL:
 				if(texsel_mode)
 					continue;
-			case X16G_TEX_TYPE_PLANE_8BPP:
+			case X16G_TEX_TYPE_PLANE:
 				if(texsel_mode > 1)
 					continue;
 				shader = SHADER_FRAGMENT_PALETTE;
-			break;
-			case X16G_TEX_TYPE_PLANE_4BPP:
-				if(texsel_mode > 1)
-					continue;
-				colormap = COLORMAP_IDX(et->cmap);
-				shader = SHADER_FRAGMENT_COLORMAP;
 			break;
 			default:
 				shader = SHADER_FRAGMENT_RGB;
@@ -999,7 +992,6 @@ static void texture_select_fill()
 		elm++;
 
 		img->shader = shader;
-		img->colormap = colormap;
 		img->gltex = &et->gltex;
 
 		if(et->width > et->height)
@@ -4022,7 +4014,6 @@ static void set_hl_texture(glui_image_t *img, kge_x16_tex_t *tex)
 {
 	editor_texture_t *et = editor_texture + tex->idx;
 	uint32_t shader;
-	float colormap = 0;
 
 	switch(et->type)
 	{
@@ -4030,12 +4021,8 @@ static void set_hl_texture(glui_image_t *img, kge_x16_tex_t *tex)
 			shader = SHADER_FRAGMENT_PALETTE;
 		break;
 		case X16G_TEX_TYPE_WALL:
-		case X16G_TEX_TYPE_PLANE_8BPP:
+		case X16G_TEX_TYPE_PLANE:
 			shader = SHADER_FRAGMENT_PALETTE;
-		break;
-		case X16G_TEX_TYPE_PLANE_4BPP:
-			colormap = COLORMAP_IDX(et->cmap);
-			shader = SHADER_FRAGMENT_COLORMAP;
 		break;
 		default:
 			shader = SHADER_FRAGMENT_RGB;
@@ -4043,7 +4030,6 @@ static void set_hl_texture(glui_image_t *img, kge_x16_tex_t *tex)
 	}
 
 	img->shader = shader;
-	img->colormap = colormap;
 	img->gltex = &et->gltex;
 
 	img->coord.s[0] = 0.0f;
@@ -4324,7 +4310,6 @@ void edit_highlight_changed()
 			th->sprite.shader;
 
 			img->shader = th->sprite.shader;
-			img->colormap = 0;
 			img->gltex = &th->sprite.gltex;
 
 			img->coord.s[0] = 0.0f;

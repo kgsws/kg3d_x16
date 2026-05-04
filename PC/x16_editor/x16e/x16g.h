@@ -10,8 +10,6 @@
 #define MAX_X16_SKIES	32
 
 #define MAX_X16_VARIANTS	64	// limited to < 128 by sprite links
-#define MAX_X16_VARIANTS_PLN	16	// limited by UI design
-#define MAX_X16_GL_CMAPS	256	// forced by COLORMAP_IDX macro
 #define MAX_X16_WPNPARTS	15	// engine limit
 #define MAX_X16_WPNGROUP	(LEN_X16_VARIANT_NAME - 2)
 
@@ -28,7 +26,6 @@
 #define X16_SKY_DATA_SIZE	(X16_SKY_WIDTH * X16_SKY_HEIGHT)
 #define X16_SKY_DATA_RAW	(X16_SKY_WIDTH * X16_SKY_HEIGHT_RAW)
 
-#define COLORMAP_IDX(x)	((1.0f / 2048.0f) + (1.0f / 255.0f) * (float)(x))
 #define LIGHTMAP_IDX(x)	((1.0f / 2048.0f) + (1.0f / 31.0f) * (float)(x))
 
 #define X16G_GLTEX_SHOW_TEXTURE_ALT	X16G_GLTEX_BRIGHT_COLORS
@@ -38,7 +35,6 @@ enum
 	X16G_GLTEX_PALETTE,
 	X16G_GLTEX_LIGHTS,
 	X16G_GLTEX_LIGHT_TEX,
-	X16G_GLTEX_COLORMAPS,
 	//
 	X16G_GLTEX_NOW_PALETTE,
 	X16G_GLTEX_SHOW_LIGHT,
@@ -61,8 +57,7 @@ enum
 {
 	X16G_TEX_TYPE_WALL,
 	X16G_TEX_TYPE_WALL_MASKED,
-	X16G_TEX_TYPE_PLANE_8BPP,
-	X16G_TEX_TYPE_PLANE_4BPP,
+	X16G_TEX_TYPE_PLANE,
 	//
 	X16G_TEX_TYPE_RGB,
 };
@@ -73,7 +68,6 @@ enum
 	X16G_PL_EFFECT_RANDOM,
 	X16G_PL_EFFECT_CIRCLE,
 	X16G_PL_EFFECT_EIGHT,
-	X16G_PL_EFFECT_ANIMATE,
 	//
 	X16G_NUM_PLANE_EFFECTS,
 	//
@@ -100,7 +94,6 @@ typedef struct
 	uint8_t name[MAX_X16_MAPSTRING];
 	uint32_t nhash;
 	uint32_t vhash;
-	int16_t cmap;
 	uint8_t type;
 	uint16_t width, height;
 	uint32_t gltex;
@@ -133,8 +126,6 @@ extern uint16_t x16_palette_bright[16];
 
 extern uint8_t x16_light_data[256 * MAX_X16_LIGHTS];
 
-extern uint8_t x16_colormap_data[32 * MAX_X16_GL_CMAPS];
-
 extern editor_texture_t editor_texture[MAX_EDITOR_TEXTURES];
 extern uint32_t editor_texture_count;
 
@@ -151,7 +142,7 @@ extern editor_sky_t editor_sky[MAX_X16_SKIES];
 
 extern uint32_t x16g_state_res[3];
 extern int32_t x16g_state_offs[2];
-extern uint16_t *x16g_state_data_ptr;
+extern uint8_t *x16g_state_data_ptr;
 extern uint32_t *x16g_state_offs_ptr;
 
 extern uint8_t x16_sky_name[LEN_X16_SKY_NAME];

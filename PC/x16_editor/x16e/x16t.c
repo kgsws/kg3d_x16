@@ -3331,7 +3331,6 @@ void x16t_mode_set()
 	system_input = (void*)edit_ui_input;
 	system_tick = x16g_tick;
 
-	shader_buffer.colormap = COLORMAP_IDX(0);
 	shader_buffer.lightmap = LIGHTMAP_IDX(0);
 
 	x16t_update_thing_view(1);

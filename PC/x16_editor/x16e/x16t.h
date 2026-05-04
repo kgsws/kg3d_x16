@@ -133,7 +133,7 @@ typedef struct
 {
 	uint32_t width, height, stride, bright;
 	int32_t ox, oy;
-	uint16_t *data;
+	uint8_t *data;
 	uint32_t *offs;
 } thing_sprite_t;
 

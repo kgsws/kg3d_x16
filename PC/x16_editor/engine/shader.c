@@ -94,12 +94,9 @@ uint32_t shader_init()
 	idx.s = glGetUniformLocation(program, "palette");
 	if(idx.s >= 0)
 		glUniform1i(idx.s, 1);
-	idx.s = glGetUniformLocation(program, "colormap");
-	if(idx.s >= 0)
-		glUniform1i(idx.s, 2);
 	idx.s = glGetUniformLocation(program, "light");
 	if(idx.s >= 0)
-		glUniform1i(idx.s, 3);
+		glUniform1i(idx.s, 2);
 
 	// inputs
 	shader_attr_vertex = glGetAttribLocation(program, "vertex");

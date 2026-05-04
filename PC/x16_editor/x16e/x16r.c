@@ -125,7 +125,7 @@ typedef struct
 {
 	uint8_t clip_top[80];
 	uint8_t clip_bot[80];
-	uint16_t *data;
+	uint8_t *data;
 	uint32_t *offs;
 	uint8_t x0, x1;
 	uint8_t next;
@@ -220,8 +220,6 @@ static uint32_t proj_msk_idx;
 static const uint32_t *tex_d32;
 static const void *tex_data;
 static uint32_t *tex_offs;
-static uint16_t *tex_cmap;
-static uint16_t *tex_bright;
 static uint8_t *tex_light;
 static uint32_t tex_x_start;
 static uint32_t tex_y_start;
@@ -231,7 +229,6 @@ static int32_t tex_offs_x;
 static int32_t tex_offs_y;
 static int32_t tex_step_x;
 static int32_t tex_step_y;
-static uint16_t tex_bmsk;
 static uint32_t tex_y_mirror;
 static uint32_t tex_swap_xy;
 static uint32_t tex_is_sky;
@@ -403,8 +400,6 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 	editor_texture_t *et;
 	uint32_t tw;
 
-	tex_bmsk = 0xFFFF;
-
 	tex_is_sky = edit_sky_num >= 0 && (idx == 1);
 
 	et = editor_texture + idx;
@@ -412,14 +407,6 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 	tex_x_start = 0;
 	tex_y_mirror = 0;
 	tex_swap_xy = 0;
-
-	if(	et->effect &&
-		(et->effect[0] & X16G_MASK_PL_EFFECT) == X16G_PL_EFFECT_ANIMATE
-	){
-		anim[0] = et->effect[2];
-		anim[1] = et->effect[1];
-		anim[2] = et->effect[3];
-	}
 
 	if(et->animate)
 	{
@@ -474,21 +461,16 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 	if(!(x16tex->flags & TEXFLAG_MIRROR_X))
 		projection.tx ^= projection.ta;
 
-	tex_cmap = NULL;
 	tex_offs = NULL;
 	tex_d32 = NULL;
 	tex_data = et->data;
 
 	switch(et->type)
 	{
-		case X16G_TEX_TYPE_PLANE_4BPP:
-			tex_cmap = (uint16_t*)x16_colormap_data + et->cmap * 16;
-		break;
 		case X16G_TEX_TYPE_WALL:
 			tex_offs = et->offs;
 		break;
-		case X16G_TEX_TYPE_PLANE_8BPP:
-			tex_bright = x16_palette_bright;
+		case X16G_TEX_TYPE_PLANE:
 		break;
 		default:
 			tex_d32 = (uint32_t*)tex_data;
@@ -532,32 +514,19 @@ static uint32_t tex_read()
 	if(tex_d32)
 		return tex_d32[tx + ty * tex_width];
 
-	if(tex_cmap)
-	{
-		uint16_t tmp;
-		const uint8_t *data = tex_data;
-		sample = data[tx + ty * tex_width];
-		tmp = tex_cmap[sample];
-		sample = tmp & 0xFF;
-		if(!(tmp & 0xFF00))
-			sample = tex_light[sample];
-	} else
 	if(tex_offs)
 	{
-		uint16_t tmp;
-		const uint16_t *data = tex_data;
+		const uint8_t *data = tex_data;
 		data += tex_offs[tx];
-		tmp = data[ty] & tex_bmsk;
-		sample = tmp & 0xFF;
-		if(!(tmp & 0xFF00))
-			sample = tex_light[sample];
+		sample = tex_light[data[ty]];
 	} else
 	{
 		const uint8_t *data = tex_data;
 		sample = data[tx + ty * tex_width];
-		if(!(tex_bright[sample >> 4] & (1 << (sample & 15))))
-			sample = tex_light[sample];
 	}
+
+	if(!(x16_palette_bright[sample >> 4] & (1 << (sample & 15))))
+		sample = tex_light[sample];
 
 	if(!sample)
 		return 0;
@@ -1355,13 +1324,11 @@ static void dr_sprite(uint32_t idx)
 	tex_now = spr->tex_now;
 	tex_step = spr->tex_step;
 
-	tex_bmsk = 0x00FF;
 	tex_width = 256;
 	tex_height = 256;
 	tex_x_start = 0;
 	tex_y_start = 0;
 	tex_y_mirror = 0;
-	tex_cmap = NULL;
 	tex_offs = spr->offs;
 	tex_d32 = NULL;
 	tex_data = spr->data + 2;
@@ -1375,7 +1342,7 @@ static void dr_sprite(uint32_t idx)
 		uint8_t y0, y1;
 		int16_t top;
 		int16_t bot;
-		uint16_t *src;
+		uint8_t *src;
 		uint8_t len, offs;
 
 		src = spr->data + spr->offs[tex_now >> 8];
@@ -1424,7 +1391,7 @@ static void dr_masked(uint32_t idx)
 	proj_msk_t *mt = proj_msk + idx;
 	editor_texture_t *et = mt->texture;
 	uint8_t x0, x1;
-	const uint16_t *src_data;
+	const uint8_t *src_data;
 	uint32_t *src_offs;
 	int32_t scale_now, scale_step;
 	int16_t zdiff;
@@ -1438,13 +1405,11 @@ static void dr_masked(uint32_t idx)
 	src_data = et->data;
 	src_offs = et->offs;
 
-	tex_bmsk = 0xFFFF;
 	tex_width = 256;
 	tex_height = 256;
 	tex_x_start = 0;
 	tex_y_start = 0;
 	tex_y_mirror = 0;
-	tex_cmap = NULL;
 	tex_offs = src_offs;
 	tex_d32 = NULL;
 	tex_data = src_data + 2;
@@ -1462,7 +1427,7 @@ static void dr_masked(uint32_t idx)
 		uint8_t y0, y1;
 		int16_t top;
 		int16_t bot;
-		const uint16_t *src;
+		const uint8_t *src;
 		uint8_t len, offs;
 		uint8_t tx;
 
