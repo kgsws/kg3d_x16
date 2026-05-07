@@ -231,7 +231,6 @@ void r_draw_plane(kge_sector_t *sector, uint32_t plane)
 		switch(et->type)
 		{
 			case X16G_TEX_TYPE_WALL:
-			case X16G_TEX_TYPE_WALL_MASKED:
 			case X16G_TEX_TYPE_PLANE:
 				shader_buffer.mode.fragment = SHADER_FRAGMENT_PALETTE_LIGHT;
 			break;
@@ -373,7 +372,6 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 	switch(et->type)
 	{
 		case X16G_TEX_TYPE_WALL:
-		case X16G_TEX_TYPE_WALL_MASKED:
 		case X16G_TEX_TYPE_PLANE:
 			shader_buffer.mode.fragment = SHADER_FRAGMENT_PALETTE_LIGHT;
 		break;
@@ -408,7 +406,7 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 		tt = tb - (top - bot) / (float)h * 0.5f;
 	}
 
-	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && (et->type == X16G_TEX_TYPE_WALL || et->type == X16G_TEX_TYPE_WALL_MASKED))
+	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && et->type == X16G_TEX_TYPE_WALL)
 	{
 		tb = -tb;
 		tt = -tt;

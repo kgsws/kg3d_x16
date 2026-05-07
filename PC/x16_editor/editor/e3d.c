@@ -804,17 +804,17 @@ static int32_t in3d_wall_mirror_y()
 		dest = &edit_hit.line->texture[edit_hit.idx];
 		dest->flags ^= TEXFLAG_MIRROR_Y_SWAP_XY; // shared with TEXFLAG_PEG_MID_BACK
 
-		if(editor_texture[dest->idx].type != X16G_TEX_TYPE_WALL_MASKED)
+//		if(editor_texture[dest->idx].type != X16G_TEX_TYPE_WALL_MASKED)
 		{
 			if(editor_texture[dest->idx].type != X16G_TEX_TYPE_WALL)
 				edit_status_printf("Texture rotate: %s", txt_yes_no[!(dest->flags & TEXFLAG_MIRROR_Y_SWAP_XY)]);
 			else
 				edit_status_printf("Texture Y mirror: %s", txt_yes_no[!(dest->flags & TEXFLAG_MIRROR_Y_SWAP_XY)]);
-		} else
+		}/* else
 			edit_status_printf("Masked side peg: %s", txt_back_front[!(dest->flags & TEXFLAG_PEG_MID_BACK)]);
-
+*/
 		return 1;
-	}	
+	}
 
 	return 0;
 }

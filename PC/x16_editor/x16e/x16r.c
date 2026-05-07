@@ -1396,9 +1396,6 @@ static void dr_masked(uint32_t idx)
 	int32_t scale_now, scale_step;
 	int16_t zdiff;
 
-	if(et->type != X16G_TEX_TYPE_WALL_MASKED)
-		return;
-
 	x0 = mt->x0 * 2;
 	x1 = mt->x1 * 2;
 

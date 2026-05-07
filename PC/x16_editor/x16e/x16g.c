@@ -127,7 +127,6 @@ enum
 {
 	CBOR_VAR_WALL_WIDTH,
 	CBOR_VAR_WALL_HEIGHT,
-	CBOR_VAR_WALL_MASKED,
 	CBOR_VAR_WALL_ANIMATION,
 	CBOR_VAR_WALL_OFFSETS,
 	//
@@ -282,11 +281,10 @@ typedef struct
 		{
 			uint16_t width, height, stride;
 			int8_t ox, oy;
-			uint8_t masked;
 			uint8_t anim[3];
-			uint32_t offset[128];
-			uint16_t length[128];
-			uint16_t temp[128];
+			uint32_t offset[256];
+			uint16_t length[256];
+			uint16_t temp[256];
 		} sw;
 		struct
 		{
@@ -315,10 +313,14 @@ typedef struct
 			// walls, sprites
 			uint32_t stex_total;
 			uint32_t stex_used;
+			// walls
+			uint32_t swal_height;
+			uint32_t swal_colt;
+			uint32_t swal_colr;
 		};
 	};
 	variant_info_t variant[MAX_X16_VARIANTS];
-	uint8_t data[STEX_PIXEL_LIMIT * 2];
+	uint8_t data[STEX_PIXEL_LIMIT];
 } variant_list_t;
 
 typedef struct
@@ -463,6 +465,7 @@ static uint_fast8_t plane_display;
 
 static variant_list_t x16_wall[MAX_X16_WALLS];
 static uint_fast8_t wall_display;
+static uint32_t wall_coltmp[MAX_X16_WALLS * MAX_X16_VARIANTS * 256];
 
 static variant_list_t x16_sprite[MAX_X16_THGSPR];
 static uint_fast8_t sprite_display;
@@ -1068,13 +1071,6 @@ static edit_cbor_obj_t cbor_var_wall[] =
 		.nlen = 6,
 		.type = EDIT_CBOR_TYPE_U16,
 	},
-	[CBOR_VAR_WALL_MASKED] =
-	{
-		.name = "masked",
-		.nlen = 6,
-		.type = EDIT_CBOR_TYPE_FLAG8,
-		.extra = 1
-	},
 	[CBOR_VAR_WALL_ANIMATION] =
 	{
 		.name = "animation",
@@ -1380,28 +1376,13 @@ static uint32_t check_wall_resolution(uint32_t width, uint32_t height)
 			width != 16 &&
 			width != 32 &&
 			width != 64 &&
-			width != 128
+			width != 128 &&
+			width != 256
 		) ||
 		(
-			height != 8 &&
-			height != 16 &&
-			height != 32 &&
 			height != 64 &&
 			height != 128 &&
 			height != 256
-		);
-}
-
-static uint32_t check_masked_resolution(uint32_t width, uint32_t height)
-{
-	return	height < 1 ||
-		height > 128 ||
-		(
-			width != 8 &&
-			width != 16 &&
-			width != 32 &&
-			width != 64 &&
-			width != 128
 		);
 }
 
@@ -1659,15 +1640,14 @@ static int32_t cbor_gfx_stex_variant(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t ty
 			} else
 			{
 				// check resolution
-				if(vi->sw.masked)
-				{
-					if(check_masked_resolution(vi->sw.width, vi->sw.height))
-						goto is_invalid;
-				} else
-				{
-					if(check_wall_resolution(vi->sw.width, vi->sw.height))
-						goto is_invalid;
-				}
+				if(check_wall_resolution(vi->sw.width, vi->sw.height))
+					goto is_invalid;
+
+				// match height
+				if(	vi != cbor_load_object->variant &&
+					cbor_load_object->variant[0].sw.height != vi->sw.height
+				)
+					goto is_invalid;
 			}
 		}
 
@@ -1720,7 +1700,6 @@ is_invalid:
 
 			cbor_var_wall[CBOR_VAR_WALL_WIDTH].u16 = &vi->sw.width;
 			cbor_var_wall[CBOR_VAR_WALL_HEIGHT].u16 = &vi->sw.height;
-			cbor_var_wall[CBOR_VAR_WALL_MASKED].u8 = &vi->sw.masked;
 			cbor_var_wall[CBOR_VAR_WALL_ANIMATION].ptr = vi->sw.anim;
 			cbor_var_wall[CBOR_VAR_WALL_OFFSETS].u32 = vi->sw.offset;
 		}
@@ -1961,7 +1940,7 @@ static int32_t cbor_gfx_wpn_group(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type,
 			dbase = cbor_load_object->stex_used;
 			dsize = load_ndata + load_bdata;
 
-			if(STEX_PIXEL_LIMIT * 2 - (cbor_load_object->stex_used + dsize) < SWPN_MAX_DATA)
+			if(STEX_PIXEL_LIMIT - (cbor_load_object->stex_used + dsize) < SWPN_MAX_DATA)
 				// out of pixels; fatal error
 				return -1;
 
@@ -2697,9 +2676,6 @@ static uint32_t find_wall_texture(uint8_t *name)
 	{
 		editor_texture_t *et = editor_texture + i;
 
-		if(et->type == X16G_TEX_TYPE_WALL_MASKED)
-			continue;
-
 		if(!strcmp(et->name, name))
 		{
 			if(et->type == X16G_TEX_TYPE_PLANE)
@@ -2710,29 +2686,6 @@ static uint32_t find_wall_texture(uint8_t *name)
 	}
 
 	return fallback;
-}
-
-static uint32_t find_mask_texture(uint8_t *name)
-{
-	if(!name[0] || name[0] == '\t')
-	{
-		name[0] = '\t';
-		name[1] = 0;
-		return 0;
-	}
-
-	for(uint32_t i = 0; i < editor_texture_count; i++)
-	{
-		editor_texture_t *et = editor_texture + i;
-
-		if(et->type != X16G_TEX_TYPE_WALL_MASKED)
-			continue;
-
-		if(!strcmp(et->name, name))
-			return i;
-	}
-
-	return 0;
 }
 
 static uint32_t find_sector_light(uint8_t *name)
@@ -2810,7 +2763,7 @@ static void stex_reset(uint8_t *source, uint32_t count)
 	stex_size = 0;
 	stex_total = 0;
 
-	memcpy(stex_source, source, count * 2);
+	memcpy(stex_source, source, count);
 
 	for(uint32_t i = 0; i < STEX_PIXEL_LIMIT / 256; i++)
 		stex_space[i] = 256;
@@ -2873,50 +2826,92 @@ static int32_t stex_insert(uint8_t *data, uint32_t len)
 	return offs;
 }
 
-static uint32_t stex_remake_columns(variant_list_t *vl)
+static uint32_t stex_remake_columns(variant_list_t *vl, uint32_t is_sprite)
 {
 	uint8_t ll[257];
-
-	memset(ll, 0, sizeof(ll));
-
-	// detect all column lengths
-	for(uint32_t i = 0; i < vl->max; i++)
-	{
-		variant_info_t *vi = vl->variant + i;
-
-		for(uint32_t j = 0; j < vi->sw.width; j++)
-			ll[vi->sw.length[j]] = 1;
-	}
 
 	// reset buffers
 	stex_reset(vl->data, vl->stex_used);
 
-	// add all columns
-	for(uint32_t l = 256; l > 0; l--)
+	if(is_sprite)
 	{
-		if(!ll[l])
-			continue;
+		memset(ll, 0, sizeof(ll));
 
+		// detect all column lengths
+		for(uint32_t i = 0; i < vl->max; i++)
+		{
+			variant_info_t *vi = vl->variant + i;
+
+			for(uint32_t j = 0; j < vi->sw.width; j++)
+				ll[vi->sw.length[j]] = 1;
+		}
+
+		// add all columns
+		for(uint32_t l = 256; l > 0; l--)
+		{
+			if(!ll[l])
+				continue;
+
+			for(uint32_t i = 0; i < vl->max; i++)
+			{
+				variant_info_t *vi = vl->variant + i;
+
+				for(uint32_t j = 0; j < vi->sw.width; j++)
+				{
+					uint32_t len = vi->sw.length[j];
+					uint32_t offs = vi->sw.offset[j];
+					int32_t ret;
+
+					if(len != l)
+						continue;
+
+					ret = stex_insert(stex_source + offs, len);
+					if(ret < 0)
+						return 1;
+
+					vi->sw.temp[j] = ret;
+				}
+			}
+		}
+	} else
+	{
+		int32_t tot = 0;
+		int32_t rep = 0;
+
+		// add all columns
 		for(uint32_t i = 0; i < vl->max; i++)
 		{
 			variant_info_t *vi = vl->variant + i;
 
 			for(uint32_t j = 0; j < vi->sw.width; j++)
 			{
-				uint32_t len = vi->sw.length[j];
 				uint32_t offs = vi->sw.offset[j];
 				int32_t ret;
 
-				if(len != l)
-					continue;
-
-				ret = stex_insert(stex_source + offs, len);
+				ret = stex_insert(stex_source + offs, vl->variant[0].sw.height);
 				if(ret < 0)
 					return 1;
 
 				vi->sw.temp[j] = ret;
+				wall_coltmp[tot++] = ret;
 			}
 		}
+
+		// count columns
+		for(int32_t i = 0; i < tot; i++)
+		{
+			for(int32_t j = i - 1; j >= 0; j--)
+			{
+				if(wall_coltmp[j] == wall_coltmp[i])
+				{
+					rep++;
+					break;
+				}
+			}
+		}
+
+		vl->swal_colt = tot;
+		vl->swal_colr = rep;
 	}
 
 	// apply new data
@@ -2949,131 +2944,32 @@ static uint8_t stex_read_color(uint32_t **src, uint32_t width)
 	return x16g_palette_match(in, 1);
 }
 
-static uint32_t stex_wall_masked_row(uint8_t *dst, uint8_t *src, uint32_t height)
-{
-	uint8_t *px = src;
-	uint8_t *last, *head, *top;
-	uint32_t len;
-
-	// add dummy transparent pixel
-	src[height] = 0x00;
-
-	// find first non-transparent pixel
-	for(uint32_t y = 0; y < height && *px == 0x00; y++)
-		px++;
-
-	if(*px != 0x00)
-	{
-		// make full column
-		top = px;
-
-		head = dst;
-		dst += 2;
-
-		// find last non-transparent pixel
-		while(px < src + height)
-		{
-			if(*px != 0x00)
-				last = px;
-			px++;
-		}
-
-		// pixel count
-		len = 1 + last - top;
-		head[0] = len;
-
-		// bottom offset
-		head[1] = (src + height - last - 1);
-
-		// copy pixels
-		for(uint32_t i = 0; i < len; i++)
-			*dst++ = *last--;
-
-		// append transparent pixels
-		// this hides imprecise scaling
-		*dst++ = 0x00;
-		*dst++ = 0x00;
-		*dst++ = 0x00;
-
-		// get length
-		len += 5;
-	} else
-	{
-		// make generic "empty column"
-		*dst++ = 0x00;
-		len = 1;
-	}
-
-	return len;
-}
-
 static uint32_t stex_wall_texture_32(image_t *img, variant_list_t *wl)
 {
 	variant_info_t *vi = wl->variant + wl->now;
 	uint32_t offset = wl->stex_used;
 	uint32_t *src = (uint32_t*)img->data;
 	uint8_t *dst = stex_source + offset;
-	uint32_t is_masked = 0;
-	uint8_t data[256];
 
 	vi->sw.width = img->width;
 	vi->sw.stride = (img->width + 3) & ~3;
 	vi->sw.height = img->height;
 
-	for(uint32_t i = 0; i < img->width * img->height; i++)
-	{
-		if(!(src[i] & 0xFF000000))
-		{
-			is_masked = 1;
-			break;
-		}
-	}
-
-	if(!is_masked)
-	{
-		if(check_wall_resolution(img->width, img->height))
-			return 1;
-
-		for(uint32_t x = 0; x < img->width; x++)
-		{
-			uint32_t *ss = src++;
-
-			for(uint32_t y = 0; y < img->height; y++)
-				*dst++ = stex_read_color(&ss, img->width);
-
-			vi->sw.offset[x] = offset;
-			vi->sw.length[x] = img->height;
-
-			offset += img->height;
-		}
-
-		vi->sw.masked = 0;
-
-		return 0;
-	}
-
-	if(check_masked_resolution(img->width, img->height))
+	if(check_wall_resolution(img->width, img->height))
 		return 1;
 
 	for(uint32_t x = 0; x < img->width; x++)
 	{
 		uint32_t *ss = src++;
-		uint32_t len;
 
 		for(uint32_t y = 0; y < img->height; y++)
-			data[y] = stex_read_color(&ss, img->width);
-
-		len = stex_wall_masked_row(dst, data, img->height);
-
-		dst += len;
+			*dst++ = stex_read_color(&ss, img->width);
 
 		vi->sw.offset[x] = offset;
-		vi->sw.length[x] = len;
+		vi->sw.length[x] = img->height;
 
-		offset += len;
+		offset += img->height;
 	}
-
-	vi->sw.masked = 1;
 
 	return 0;
 }
@@ -3084,74 +2980,29 @@ static uint32_t stex_wall_texture_8(image_t *img, variant_list_t *wl)
 	uint32_t offset = wl->stex_used;
 	uint8_t *src = img->data;
 	uint8_t *dst = stex_source + offset;
-	uint32_t is_masked = 0;
-	uint8_t data[256];
 
 	vi->sw.width = img->width;
 	vi->sw.stride = (img->width + 3) & ~3;
 	vi->sw.height = img->height;
 
-	for(uint32_t i = 0; i < img->width * img->height; i++)
-	{
-		if(!src[i])
-		{
-			is_masked = 1;
-			break;
-		}
-	}
-
-	if(!is_masked)
-	{
-		if(check_wall_resolution(img->width, img->height))
-			return 1;
-
-		for(uint32_t x = 0; x < img->width; x++)
-		{
-			uint8_t *ss = src++;
-
-			for(uint32_t y = 0; y < img->height; y++)
-			{
-				*dst++ = *ss;
-				ss += img->width;
-			}
-
-			vi->sw.offset[x] = offset;
-			vi->sw.length[x] = img->height;
-
-			offset += img->height;
-		}
-
-		vi->sw.masked = 0;
-
-		return 0;
-	}
-
-	if(check_masked_resolution(img->width, img->height))
+	if(check_wall_resolution(img->width, img->height))
 		return 1;
 
 	for(uint32_t x = 0; x < img->width; x++)
 	{
 		uint8_t *ss = src++;
-		uint32_t len;
 
 		for(uint32_t y = 0; y < img->height; y++)
 		{
-			uint8_t in = *ss;
-			data[y] = in;
+			*dst++ = *ss;
 			ss += img->width;
 		}
 
-		len = stex_wall_masked_row(dst, data, img->height);
-
-		dst += len;
-
 		vi->sw.offset[x] = offset;
-		vi->sw.length[x] = len;
+		vi->sw.length[x] = img->height;
 
-		offset += len;
+		offset += img->height;
 	}
-
-	vi->sw.masked = 1;
 
 	return 0;
 }
@@ -3385,7 +3236,6 @@ static uint32_t stex_export_cbor(kgcbor_gen_t *gen, variant_list_t *vl, uint32_t
 			{
 				cbor_var_wall[CBOR_VAR_WALL_WIDTH].u16 = &vi->sw.width;
 				cbor_var_wall[CBOR_VAR_WALL_HEIGHT].u16 = &vi->sw.height;
-				cbor_var_wall[CBOR_VAR_WALL_MASKED].u8 = &vi->sw.masked;
 				cbor_var_wall[CBOR_VAR_WALL_ANIMATION].s8 = vi->sw.anim;
 				if(edit_cbor_export(cbor_var_wall, NUM_CBOR_VAR_WALL, gen))
 					return 1;
@@ -3411,37 +3261,6 @@ static uint32_t stex_export_cbor(kgcbor_gen_t *gen, variant_list_t *vl, uint32_t
 
 static void stex_generate_wall(variant_list_t *wa, variant_info_t *va, uint8_t *data)
 {
-	if(va->sw.masked)
-	{
-		memset(data, 0, va->sw.width * va->sw.height);
-
-		for(uint32_t x = 0; x < va->sw.width; x++)
-		{
-			uint8_t *src = wa->data + va->sw.offset[x];
-			uint8_t *dst;
-			uint8_t offs, len;
-
-			len = *src++;
-			if(len)
-			{
-				offs = *src++;
-
-				dst = data + va->sw.height * va->sw.stride;
-				dst -= offs * va->sw.stride;
-
-				for(uint32_t i = 0; i < len; i++)
-				{
-					dst -= va->sw.stride;
-					*dst = *src++;
-				}
-			}
-
-			data++;
-		}
-
-		return;
-	}
-
 	for(uint32_t x = 0; x < va->sw.width; x++)
 	{
 		uint8_t *dst = data++;
@@ -3514,9 +3333,6 @@ static void stex_x16_export_wall(uint8_t *buffer, uint8_t *txt)
 			*((uint32_t*)ptr) = vi->hash;
 			ptr += sizeof(uint32_t);
 
-			if(vi->sw.masked)
-				*ptr = 0x40;
-			else
 			switch(vi->sw.height)
 			{
 				case 256:
@@ -4087,7 +3903,7 @@ static void vlist_var_del(variant_list_t *vl, ui_idx_t *idx)
 		vl->now--;
 
 	if(is_stex)
-		stex_remake_columns(vl);
+		stex_remake_columns(vl, vl == x16_sprite);
 
 	update_gfx_mode(0);
 }
@@ -4190,26 +4006,22 @@ static void gfx_load(const uint8_t *file)
 			{
 				variant_info_t *vi = vl->variant + j;
 
-				if(!vi->sw.masked)
+				for(uint32_t x = 0; x < vi->sw.width; x++)
 				{
-					for(uint32_t x = 0; x < vi->sw.width; x++)
+					if(vi->sw.offset[x] + vi->sw.height > STEX_PIXEL_LIMIT)
 					{
-						if(vi->sw.offset[x] + vi->sw.height > STEX_PIXEL_LIMIT)
-						{
-							// bad data; make empty
-							vi->sw.width = 0;
-							vi->sw.height = 0;
-							vi->sw.stride = 0;
-							break;
-						}
-						vi->sw.length[x] = vi->sw.height;
+						// bad data; make empty
+						vi->sw.width = 0;
+						vi->sw.height = 0;
+						vi->sw.stride = 0;
+						break;
 					}
-				} else
-					stex_parse_columns(vl, vi);
+					vi->sw.length[x] = vi->sw.height;
+				}
 			}
 
 			// remake all columns
-			if(stex_remake_columns(vl))
+			if(stex_remake_columns(vl, 0))
 				goto do_fail;
 		}
 
@@ -4222,7 +4034,7 @@ static void gfx_load(const uint8_t *file)
 				stex_parse_columns(vl, vl->variant + j);
 
 			// remake all columns
-			if(stex_remake_columns(vl))
+			if(stex_remake_columns(vl, 1))
 				goto do_fail;
 		}
 	} else
@@ -4544,7 +4356,7 @@ static const uint8_t *update_gfx_walls(ui_idx_t *idx)
 		if(data)
 		{
 			gltex_info_t *gi;
-			uint32_t scale;
+			uint32_t scale, bsize, bused;
 			uint8_t *ptr;
 			uint8_t pi = 0;
 
@@ -4576,8 +4388,12 @@ static const uint8_t *update_gfx_walls(ui_idx_t *idx)
 			ui_gfx_wall_texture.base.height = (uint32_t)va->sw.height * scale;
 			ui_gfx_wall_texture.shader = wall_display ? SHADER_FRAGMENT_PALETTE_LIGHT : SHADER_FRAGMENT_PALETTE;
 
+			scale = wa->swal_colt - wa->swal_colr;
+			bsize = scale * va->sw.height;
+			bused = (bsize + 2047) / 2048;
+			sprintf(data, "VERA blocks: %u\nColumns used: %u\nColumns free: %u", bused, scale, ((bused * 2048) - bsize) / va->sw.height);
+
 			ui_gfx_wall_variant_info.base.disabled = 0;
-			sprintf(data, "Bytes used: %u\nBytes total: %u\nBytes saved: %d", wa->stex_used, wa->stex_total, wa->stex_total - wa->stex_used);
 			glui_set_text(&ui_gfx_wall_variant_info, data, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
 
 			ui_gfx_wall_variant_name.base.disabled = 0;
@@ -6436,6 +6252,14 @@ static void fs_wall(uint8_t *file)
 	}
 
 	wl = x16_wall + gfx_idx[GFX_MODE_WALLS].now;
+
+	if(	wl->swal_height &&
+		img->height != wl->swal_height
+	){
+		edit_status_printf("All variants must have the same height!");
+		goto nivalid;
+	}
+
 	vi = wl->variant + wl->now;
 
 	backup = *vi;
@@ -6450,20 +6274,22 @@ static void fs_wall(uint8_t *file)
 			goto invalid;
 	}
 
-	if(stex_remake_columns(wl))
+	if(stex_remake_columns(wl, 0))
 	{
 		*vi = backup;
 		edit_status_printf("Too many used bytes!");
 	}
 
+	wl->swal_height = img->height;
 	free(img);
 
 	update_gfx_mode(0);
 	return;
 
 invalid:
-	free(img);
 	edit_status_printf("Invalid image resolution!");
+nivalid:
+	free(img);
 	return;
 }
 
@@ -6731,7 +6557,7 @@ static void fs_sprite(uint8_t *file)
 		*vi = backup;
 		edit_status_printf("Bad sprite columns!");
 	} else
-	if(stex_remake_columns(sp))
+	if(stex_remake_columns(sp, 1))
 	{
 		*vi = backup;
 		edit_status_printf("Too many used bytes!");
@@ -8491,7 +8317,7 @@ void x16g_generate()
 			sprintf(et->name, "%s\n%s", wa->name, wv->name);
 			et->nhash = wa->hash;
 			et->vhash = wv->hash;
-			et->type = wv->sw.masked ? X16G_TEX_TYPE_WALL_MASKED : X16G_TEX_TYPE_WALL;
+			et->type = X16G_TEX_TYPE_WALL;
 			et->width = wv->sw.width;
 			et->height = wv->sw.height;
 			et->gltex = x16_editor_gt[gi];
@@ -8974,7 +8800,7 @@ void x16g_update_map()
 
 			line->texture[0].idx = find_wall_texture(line->texture[0].name);
 			line->texture[1].idx = find_wall_texture(line->texture[1].name);
-			line->texture[2].idx = find_mask_texture(line->texture[2].name);
+			line->texture[2].idx = 0;//find_mask_texture(line->texture[2].name);
 		}
 
 		ont = sec->objects.top;

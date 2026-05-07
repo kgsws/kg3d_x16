@@ -959,22 +959,16 @@ static void texture_select_fill()
 		editor_texture_t *et = editor_texture + idx;
 		glui_image_t *img;
 		glui_text_t *txt;
-		uint32_t shader;
+		uint32_t shader = SHADER_FRAGMENT_PALETTE;
 
 		switch(et->type)
 		{
-			case X16G_TEX_TYPE_WALL_MASKED:
-				if(texsel_mode <= 1)
-					continue;
-				shader = SHADER_FRAGMENT_PALETTE;
-			break;
 			case X16G_TEX_TYPE_WALL:
 				if(texsel_mode)
 					continue;
 			case X16G_TEX_TYPE_PLANE:
 				if(texsel_mode > 1)
 					continue;
-				shader = SHADER_FRAGMENT_PALETTE;
 			break;
 			default:
 				shader = SHADER_FRAGMENT_RGB;
@@ -4017,9 +4011,6 @@ static void set_hl_texture(glui_image_t *img, kge_x16_tex_t *tex)
 
 	switch(et->type)
 	{
-		case X16G_TEX_TYPE_WALL_MASKED:
-			shader = SHADER_FRAGMENT_PALETTE;
-		break;
 		case X16G_TEX_TYPE_WALL:
 		case X16G_TEX_TYPE_PLANE:
 			shader = SHADER_FRAGMENT_PALETTE;

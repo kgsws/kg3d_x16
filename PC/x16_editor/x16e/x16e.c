@@ -345,7 +345,7 @@ static int32_t mark_texture(uint32_t idx, uint32_t light)
 
 	marked_lights |= 1 << light;
 
-	if(et->type == X16G_TEX_TYPE_WALL || et->type == X16G_TEX_TYPE_WALL_MASKED)
+	if(et->type == X16G_TEX_TYPE_WALL)
 	{
 		if(add_texture(marked_walls, &count_wtex, et->nhash, light))
 			return -1;
