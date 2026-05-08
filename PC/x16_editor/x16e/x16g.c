@@ -431,6 +431,12 @@ typedef struct
 
 typedef struct
 {
+	uint8_t r0[1024];
+	uint8_t r1[2048];
+} vram_ranges_t;
+
+typedef struct
+{
 	uint8_t map_base;
 	uint8_t num_variants;
 	uint8_t data[64 * 64];
@@ -586,19 +592,9 @@ static const uint8_t *stbar_digits[] =
 	"H4 / A4"
 };
 
-static const uint8_t vram_ranges[] =
+static vram_ranges_t vram_ranges =
 {
 #include "ranges.h"
-};
-
-static const uint8_t tm_128x32[] =
-{
-#include "tm_128x32.h"
-};
-
-static const uint8_t tm_256x16[] =
-{
-#include "tm_256x16.h"
 };
 
 static const uint8_t spr_rot_flip[] = {4, 7, 6, 5, 0, 3, 2, 1};
@@ -1365,8 +1361,7 @@ static edit_cbor_obj_t cbor_hud[] =
 static uint32_t check_plane_resolution(uint32_t width, uint32_t height)
 {
 	return	!(width == 64 && height == 64) &&
-		!(width == 32 && height == 128) &&
-		!(width == 16 && height == 256);
+		!(width == 32 && height == 128);
 }
 
 static uint32_t check_wall_resolution(uint32_t width, uint32_t height)
@@ -2604,7 +2599,7 @@ static void recalc_lights()
 //
 // plane export
 
-static void place_plane_tile(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
+static void place_vera_tile(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
 {
 	for(uint32_t y = 0; y < 8; y++)
 	{
@@ -2618,18 +2613,32 @@ static void place_plane_tile(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t t
 	}
 }
 
-static void make_plane_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
+static void make_vera_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
 {
 	for(uint32_t y = 0; y < ty; y += 8)
 	{
 		uint8_t *ss = src;
 		for(uint32_t x = 0; x < tx; x += 8)
 		{
-			place_plane_tile(dst, ss, tx, ty);
+			place_vera_tile(dst, ss, tx, ty);
 			dst += 8 * 8;
 			ss += ty * 8;
 		}
 		src += 8;
+	}
+}
+
+static void place_vera_tiles(uint8_t *dst, uint8_t *src)
+{
+	for(uint32_t i = 0; i < 256; i++)
+	{
+		uint32_t ii = i & 63;
+		uint8_t in = *src++;
+
+		if(ii >= 8)
+			*dst = in;
+
+		dst++;
 	}
 }
 
@@ -3309,7 +3318,8 @@ static void stex_x16_export_wall(uint8_t *buffer, uint8_t *txt)
 	for(uint32_t i = 0; i < count; i++, vl++)
 	{
 		uint8_t *ptr = buffer;
-		uint16_t tmp;
+		uint8_t *ptl;
+		uint32_t cols, bsize, bused;
 
 		if(!vl->max)
 			continue;
@@ -3317,58 +3327,68 @@ static void stex_x16_export_wall(uint8_t *buffer, uint8_t *txt)
 		if(!vl->stex_used)
 			continue;
 
-		*ptr++ = vl->stex_used >> 8;
+		if(!vl->swal_height)
+			continue;
+
+		// calculate 2k chunks
+		cols = vl->swal_colt - vl->swal_colr;
+		bsize = cols * vl->swal_height;
+		bused = (bsize + 2047) / 2048;
+		cols = (bused * 256) / vl->swal_height;
+
+		// header
+
+		*ptr++ = bused;
 		*ptr++ = vl->max;
 
-		memcpy(ptr, vl->data, vl->stex_used * 2);
-		ptr += vl->stex_used * 2;
+		switch(vl->swal_height)
+		{
+			case 256:
+				*ptr = 0b11111010;
+			break;
+			case 128:
+				*ptr = 0b11110110;
+			break;
+			case 64:
+				*ptr = 0b11111001;
+			break;
+			default:
+				*ptr = 0; // invalid
+			break;
+		}
+		ptr++;
+
+		// make tiles
+
+		ptl = vl->data;
+		for(uint32_t i = 0; i < cols; i++)
+		{
+			make_vera_tiles(ptr, ptl, vl->swal_height, 8);
+			ptr += vl->swal_height * 8;
+			ptl += vl->swal_height * 8;
+		}
+
+		// export variants
 
 		for(uint32_t j = 0; j < vl->max; j++)
 		{
 			variant_info_t *vi = vl->variant + j;
-			uint32_t width = vi->sw.width;
-			uint8_t *ptl;
-			uint16_t offset;
 
-			*((uint32_t*)ptr) = vi->hash;
-			ptr += sizeof(uint32_t);
-
-			switch(vi->sw.height)
-			{
-				case 256:
-					*ptr = 0;
-				break;
-				case 128:
-					*ptr = 2;
-				break;
-				case 64:
-					*ptr = 4;
-				break;
-				case 32:
-					*ptr = 6;
-				break;
-				case 16:
-					*ptr = 8;
-				break;
-				case 8:
-					*ptr = 10;
-				break;
-				default:
-					*ptr = 12; // invalid
-				break;
-			}
-			ptr++;
+			// animation
 
 			*ptr++ = vi->sw.anim[0];
 			*ptr++ = vi->sw.anim[1] + ANIM_TIME_EXPORT_OFFSET;
 			*ptr++ = vi->sw.anim[2];
 
-			ptl = ptr;
-			ptr += 128;
+			// columns
 
-			for(uint32_t x = 0; x < 128; x++)
+			ptl = ptr;
+			ptr += 256;
+
+			for(uint32_t x = 0; x < 256; x++)
 			{
 				uint16_t offset = vi->sw.offset[x & (vi->sw.width-1)];
+				offset /= vl->swal_height;
 				*ptl++ = offset;
 				*ptr++ = offset >> 8;
 			}
@@ -4023,6 +4043,8 @@ static void gfx_load(const uint8_t *file)
 			// remake all columns
 			if(stex_remake_columns(vl, 0))
 				goto do_fail;
+
+			vl->swal_height = vl->variant[0].sw.height;
 		}
 
 		for(uint32_t i = 0; i < gfx_idx[GFX_MODE_SPRITES].max; i++)
@@ -8427,26 +8449,35 @@ void x16g_generate()
 void x16g_export()
 {
 	int32_t fd;
-	uint8_t txt[64];
-
-	union
-	{
-		uint8_t raw[STEX_PIXEL_LIMIT * 2 + sizeof(uint32_t) * 256];
-		uint8_t sky[512 * 128];
-		export_plane_t ep;
-	} stuff;
+	char txt[64];
 
 	edit_busy_window("Exporting graphics ...");
 
-	/// TABLES2.BIN (with HUD)
+	/// TABLES2.BIN
+	// HUD + FONT + TILES + TILEMAPS
 
 	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES2.BIN", O_WRONLY | O_TRUNC | O_CREAT, 0644);
 	if(fd >= 0)
 	{
 		uint32_t i;
 		uint8_t ttmp[256];
+		uint8_t ttex[256];
 		hud_export_t *hud = (hud_export_t*)(ttmp + 128);
 
+		// generate sys textures
+		for(uint32_t i = 0; i < 256; i++)
+			ttex[i] = x16g_palette_match(((uint32_t*)x16e_tex_mem_data)[i], 0);
+		make_vera_tiles(ttmp, ttex, 16, 16);
+		place_vera_tiles(vram_ranges.r1, ttmp);
+		for(uint32_t i = 0; i < 0x40; i++)
+			vram_ranges.r1[i] = i;
+
+		for(uint32_t i = 0; i < 256; i++)
+			ttex[i] = x16g_palette_match(((uint32_t*)x16e_tex_bad_data)[i], 0);
+		make_vera_tiles(ttmp, ttex, 16, 16);
+		place_vera_tiles(vram_ranges.r1 + 1024, ttmp);
+
+		// clear
 		memset(ttmp + FONT_CHAR_COUNT, 0, sizeof(ttmp) - FONT_CHAR_COUNT);
 
 		// font space + HUD info
@@ -8505,34 +8536,23 @@ void x16g_export()
 		for(i = 0; i < NUMS_CHAR_COUNT; i++)
 			write(fd, nums_char[i].data, 64);
 
-		// font, 32 characters
-		for(i = 0; i < 32; i++)
+		// font, first 48 characters
+		for(i = 1; i <= 48; i++)
 			write(fd, font_char[i].data, 32);
 
-		// 256x16 / 64x64 tile map
-		write(fd, tm_256x16, sizeof(tm_256x16));
+		// 128x32 tilemap
+		write(fd, vram_ranges.r0, sizeof(vram_ranges.r0));
 
 		// font, next 32 characters
-		for( ; i < 64; i++)
+		for( ; i <= 80; i++)
 			write(fd, font_char[i].data, 32);
 
-		// 128x32 tile map
-		write(fd, tm_128x32, sizeof(tm_128x32));
+		// 64x64 / 128x16! / tiles
+		write(fd, vram_ranges.r1, sizeof(vram_ranges.r1));
 
 		// font, last 32 characters
-		for( ; i < 96; i++)
+		for( ; i <= 94; i++)
 			write(fd, font_char[i].data, 32);
-
-		// ranges
-		write(fd, vram_ranges, sizeof(vram_ranges));
-
-		// invalid texture
-		for(i = 0; i < 256; i++)
-			ttmp[i] = x16g_palette_match(((uint32_t*)x16e_tex_bad_data)[i], 0);
-
-		make_plane_tiles(stuff.raw, ttmp, 16, 16);
-
-		write(fd, stuff.raw, 256);
 
 		close(fd);
 	}
@@ -8546,7 +8566,7 @@ void x16g_export()
 
 		for(uint32_t i = 0; i < MAX_X16_PALETTE; i++)
 		{
-			uint16_t *dst = (uint16_t*)stuff.raw;
+			uint16_t *dst = (uint16_t*)edit_cbor_buffer;
 
 			*dst++ = 0;
 			src++;
@@ -8563,7 +8583,7 @@ void x16g_export()
 				*dst++ = color;
 			}
 
-			write(fd, stuff.raw, 256 * 2);
+			write(fd, edit_cbor_buffer, 256 * 2);
 		}
 
 		close(fd);
@@ -8588,149 +8608,52 @@ void x16g_export()
 
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_PLANES].max; i++)
 	{
+		uint8_t *dst = edit_cbor_buffer;
 		variant_list_t *pl = x16_plane + i;
-		uint32_t size;
+		uint32_t base;
 
+		// data
 		switch(pl->height)
 		{
-			case 256:
-				stuff.ep.map_base = 0b11101010;
-				make_plane_tiles(stuff.ep.data, pl->data, 256, 16);
-			break;
 			case 128:
-				stuff.ep.map_base = 0b11101110;
-				make_plane_tiles(stuff.ep.data, pl->data, 128, 32);
+				base = 0b11101110;
+				make_vera_tiles(edit_cbor_buffer, pl->data, 128, 32);
 			break;
 			case 64:
-				stuff.ep.map_base = 0b11101001;
-				make_plane_tiles(stuff.ep.data, pl->data, 64, 64);
+				base = 0b11101001;
+				make_vera_tiles(edit_cbor_buffer, pl->data, 64, 64);
 			break;
 			default:
 			continue;
 		}
 
-		// 8bpp
-		size = 2 + 64 * 64 + 4;
-		stuff.ep.num_variants = 0xF0;
-		memcpy(stuff.ep.effect, pl->variant[0].pl.effect, 4);
-		stuff.ep.effect[1] += ANIM_TIME_EXPORT_OFFSET;
+		// info
+		*dst++ = 0;
+		*dst++ = base;
+
+		// effect
+		memcpy(dst, pl->variant[0].pl.effect, 4);
+		dst[1] += ANIM_TIME_EXPORT_OFFSET;
+		dst += 4;
 
 		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.PLN", pl->hash);
-		edit_save_file(txt, &stuff.ep, size);
+		edit_save_file(txt, edit_cbor_buffer, (void*)dst - edit_cbor_buffer);
 	}
 
 	/// walls
 
-	stex_x16_export_wall(stuff.raw, txt);
+	stex_x16_export_wall(edit_cbor_buffer, txt);
 
 	/// sprites
 
-	stex_x16_export_sprite(stuff.raw, txt);
+	stex_x16_export_sprite(edit_cbor_buffer, txt);
 
 	/// weapons
 
-	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_WEAPONS].max; i++)
-	{
-		variant_list_t *ws = x16_weapon + i;
-		uint8_t *ptr = stuff.raw;
-		uint32_t count, bits;
-		int32_t inv = -1;
-
-		count = swpn_count_valid(ws, &bits, &inv);
-
-		if(inv >= 0)
-			edit_status_printf("Weapon '%s' frame %c has too many parts!", ws->name, 'A' + inv);
-
-		if(!count)
-			continue;
-
-		*ptr++ = ws->stex_used >> 8;
-		*ptr++ = count;
-
-		memcpy(ptr, ws->data, ws->stex_used);
-		ptr += ws->stex_used;
-
-		for(uint32_t i = 0; i < ws->max; i++)
-		{
-			variant_info_t *va = ws->variant + i;
-			uint32_t valid = 0;
-			uint32_t nsz, tsz;
-			uint8_t *pcnt;
-
-			if(!(bits & (1 << i)))
-				continue;
-
-			nsz = va->ws.dbright >> 8;
-			tsz = va->ws.dsize >> 8;
-
-			pcnt = ptr;
-			*ptr++ = 0; // will be filled later
-
-			*ptr++ = va->ws.dstart >> 8;
-			*ptr++ = va->wpn.frm;
-			*ptr++ = nsz;
-			*ptr++ = tsz - nsz;
-
-			for(int32_t j = UI_WPN_PARTS-1; j >= 0; j--)
-			{
-				wpnspr_part_t *part = va->ws.part + j;
-				uint32_t flags = 0x0C;
-
-				if(!part->width)
-					continue;
-
-				switch(part->width)
-				{
-					case 8:
-						flags |= 0 << 4;
-					break;
-					case 16:
-						flags |= 1 << 4;
-					break;
-					case 32:
-						flags |= 2 << 4;
-					break;
-					default:
-						flags |= 3 << 4;
-					break;
-				}
-
-				switch(part->height)
-				{
-					case 8:
-						flags |= 0 << 6;
-					break;
-					case 16:
-						flags |= 1 << 6;
-					break;
-					case 32:
-						flags |= 2 << 6;
-					break;
-					default:
-						flags |= 3 << 6;
-					break;
-				}
-
-				flags |= part->flags & 3; // XY mirror
-
-				*ptr++ = part->offset / 32;
-				*ptr++ = 48 + part->x;
-				*ptr++ = part->y;
-				*ptr++ = flags;
-
-				valid++;
-			}
-
-			*pcnt = valid;
-		}
-
-		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.WPS", ws->hash);
-		edit_save_file(txt, stuff.raw, ptr - stuff.raw);
-	}
 
 	/// skies
 
-	memset(stuff.sky, 0, X16_SKY_DATA_RAW);
+	memset(edit_cbor_buffer, 0, X16_SKY_DATA_RAW);
 
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_SKIES].max; i++)
 	{
@@ -8740,9 +8663,9 @@ void x16g_export()
 		for(uint32_t x = 0; x < X16_SKY_WIDTH / 2; x++)
 		{
 			uint8_t *src0 = sky->data + (X16_SKY_WIDTH / 2 - x - 1) + X16_SKY_HEIGHT * X16_SKY_WIDTH;
-			uint8_t *dst0 = stuff.sky + x * X16_SKY_HEIGHT_RAW * 2;
+			uint8_t *dst0 = edit_cbor_buffer + x * X16_SKY_HEIGHT_RAW * 2;
 			uint8_t *src1 = src0 + (X16_SKY_WIDTH / 2);
-			uint8_t *dst1 = stuff.sky + x * X16_SKY_HEIGHT_RAW * 2 + X16_SKY_HEIGHT_RAW;
+			uint8_t *dst1 = edit_cbor_buffer + x * X16_SKY_HEIGHT_RAW * 2 + X16_SKY_HEIGHT_RAW;
 
 			for(uint32_t y = 0; y < X16_SKY_HEIGHT; y++)
 			{
@@ -8757,10 +8680,11 @@ void x16g_export()
 		}
 
 		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.SKY", sky->hash);
-		edit_save_file(txt, stuff.sky, X16_SKY_DATA_RAW);
+		edit_save_file(txt, edit_cbor_buffer, X16_SKY_DATA_RAW);
 	}
 
-	// done
+	/// done
+
 	edit_status_printf("GFX exported.");
 }
 

@@ -19,6 +19,8 @@ x16e/x16tex.h:
 	echo -n "const " >> x16e/x16tex.h
 	xxd -i x16e/tex_unk.data >> x16e/x16tex.h
 	echo -n "const " >> x16e/x16tex.h
+	xxd -i x16e/tex_mem.data >> x16e/x16tex.h
+	echo -n "const " >> x16e/x16tex.h
 	xxd -i x16e/tex_bad.data >> x16e/x16tex.h
 	echo -n "const " >> x16e/x16tex.h
 	xxd -i x16e/spr_none.data >> x16e/x16tex.h
