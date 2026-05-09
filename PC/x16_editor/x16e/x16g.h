@@ -2,14 +2,14 @@
 #define MAX_EDITOR_TEXTURES	2048
 
 #define MAX_X16_PALETTE	16	// 4 palettes with 4 damage levels
-#define MAX_X16_LIGHTS	32	// forced by LIGHTMAP_IDX macro, limited by exporter
-#define MAX_X16_PLANES	256
-#define MAX_X16_WALLS	256
+#define MAX_X16_LIGHTS	32	// forced to 32 by LIGHTMAP_IDX macro, limited by exporter to 32
+#define MAX_X16_PLANES	256	// engine limit (export)
+#define MAX_X16_WALLS	256	// engine limit (export, with one variant per texture)
 #define MAX_X16_THGSPR	112	// engine limit; (128 total, shared with weapons)
 #define MAX_X16_WPNSPR	16	// engine limit; (128 total, shared with things)
 #define MAX_X16_SKIES	32
 
-#define MAX_X16_VARIANTS	64	// limited to < 128 by sprite links
+#define MAX_X16_VARIANTS	32	// limited to < 128 by sprite links
 #define MAX_X16_WPNPARTS	15	// engine limit
 #define MAX_X16_WPNGROUP	(LEN_X16_VARIANT_NAME - 2)
 

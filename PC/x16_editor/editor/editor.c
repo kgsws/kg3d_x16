@@ -872,10 +872,10 @@ static const edit_cbor_obj_t cbor_linetex[] =
 	},
 	[CBOR_LINETEX_MIRROR_Y] =
 	{
-		.name = "mirror y",
-		.nlen = 8,
+		.name = "rotate",
+		.nlen = 6,
 		.type = EDIT_CBOR_TYPE_FLAG8,
-		.extra = TEXFLAG_MIRROR_Y_SWAP_XY,
+		.extra = TEXFLAG_SWAP_XY,
 		.u8 = &load_linetex.flags,
 	},
 	[CBOR_LINETEX_PEG_Y] =
@@ -4047,8 +4047,8 @@ static void make_wall_info(glui_text_t *dest, uint8_t *temp, const uint8_t *name
 	if(tex->flags & TEXFLAG_MIRROR_X)
 		*dst++ = 'X';
 
-	if(tex->flags & TEXFLAG_MIRROR_Y_SWAP_XY)
-		*dst++ = 'Y';
+	if(tex->flags & TEXFLAG_SWAP_XY)
+		*dst++ = 'R';
 
 	if(dst != mirror)
 		*dst = 0;

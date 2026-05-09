@@ -437,11 +437,10 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 	} else
 	{
 		projection.ox = x16tex->ox;
-		if(x16tex->flags & TEXFLAG_MIRROR_Y_SWAP_XY)
-		{
-			tex_y_mirror = et->type == X16G_TEX_TYPE_WALL;
-			tex_swap_xy = et->type != X16G_TEX_TYPE_WALL;
-		}
+		if(	x16tex->flags & TEXFLAG_SWAP_XY &&
+			et->type == X16G_TEX_TYPE_PLANE
+		)
+			tex_swap_xy = 1;
 	}
 
 	tex_y_start = x16tex->oy;

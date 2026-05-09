@@ -386,7 +386,7 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 	glBindTexture(GL_TEXTURE_2D, et->gltex);
 	shader_update();
 
-	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && et->type == X16G_TEX_TYPE_PLANE)
+	if(flags & TEXFLAG_SWAP_XY && et->type == X16G_TEX_TYPE_PLANE)
 	{
 		w = et->height;
 		h = et->width;
@@ -405,13 +405,13 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 		tb = (float)oy / (float)h;
 		tt = tb - (top - bot) / (float)h * 0.5f;
 	}
-
+#if 0
 	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && et->type == X16G_TEX_TYPE_WALL)
 	{
 		tb = -tb;
 		tt = -tt;
 	}
-
+#endif
 	if((texflg >> 8) & WALLFLAG_PEG_X)
 	{
 		if(flags & TEXFLAG_MIRROR_X)
@@ -436,7 +436,7 @@ static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float 
 		}
 	}
 
-	if(flags & TEXFLAG_MIRROR_Y_SWAP_XY && et->type == X16G_TEX_TYPE_PLANE)
+	if(flags & TEXFLAG_SWAP_XY && et->type == X16G_TEX_TYPE_PLANE)
 	{
 		gl_vertex_buf[0].t = tr;
 		gl_vertex_buf[0].s = tb;

@@ -314,7 +314,7 @@ input_t input_list[INPUT__COUNT] =
 		.key = SDLK_KP_1,
 		.type = INTYPE_KEY
 	},
-	[INPUT_E3D_WALL_MIRROR_Y] =
+	[INPUT_E3D_WALL_SWAP_XY] =
 	{
 		.key = SDLK_KP_1,
 		.type = INTYPE_KEY,

@@ -13,9 +13,11 @@
 // texture flags (walls)
 #define TEXFLAG_PEG_Y	1	// forced by X16
 #define TEXFLAG_MIRROR_X	2
-#define TEXFLAG_MIRROR_Y_SWAP_XY	4
+#define TEXFLAG_SWAP_XY	4	// only for planes on walls
+#define TEXFLAG_USE_PLANE_TEXTURE	8
 
-#define TEXFLAG_PEG_MID_BACK	TEXFLAG_MIRROR_Y_SWAP_XY
+// texture flags (masked)
+#define TEXFLAG_PEG_MID_BACK	TEXFLAG_SWAP_XY
 
 // wall flags
 #define WALLFLAG_PEG_X	1

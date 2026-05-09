@@ -24,7 +24,7 @@
 #define EDIT_THING_CIRCLE_VTX	31 // odd numbers only
 
 // TODO: move to config
-#define EDIT_EXPORT_BUFFER_SIZE	(16 * 1024 * 1024)
+#define EDIT_EXPORT_BUFFER_SIZE	(64 * 1024 * 1024)	// this is used for CBOR and RAW exporting
 #define EDIT_MAX_SECTOR_LINES	32
 #define EDIT_MAX_SOBJ_LINES	8
 #define EDIT_MAX_FILE_PATH	256

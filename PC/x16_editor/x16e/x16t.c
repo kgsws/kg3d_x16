@@ -3662,7 +3662,7 @@ void x16t_export()
 				thing_data[8192 + y + x * 256 + i * 2048] = state_data[i * 256 + y].raw[x];
 
 	// save
-	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES4.BIN", thing_data, sizeof(thing_data));
+	edit_save_file(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES3.BIN", thing_data, sizeof(thing_data));
 
 	// done
 	edit_status_printf("Things exported, %u states.", state_idx);

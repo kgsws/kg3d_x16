@@ -10,8 +10,10 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	27
+#define MAP_VERSION	28
 #define MAP_MAGIC	0x36315870614D676B
+
+#define MAX_LIGHT_COUNT	8
 
 #define WALL_BANK_COUNT	16
 #define WALL_BANK_SIZE	4096
@@ -19,8 +21,6 @@
 
 #define MAX_EXTRA_STORAGE	255	// engine limit is 255
 
-#define MAX_LIGHTS	8	// engine limit is 8
-#define MAX_TEXTURES	128	// engine limit is 128
 #define MAX_THINGS	200	// engine limit is 255; but there should be some space for players, projectiles and so on
 #define MAX_PLAYER_STARTS	256
 
@@ -119,10 +119,9 @@ typedef struct
 	uint8_t version;
 	uint8_t flags;
 	//
-	uint8_t count_lights;
-	uint8_t count_ptex;
+	uint8_t count_light;
 	uint8_t count_wtex;
-	uint8_t count_textures;
+	uint8_t count_ptex;
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
@@ -130,22 +129,10 @@ typedef struct
 	uint8_t count_extra_storage;
 	uint8_t count_things;
 	//
-	uint8_t unused[8];
+	uint8_t unused[9];
 	//
 	uint32_t hash_sky;
 } map_head_t;
-
-typedef struct
-{
-	uint32_t hash;
-	uint8_t lights;
-} __attribute__((packed)) marked_texture_t;
-
-typedef struct
-{
-	uint32_t nhash;
-	uint32_t vhash;
-} marked_variant_t;
 
 typedef struct
 {
@@ -183,16 +170,16 @@ static uint32_t validcount;
 
 //
 
-static uint32_t marked_lights;
-
 static uint32_t count_ptex;
-static marked_texture_t marked_planes[MAX_TEXTURES];
+static uint32_t slot_ptex[256];
 
 static uint32_t count_wtex;
-static marked_texture_t marked_walls[MAX_TEXTURES];
+static uint32_t slot_wtex[256];
 
-static uint32_t count_textures;
-static marked_variant_t marked_variant[MAX_TEXTURES];
+static uint32_t bitmap_light;
+static uint32_t count_light;
+static uint32_t light_export[MAX_X16_LIGHTS];
+static uint8_t sector_light[255];
 
 static uint32_t count_starts[3];
 
@@ -284,111 +271,56 @@ static uint8_t convert_pitch(uint16_t pitch)
 	return pitch;
 }
 
-static void fix_marked_lights(marked_texture_t *mt, uint32_t mc)
-{
-	for(uint32_t i = 0; i < mc; i++)
-	{
-		uint32_t lights = 0;
-		uint32_t li = 1;
-
-		for(uint32_t j = 0; j < x16_num_lights; j++)
-		{
-			if(!(marked_lights & (1 << j)))
-				continue;
-
-			if(mt->lights & (1 << j))
-				lights |= li;
-
-			li <<= 1;
-		}
-
-		mt->lights = lights;
-		mt++;
-	}
-}
-
-static uint32_t add_texture(marked_texture_t *mt, uint32_t *mc, uint32_t hash, uint32_t light)
-{
-	uint32_t i;
-
-	for(i = 0; i < *mc; i++, mt++)
-	{
-		if(mt->hash == hash)
-		{
-			mt->lights |= 1 << light;
-			return 0;
-		}
-	}
-
-	if(i >= 256)
-		return 1;
-
-	*mc = i + 1;
-
-	mt->hash = hash;
-	mt->lights |= 1 << light;
-
-	return 0;
-}
-
-static int32_t mark_texture(uint32_t idx, uint32_t light)
+static int32_t add_texture(uint32_t idx, uint32_t light)
 {
 	editor_texture_t *et = editor_texture + idx;
+	uint32_t hash, type, limit;
+	uint32_t *cnt, *lst;
 
 	if(idx == 1)
 		// sky
-		return 0xFF;
+		return 0x1FF;
 
 	if(!idx)
 		// none
-		return MAX_TEXTURES;
+		return 0x1FE;
 
-	marked_lights |= 1 << light;
+	// add light
+	bitmap_light |= 1 << light;
 
+	// type detect
 	if(et->type == X16G_TEX_TYPE_WALL)
 	{
-		if(add_texture(marked_walls, &count_wtex, et->nhash, light))
-			return -1;
+		hash = et->nhash ^ et->vhash;
+		cnt = &count_wtex;
+		lst = slot_wtex;
+		type = 0;
+		limit = 0x100;
 	} else
 	{
-		if(add_texture(marked_planes, &count_ptex, et->nhash, light))
-			return -1;
+		hash = et->nhash;
+		cnt = &count_ptex;
+		lst = slot_ptex;
+		type = 0x100;
+		limit = 0x0FE;
 	}
 
-	for(uint32_t i = 0; i < count_textures; i++)
+	// check for reuse
+	for(uint32_t i = 0; i < *cnt; i++)
 	{
-		if(marked_variant[i].nhash == et->nhash)
-		{
-			if(et->type == X16G_TEX_TYPE_PLANE)
-				return i;
-			if(marked_variant[i].vhash == et->vhash)
-				return i;
-		}
+		if(lst[i] == hash)
+			return type | i;
 	}
 
-	if(count_textures >= MAX_TEXTURES)
+	if(*cnt >= limit)
 		return -1;
 
-	marked_variant[count_textures].nhash = et->nhash;
-	marked_variant[count_textures].vhash = et->vhash;
+	lst[*cnt] = hash;
 
-	return count_textures++;
-}
+	type |= *cnt;
+	*cnt = *cnt + 1;
 
-static uint32_t find_light_id(uint32_t idx)
-{
-	uint32_t ret = 0;
-
-	for(uint32_t i = 0; i < x16_num_lights; i++)
-	{
-		if(!(marked_lights & (1 << i)))
-			continue;
-		if(idx == i)
-			return ret;
-		ret++;
-	}
-
-	return 0;
+	return type;
 }
 
 static void place_struct(uint8_t *base, uint32_t idx, void *src, uint32_t ss)
@@ -447,10 +379,10 @@ static uint32_t fill_base_wall(kge_sector_t *sec, kge_line_t *line, wall_t *wall
 	wall->vtx.y = v0->y;
 
 	if(line->info.flags & WALLFLAG_SKIP)
-		ret = mark_texture(0, 0);
+		ret = add_texture(0, 0);
 	else
 	{
-		ret = mark_texture(line->texture[0].idx, sec->light.idx);
+		ret = add_texture(line->texture[0].idx, sec->light.idx);
 		if(ret < 0)
 		{
 			error_texture_count();
@@ -615,9 +547,9 @@ void x16_export_map()
 
 	validcount++;
 
-	marked_lights = 1;
+	bitmap_light = 1;
+	count_light = 0;
 
-	count_textures = 0;
 	count_ptex = 0;
 	count_wtex = 0;
 
@@ -625,10 +557,8 @@ void x16_export_map()
 	count_starts[1] = 0;
 	count_starts[2] = 0;
 
-	memset(marked_planes, 0, sizeof(marked_planes));
-	memset(marked_walls, 0, sizeof(marked_walls));
-
 	memset(map_sectors, 0, sizeof(map_sectors));
+	memset(sector_light, 0, sizeof(sector_light));
 
 	memset(wall_block, 0, sizeof(wall_block));
 	wall_block[0].used = 1; // very fist wall is used for hacks
@@ -752,7 +682,7 @@ void x16_export_map()
 						ol->vc.x16port = validcount;
 				}
 
-				ret = mark_texture(line->texture[1].idx, sec->light.idx);
+				ret = add_texture(line->texture[1].idx, sec->light.idx);
 				if(ret < 0)
 				{
 					error_texture_count();
@@ -768,11 +698,11 @@ void x16_export_map()
 
 				wall->tflags = line->texture[1].flags << 4;
 
-				if(line->texture[2].idx)
+/*				if(line->texture[2].idx)
 				{
 					editor_texture_t *et = editor_texture + line->texture[2].idx;
 
-					ret = mark_texture(line->texture[2].idx, sec->light.idx);
+					ret = add_texture(line->texture[2].idx, sec->light.idx);
 					if(ret < 0)
 					{
 						error_texture_count();
@@ -794,7 +724,7 @@ void x16_export_map()
 					wall->mid.texture = ret;
 					wall->mid.ox = line->texture[2].ox;
 					wall->mid.oy = line->texture[2].oy;
-				}
+				}*/
 			} else
 			{
 				wfrst = i;
@@ -805,7 +735,7 @@ void x16_export_map()
 					{
 						aflags = WALL_MARK_EXTENDED;
 
-						ret = mark_texture(line->texture[1].idx, sec->light.idx);
+						ret = add_texture(line->texture[1].idx, sec->light.idx);
 						if(ret < 0)
 						{
 							error_texture_count();
@@ -820,12 +750,12 @@ void x16_export_map()
 
 						wall->tflags |= line->texture[1].flags << 4;
 					}
-
+/*
 					if(line->texture[2].idx)
 					{
 						aflags = WALL_MARK_EXTENDED;
 
-						ret = mark_texture(line->texture[2].idx, sec->light.idx);
+						ret = add_texture(line->texture[2].idx, sec->light.idx);
 						if(ret < 0)
 						{
 							error_texture_count();
@@ -838,7 +768,7 @@ void x16_export_map()
 
 						if(line->texture[2].flags & TEXFLAG_MIRROR_X)
 							wall->tflags |= 0b00001000;
-					}
+					}*/
 				}
 			}
 
@@ -1044,7 +974,7 @@ void x16_export_map()
 		}
 
 		// export sector
-		ret = mark_texture(sec->plane[PLANE_BOT].texture.idx, sec->light.idx);
+		ret = add_texture(sec->plane[PLANE_BOT].texture.idx, sec->light.idx);
 		if(ret < 0)
 		{
 			error_texture_count();
@@ -1052,7 +982,7 @@ void x16_export_map()
 		}
 		map_sector->floor.texture = ret;
 
-		ret = mark_texture(sec->plane[PLANE_TOP].texture.idx, sec->light.idx);
+		ret = add_texture(sec->plane[PLANE_TOP].texture.idx, sec->light.idx);
 		if(ret < 0)
 		{
 			error_texture_count();
@@ -1085,37 +1015,21 @@ void x16_export_map()
 
 	count_wall_banks++;
 
-	// count lights and make remap table
-	map_head.count_lights = 0;
-	for(uint32_t i = 1; i < x16_num_lights; i++)
-	{
-		if(!(marked_lights & (1 << i)))
-			continue;
-
-		if(map_head.count_lights >= MAX_LIGHTS)
-		{
-			error_light_count();
-			return;
-		}
-
-		map_head.count_lights++;
-	}
-
-	// fix marked lights in every texture
-	fix_marked_lights(marked_planes, count_ptex);
-	fix_marked_lights(marked_walls, count_wtex);
-
 	// get lights in sectors
+	ret = 0;
 	map_sector = map_sectors;
 	ent = edit_list_sector.top;
 	while(ent)
 	{
 		kge_sector_t *sec = (kge_sector_t*)(ent + 1);
 
+		sector_light[ret] = sec->light.idx;
+
 		map_sector->flags = sec->stuff.palette << 2;
 		map_sector->flags |= sec->stuff.x16flags;
-		map_sector->flags |= find_light_id(sec->light.idx) << 4;
+
 		map_sector++;
+		ret++;
 
 		ent = ent->next;
 	}
@@ -1158,10 +1072,29 @@ void x16_export_map()
 #if 0
 	edit_save_file("/tmp/vis.data", vis_tab, sizeof(vis_tab));
 #endif
+	// count used lights; create light remap
+	for(uint32_t i = 1; i < x16_num_lights; i++)
+	{
+		if(!(bitmap_light & (1 << i)))
+			continue;
+		light_export[i] = count_light;
+		count_light++;
+	}
+
+	if(count_light >= MAX_LIGHT_COUNT-1)
+	{
+		error_generic("Too many unique lights!");
+		return;
+	}
+
+	// add sector lights
+	for(uint32_t i = 0; i < 255; i++)
+		map_sector[i].flags |= light_export[sector_light[i]] << 4;
+
 	// save map info
-	map_head.count_ptex = count_ptex;
+	map_head.count_light = count_light;
 	map_head.count_wtex = count_wtex;
-	map_head.count_textures = count_textures;
+	map_head.count_ptex = count_ptex;
 	map_head.count_starts_normal = count_starts[0];
 	map_head.count_starts_coop = count_starts[1];
 	map_head.count_starts_dm = count_starts[2];
@@ -1203,22 +1136,19 @@ void x16_export_map()
 		write(fd, temp_data, 160 * 120);
 	}
 
-	// light list; skip white light
+	// light list (skip white)
 	for(uint32_t i = 1; i < x16_num_lights; i++)
 	{
-		if(!(marked_lights & (1 << i)))
+		if(!(bitmap_light & (1 << i)))
 			continue;
 		write(fd, &editor_light[i].hash, sizeof(uint32_t));
 	}
 
-	// plane list
-	write(fd, marked_planes, count_ptex * sizeof(marked_texture_t));
-
 	// wall list
-	write(fd, marked_walls, count_wtex * sizeof(marked_texture_t));
+	write(fd, slot_wtex, count_wtex * sizeof(uint32_t));
 
-	// texture list
-	write(fd, marked_variant, count_textures * sizeof(marked_variant_t));
+	// plane list
+	write(fd, slot_ptex, count_ptex * sizeof(uint32_t));
 
 	// sectors
 	for(uint32_t i = 1; i < 256; i++)
@@ -1290,7 +1220,7 @@ void x16_export_map()
 	close(fd);
 
 	// export OK
-printf("EXPORTED OK; sec %u ln %u th %u wb %u es %u\n", edit_list_sector.count, count_walls, count_things, count_wall_banks, count_extra_storage);
+printf("EXPORTED OK; sec %u ln %u th %u wb %u es %u li %u pt %u wt %u\n", edit_list_sector.count, count_walls, count_things, count_wall_banks, count_extra_storage, count_light, count_ptex, count_wtex);
 printf("sec %u wall %u th %u\n", sizeof(sector_t), sizeof(wall_t), sizeof(map_thing_t));
 /*
 	sprintf(edit_info_box_text,	"Sector count: %u\n"

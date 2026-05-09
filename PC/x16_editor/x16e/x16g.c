@@ -437,11 +437,45 @@ typedef struct
 
 typedef struct
 {
-	uint8_t map_base;
-	uint8_t num_variants;
-	uint8_t data[64 * 64];
-	uint8_t effect[4];
-} export_plane_t;
+	union
+	{
+		struct
+		{
+			uint8_t num_walls;
+			uint8_t num_planes;
+		};
+		uint8_t skip_info[512];
+	};
+	// 1 bank
+	union
+	{
+		struct
+		{
+			struct
+			{
+				uint8_t name[4][256];
+				uint8_t data[4][256];
+				uint8_t anim[4][256];
+				uint8_t info[1][256];
+			} plane;
+			struct
+			{
+				uint8_t name[4][256];
+				uint8_t data[4][256];
+				uint8_t anim[3][256];
+				uint8_t info[1][256];
+			} wall;
+			uint8_t extra_data[4][256]; // light names, sky names, sky data
+		};
+		uint8_t bank_textures[8192];
+	};
+	// 1 bank
+	uint16_t palette[MAX_X16_PALETTE][256];
+	// 1 bank
+	uint8_t lightmap[MAX_X16_LIGHTS][256];
+	// 4 banks
+	uint8_t wallcols[128][256];
+} export_head_t;
 
 //
 
@@ -1371,8 +1405,7 @@ static uint32_t check_wall_resolution(uint32_t width, uint32_t height)
 			width != 16 &&
 			width != 32 &&
 			width != 64 &&
-			width != 128 &&
-			width != 256
+			width != 128
 		) ||
 		(
 			height != 64 &&
@@ -2485,6 +2518,16 @@ static void make_light_data(uint32_t idx)
 	}
 }
 
+static void memcpy_light(uint8_t *dst, uint8_t *src, uint32_t size, uint32_t idx)
+{
+	uint8_t *lightmap = x16_light_data + idx * 256;
+
+	do
+	{
+		*dst++ = lightmap[*src++];
+	} while(--size);
+}
+
 static void pal_apply_tint(uint32_t dst, uint32_t src, float des, float *mul, float *add, float *dclr)
 {
 	uint32_t *psrc = x16_palette_data + src * 256;
@@ -3307,95 +3350,6 @@ static void stex_generate_sprite(variant_list_t *wa, variant_info_t *va, uint8_t
 		}
 
 		data++;
-	}
-}
-
-static void stex_x16_export_wall(uint8_t *buffer, uint8_t *txt)
-{
-	variant_list_t *vl = x16_wall;
-	uint32_t count = gfx_idx[GFX_MODE_WALLS].max;
-
-	for(uint32_t i = 0; i < count; i++, vl++)
-	{
-		uint8_t *ptr = buffer;
-		uint8_t *ptl;
-		uint32_t cols, bsize, bused;
-
-		if(!vl->max)
-			continue;
-
-		if(!vl->stex_used)
-			continue;
-
-		if(!vl->swal_height)
-			continue;
-
-		// calculate 2k chunks
-		cols = vl->swal_colt - vl->swal_colr;
-		bsize = cols * vl->swal_height;
-		bused = (bsize + 2047) / 2048;
-		cols = (bused * 256) / vl->swal_height;
-
-		// header
-
-		*ptr++ = bused;
-		*ptr++ = vl->max;
-
-		switch(vl->swal_height)
-		{
-			case 256:
-				*ptr = 0b11111010;
-			break;
-			case 128:
-				*ptr = 0b11110110;
-			break;
-			case 64:
-				*ptr = 0b11111001;
-			break;
-			default:
-				*ptr = 0; // invalid
-			break;
-		}
-		ptr++;
-
-		// make tiles
-
-		ptl = vl->data;
-		for(uint32_t i = 0; i < cols; i++)
-		{
-			make_vera_tiles(ptr, ptl, vl->swal_height, 8);
-			ptr += vl->swal_height * 8;
-			ptl += vl->swal_height * 8;
-		}
-
-		// export variants
-
-		for(uint32_t j = 0; j < vl->max; j++)
-		{
-			variant_info_t *vi = vl->variant + j;
-
-			// animation
-
-			*ptr++ = vi->sw.anim[0];
-			*ptr++ = vi->sw.anim[1] + ANIM_TIME_EXPORT_OFFSET;
-			*ptr++ = vi->sw.anim[2];
-
-			// columns
-
-			ptl = ptr;
-			ptr += 256;
-
-			for(uint32_t x = 0; x < 256; x++)
-			{
-				uint16_t offset = vi->sw.offset[x & (vi->sw.width-1)];
-				offset /= vl->swal_height;
-				*ptl++ = offset;
-				*ptr++ = offset >> 8;
-			}
-		}
-
-		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.WAL", vl->hash);
-		edit_save_file(txt, buffer, ptr - buffer);
 	}
 }
 
@@ -8276,7 +8230,7 @@ void x16g_generate()
 	{
 		variant_list_t *pl = x16_plane + i;
 		editor_texture_t *et = editor_texture + editor_texture_count;
-		uint16_t *dst = (uint16_t*)data;
+		uint8_t *dst = data;
 		uint8_t *src;
 
 		if(gi >= MAX_EDITOR_TEXTURES)
@@ -8448,8 +8402,14 @@ void x16g_generate()
 
 void x16g_export()
 {
+	// TODO: free space check in export buffer
 	int32_t fd;
-	char txt[64];
+	void *ptr;
+	export_head_t *head;
+	uint32_t *pal = x16_palette_data;
+	uint32_t num_pl = 0;
+	uint32_t num_wa = 0;
+	uint32_t num_li = gfx_idx[GFX_MODE_LIGHTS].max;
 
 	edit_busy_window("Exporting graphics ...");
 
@@ -8557,115 +8517,229 @@ void x16g_export()
 		close(fd);
 	}
 
-	/// TABLES3.BIN (palette)
+	/// GRAPHICS
 
-	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES3.BIN", O_WRONLY | O_TRUNC | O_CREAT, 0644);
-	if(fd >= 0)
+	// header
+	head = edit_cbor_buffer;
+	ptr = head + 1;
+
+	memset(head, 0, sizeof(export_head_t));
+
+	// palettes
+
+	for(uint32_t i = 0; i < MAX_X16_PALETTE; i++)
 	{
-		uint32_t *src = x16_palette_data;
+		uint16_t *dst = head->palette[i];
 
-		for(uint32_t i = 0; i < MAX_X16_PALETTE; i++)
+		*dst++ = 0;
+		pal++;
+
+		for(uint32_t j = 1; j < 256; j++)
 		{
-			uint16_t *dst = (uint16_t*)edit_cbor_buffer;
+			uint32_t pc = *pal++;
+			uint16_t color;
 
-			*dst++ = 0;
-			src++;
+			color = (pc >> 20) & 0x00F;
+			color |= (pc >> 8) & 0x0F0;
+			color |= (pc << 4) & 0xF00;
 
-			for(uint32_t j = 1; j < 256; j++)
-			{
-				uint32_t pc = *src++;
-				uint16_t color;
-
-				color = (pc >> 20) & 0x00F;
-				color |= (pc >> 8) & 0x0F0;
-				color |= (pc << 4) & 0xF00;
-
-				*dst++ = color;
-			}
-
-			write(fd, edit_cbor_buffer, 256 * 2);
+			*dst++ = color;
 		}
-
-		close(fd);
 	}
 
-	/// lights
+	// lights
 
-	for(uint32_t i = 1; i < gfx_idx[GFX_MODE_LIGHTS].max; i++) // skip white light
+	for(uint32_t i = 0; i < num_li; i++)
 	{
-		uint8_t *src = x16_light_data + i * 256;
-		uint8_t dst[256];
+		editor_light_t *el = editor_light + i;
+		uint32_t ii = i;
 
 		make_light_data(i);
-		memcpy(dst, src, 256);
 
-		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.LIT", editor_light[i].hash);
-
-		edit_save_file(txt, dst, sizeof(dst));
+		head->extra_data[0][i] = el->hash;
+		head->extra_data[1][i] = el->hash >> 8;
+		head->extra_data[2][i] = el->hash >> 16;
+		head->extra_data[3][i] = el->hash >> 24;
 	}
 
-	/// planes
+	memcpy(head->lightmap, x16_light_data, num_li * 256);
 
+	// planes
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_PLANES].max; i++)
 	{
-		uint8_t *dst = edit_cbor_buffer;
 		variant_list_t *pl = x16_plane + i;
-		uint32_t base;
+		void *bptr = ptr;
+		uint32_t w, h;
+		uint32_t base, tmap;
 
-		// data
+		base = (ptr - edit_cbor_buffer) / 512;
+
 		switch(pl->height)
 		{
 			case 128:
-				base = 0b11101110;
-				make_vera_tiles(edit_cbor_buffer, pl->data, 128, 32);
+				tmap = 0b11101110;
+				w = 32;
 			break;
 			case 64:
-				base = 0b11101001;
-				make_vera_tiles(edit_cbor_buffer, pl->data, 64, 64);
+				tmap = 0b11101001;
+				w = 64;
 			break;
 			default:
 			continue;
 		}
 
-		// info
-		*dst++ = 0;
-		*dst++ = base;
+		make_vera_tiles(ptr, pl->data, pl->height, w);
+		ptr += 4096;
 
-		// effect
-		memcpy(dst, pl->variant[0].pl.effect, 4);
-		dst[1] += ANIM_TIME_EXPORT_OFFSET;
-		dst += 4;
+		for(uint32_t i = 1; i < num_li; i++)
+		{
+			memcpy_light(ptr, bptr, 4096, i);
+			ptr += 4096;
+		}
 
-		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.PLN", pl->hash);
-		edit_save_file(txt, edit_cbor_buffer, (void*)dst - edit_cbor_buffer);
+		head->plane.name[0][num_pl] = pl->hash;
+		head->plane.name[1][num_pl] = pl->hash >> 8;
+		head->plane.name[2][num_pl] = pl->hash >> 16;
+		head->plane.name[3][num_pl] = pl->hash >> 24;
+
+		head->plane.data[0][num_pl] = base;
+		head->plane.data[1][num_pl] = base >> 8;
+		head->plane.data[2][num_pl] = base >> 16;
+		head->plane.data[3][num_pl] = base >> 24;
+
+		head->plane.anim[0][num_pl] = pl->variant[0].pl.effect[0];
+		head->plane.anim[1][num_pl] = pl->variant[0].pl.effect[1] + ANIM_TIME_EXPORT_OFFSET;
+		head->plane.anim[2][num_pl] = pl->variant[0].pl.effect[2];
+		head->plane.anim[3][num_pl] = pl->variant[0].pl.effect[3];
+
+		head->plane.info[0][num_pl] = tmap;
+
+		num_pl++;
 	}
 
-	/// walls
+	// walls
 
-	stex_x16_export_wall(edit_cbor_buffer, txt);
+	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_WALLS].max; i++)
+	{
+		variant_list_t *vl = x16_wall + i;
+		void *bptr = ptr;
+		uint32_t cols, bsize, bused;
+		uint32_t base, tmap, hash;
 
-	/// sprites
+		if(!vl->max)
+			continue;
 
-	stex_x16_export_sprite(edit_cbor_buffer, txt);
+		if(!vl->stex_used)
+			continue;
 
-	/// weapons
+		if(!vl->swal_height)
+			continue;
 
+		base = (ptr - edit_cbor_buffer) / 512;
 
-	/// skies
+		// calculate 2k chunks
+		cols = vl->swal_colt - vl->swal_colr;
+		bsize = cols * vl->swal_height;
+		bused = (bsize + 2047) / 2048;
+		bused *= 2048;
+		cols = bused / vl->swal_height;
 
-	memset(edit_cbor_buffer, 0, X16_SKY_DATA_RAW);
+		// tilemap
+		switch(vl->swal_height)
+		{
+			case 256:
+				tmap = 0b11111010;
+			break;
+			case 128:
+				tmap = 0b11110110;
+			break;
+			case 64:
+				tmap = 0b11111001;
+			break;
+			default:
+			continue;
+		}
+
+		// make tiles
+
+		make_vera_tiles(ptr, vl->data, vl->swal_height, cols);
+		ptr += bused;
+
+		for(uint32_t i = 1; i < num_li; i++)
+		{
+			memcpy_light(ptr, bptr, bused, i);
+			ptr += bused;
+		}
+
+		// save variants
+
+		for(uint32_t j = 0; j < vl->max; j++)
+		{
+			variant_info_t *vi = vl->variant + j;
+
+			if(num_wa >= 256)
+				// TODO: info / warning / error
+				break;
+
+			// columns
+
+			for(uint32_t x = 0; x < 128; x++)
+				head->wallcols[num_wa & 0x7F][x | (num_wa & 0x80)] = vi->sw.offset[x & (vi->sw.width-1)] / vl->swal_height;
+
+			// add
+
+			hash = vl->hash ^ vi->hash;
+
+			head->wall.name[0][num_wa] = hash;
+			head->wall.name[1][num_wa] = hash >> 8;
+			head->wall.name[2][num_wa] = hash >> 16;
+			head->wall.name[3][num_wa] = hash >> 24;
+
+			head->wall.data[0][num_wa] = base;
+			head->wall.data[1][num_wa] = base >> 8;
+			head->wall.data[2][num_wa] = base >> 16;
+			head->wall.data[3][num_wa] = base >> 24;
+
+			head->wall.info[1][num_wa] = tmap;
+
+			head->wall.anim[0][num_wa] = vi->sw.anim[0];
+			head->wall.anim[1][num_wa] = vi->sw.anim[1] + ANIM_TIME_EXPORT_OFFSET;
+			head->wall.anim[2][num_wa] = vi->sw.anim[2];
+
+			num_wa++;
+		}
+	}
+
+	// sprites
+
+	// weapons
+
+	// skies
 
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_SKIES].max; i++)
 	{
 		editor_sky_t *sky = editor_sky + i;
-		uint8_t *dst;
+		uint32_t base = (ptr - edit_cbor_buffer) / 512;
+		uint32_t ii;
+
+		ii = i | 32;
+		head->extra_data[0][ii] = sky->hash;
+		head->extra_data[1][ii] = sky->hash >> 8;
+		head->extra_data[2][ii] = sky->hash >> 16;
+		head->extra_data[3][ii] = sky->hash >> 24;
+
+		ii = i | 64;
+		head->extra_data[0][ii] = base;
+		head->extra_data[1][ii] = base >> 8;
+		head->extra_data[2][ii] = base >> 16;
+		head->extra_data[3][ii] = base >> 24;
 
 		for(uint32_t x = 0; x < X16_SKY_WIDTH / 2; x++)
 		{
 			uint8_t *src0 = sky->data + (X16_SKY_WIDTH / 2 - x - 1) + X16_SKY_HEIGHT * X16_SKY_WIDTH;
-			uint8_t *dst0 = edit_cbor_buffer + x * X16_SKY_HEIGHT_RAW * 2;
+			uint8_t *dst0 = ptr + x * X16_SKY_HEIGHT_RAW * 2;
 			uint8_t *src1 = src0 + (X16_SKY_WIDTH / 2);
-			uint8_t *dst1 = edit_cbor_buffer + x * X16_SKY_HEIGHT_RAW * 2 + X16_SKY_HEIGHT_RAW;
+			uint8_t *dst1 = ptr + x * X16_SKY_HEIGHT_RAW * 2 + X16_SKY_HEIGHT_RAW;
 
 			for(uint32_t y = 0; y < X16_SKY_HEIGHT; y++)
 			{
@@ -8679,8 +8753,16 @@ void x16g_export()
 			dst1 += X16_SKY_WIDTH * (X16_SKY_HEIGHT_RAW - X16_SKY_HEIGHT);
 		}
 
-		sprintf(txt, X16_PATH_EXPORT PATH_SPLIT_STR "%08X.SKY", sky->hash);
-		edit_save_file(txt, edit_cbor_buffer, X16_SKY_DATA_RAW);
+		ptr += 65536;
+	}
+
+	// save
+
+	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "GAME.GFX", O_WRONLY | O_TRUNC | O_CREAT, 0644);
+	if(fd >= 0)
+	{
+		write(fd, edit_cbor_buffer, ptr - edit_cbor_buffer);
+		close(fd);
 	}
 
 	/// done

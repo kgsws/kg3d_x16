@@ -795,24 +795,22 @@ static int32_t in3d_wall_mirror_x()
 	return 0;
 }
 
-static int32_t in3d_wall_mirror_y()
+static int32_t in3d_wall_swap_xy()
 {
+	// TODO: TEXFLAG_PEG_MID_BACK
+
 	if(edit_hit.line)
 	{
 		kge_x16_tex_t *dest;
 
 		dest = &edit_hit.line->texture[edit_hit.idx];
-		dest->flags ^= TEXFLAG_MIRROR_Y_SWAP_XY; // shared with TEXFLAG_PEG_MID_BACK
 
-//		if(editor_texture[dest->idx].type != X16G_TEX_TYPE_WALL_MASKED)
+		if(editor_texture[dest->idx].type == X16G_TEX_TYPE_PLANE)
 		{
-			if(editor_texture[dest->idx].type != X16G_TEX_TYPE_WALL)
-				edit_status_printf("Texture rotate: %s", txt_yes_no[!(dest->flags & TEXFLAG_MIRROR_Y_SWAP_XY)]);
-			else
-				edit_status_printf("Texture Y mirror: %s", txt_yes_no[!(dest->flags & TEXFLAG_MIRROR_Y_SWAP_XY)]);
-		}/* else
-			edit_status_printf("Masked side peg: %s", txt_back_front[!(dest->flags & TEXFLAG_PEG_MID_BACK)]);
-*/
+			dest->flags ^= TEXFLAG_SWAP_XY;
+			edit_status_printf("Texture rotate: %s", txt_yes_no[!(dest->flags & TEXFLAG_SWAP_XY)]);
+		}
+
 		return 1;
 	}
 
@@ -888,7 +886,7 @@ static const edit_input_func_t infunc_normal[] =
 	{INPUT_E3D_WALL_PEG_X, in3d_wall_peg_x},
 	{INPUT_E3D_WALL_PEG_Y, in3d_wall_peg_y},
 	{INPUT_E3D_WALL_MIRROR_X, in3d_wall_mirror_x},
-	{INPUT_E3D_WALL_MIRROR_Y, in3d_wall_mirror_y},
+	{INPUT_E3D_WALL_SWAP_XY, in3d_wall_swap_xy},
 	{INPUT_E3D_WALL_SPLIT, in3d_wall_split},
 	{INPUT_E3D_SECTOR_WATER, in3d_sector_water},
 	// terminator
