@@ -237,7 +237,7 @@ void thing_tick_plyr();
 void thing_tick_pded();
 
 uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t type, uint8_t origin);
-void thing_spawn_player();
+void thing_spawn_player(int32_t);
 void thing_remove(uint8_t);
 
 void thing_launch(uint8_t tdx, uint8_t speed);

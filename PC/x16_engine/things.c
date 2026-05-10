@@ -1001,7 +1001,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	return tdx;
 }
 
-void thing_spawn_player()
+void thing_spawn_player(int32_t sethp)
 {
 	thing_t *th;
 
@@ -1015,6 +1015,9 @@ void thing_spawn_player()
 	th->angle = player_starts[0].angle;
 	ticcmd.angle = player_starts[0].angle;
 	ticcmd.pitch = player_starts[0].pitch;
+
+	if(sethp >= 0)
+		th->health = sethp;
 
 	projection.wh = th->view_height;
 	projection.wd = 0;

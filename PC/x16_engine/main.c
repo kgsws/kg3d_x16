@@ -13,15 +13,13 @@
 #include "hitscan.h"
 #include "hud.h"
 
-#define VRAM_TEXTURE_START	0x0A000
-#define VRAM_TEXTURE_END	0x1C000
+#define VRAM_FIRST_BLOCK	20
+#define VRAM_NUM_BLOCKS	37
+#define VRAM_TEXTURE_START	(VRAM_FIRST_BLOCK * 2048)
+#define VRAM_TEXTURE_END	(VRAM_TEXTURE_START + VRAM_NUM_BLOCKS * 2048)
+#define VRAM_CACHE_AGE	4
 
 #define LIGHTMAP_SIZE	256
-
-#define MAX_SPRITES	255
-#define MAX_SPRITE_FRAMES	512
-
-#define MAX_WEAPON_FRAMES	128
 
 #define MAX_DRAW_SPRITES	32
 #define MAX_DRAW_MASKED	16
@@ -31,9 +29,9 @@
 
 #define TEXFLAG_PEG_Y	1
 #define TEXFLAG_MIRROR_X	2
-#define TEXFLAG_MIRROR_Y_SWAP_XY	4
+#define TEXFLAG_SWAP_XY	4
 
-#define SECTOR_LIGHT(x)	(((x)->flags >> 4) & 7)
+#define SECTOR_LIGHT(x)	(((x)->flags >> 2) & 31)
 
 //#define SHOW_OCTANT
 
@@ -171,64 +169,6 @@ typedef struct
 
 typedef struct
 {
-	uint32_t nhash;
-	uint32_t vhash;
-	uint8_t type;
-	uint8_t effect[4];
-	union
-	{
-		struct
-		{
-			uint8_t vera_tile_base;
-			uint8_t vera_map_base;
-			uint32_t colormap[MAX_LIGHTS];
-		} plane;
-		struct
-		{
-			uint8_t math_and;
-			uint32_t offs_cols;
-			uint32_t offs_data[MAX_LIGHTS];
-		} wall;
-	};
-} texture_info_t;
-
-typedef struct
-{
-	uint16_t start;
-	uint8_t nsz;
-	uint8_t bsz;
-} weapon_info_t;
-
-typedef struct
-{
-	uint8_t addr;
-	uint8_t x, y;
-	uint8_t info;
-} weapon_part_t;
-
-typedef struct
-{
-	weapon_info_t info;
-	weapon_part_t part[15];
-} weapon_frame_t;
-
-typedef struct
-{
-	uint8_t width;
-	uint8_t height;
-	int8_t ox, oy;
-	uint32_t offs_cols;
-	uint32_t offs_data;
-} sprite_frame_t;
-
-typedef struct
-{
-	uint16_t rot[8];
-	uint8_t rotate;
-} sprite_info_t;
-
-typedef struct
-{
 	uint32_t hash;
 	int16_t x, y, z;
 	uint8_t sector;
@@ -239,50 +179,49 @@ typedef struct
 
 typedef struct
 {
-	uint32_t hash;
-	uint8_t lights;
-} __attribute__((packed)) marked_texture_t;
-
-typedef struct
-{
-	uint32_t nhash;
-	uint32_t vhash;
-} marked_variant_t;
-
-typedef struct
-{
-	uint32_t hash;
-	uint16_t bright;
-	uint8_t data[16];
-	uint8_t effect[4];
-} __attribute__((packed)) export_plane_variant_t;
-
-typedef struct
-{
-	uint8_t map_base;
-	uint8_t num_variants;
 	union
 	{
 		struct
 		{
-			uint8_t data[64 * 64 / 2];
-			export_plane_variant_t variant[MAX_X16_VARIANTS];
-		} bpp4;
+			uint8_t num_walls;
+			uint8_t num_planes;
+		};
+		uint8_t skip_info[512];
+	};
+	// 1 bank
+	union
+	{
 		struct
 		{
-			uint8_t data[64 * 64];
-			uint8_t effect[4];
-		} bpp8;
+			struct
+			{
+				uint8_t name[4][256];
+				uint8_t data[4][256];
+				uint8_t anim[4][256];
+				uint8_t info[1][256];
+			} plane;
+			struct
+			{
+				uint8_t name[4][256];
+				uint8_t data[4][256];
+				uint8_t anim[3][256];
+				uint8_t info[1][256];
+			} wall;
+			uint8_t extra_data[4][256]; // light names, sky names, sky data
+		};
+		uint8_t bank_textures[8192];
 	};
-} export_plane_t;
-
-typedef struct
-{
-	uint16_t offs;
-	uint8_t light;
-	uint8_t idx;
-	int32_t avg;
-} show_wpn_t;
+	// 1 bank
+	union
+	{
+		uint16_t palette[16][256];
+		uint16_t palbuf[16 * 256];
+	};
+	// 1 bank
+	uint8_t lightmap[32][256];
+	// 4 banks
+	uint8_t wallcols[128][256];
+} gfx_head_t;
 
 //
 
@@ -337,7 +276,6 @@ static uint32_t keybits;
 
 static float gl_fov_x, gl_fov_y;
 
-static show_wpn_t show_wpn_now;
 static uint8_t show_wpn_slot = 0x8E;
 
 p2a_t p2a_coord;
@@ -347,8 +285,6 @@ projection_t projection;
 static proj_spr_t proj_spr[MAX_DRAW_SPRITES];
 static uint32_t proj_spr_idx;
 static uint8_t proj_spr_first;
-
-static uint8_t sprite_remap_pc[sizeof(sprite_remap)];
 
 // masked
 static proj_msk_t proj_msk[MAX_DRAW_MASKED];
@@ -436,37 +372,29 @@ wall_t map_walls[WALL_BANK_COUNT][256];
 // font stuff
 uint8_t font_info[512];
 
+// graphics
+
+uint8_t game_gfx[32 * 1024 * 1024];
+gfx_head_t *const gfx_head = (gfx_head_t*)game_gfx;
+
 // texture stuff
 uint8_t vram[128 * 1024];
-static uint8_t vram_4bpp;
-static uint8_t vram_8bpp;
+static uint8_t vram_age[VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS];
+static uint8_t vram_owner[2][VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS];
 
-static uint8_t lightmaps[MAX_LIGHTS * 256];
+static uint32_t idx_wall[256];
+static uint8_t load_wall[32][256];
+static uint32_t idx_plane[256];
+static uint8_t load_plane[32][256];
+
+static uint8_t *const lightmaps = game_gfx + offsetof(gfx_head_t, lightmap);
 static uint8_t *lightmap;
-
-static uint8_t *colormap;
 
 static uint32_t wram_used;
 static uint32_t wram_used_pc;
 uint8_t wram[0x200000];
 
 static uint32_t sky_base;
-
-static uint32_t num_textures;
-static uint32_t texture_remap[MAX_TEXTURES];
-static texture_info_t map_texture_info[MAX_TEXTURES + 1];
-
-static uint32_t num_sprites;
-static uint32_t num_sprites_pc;
-static sprite_info_t sprite_info[MAX_SPRITES];
-
-static uint32_t num_sframes;
-static uint32_t num_sframes_pc;
-static sprite_frame_t sprite_frame[MAX_SPRITE_FRAMES];
-
-static uint32_t num_wframes;
-static uint32_t num_wframes_pc;
-static weapon_frame_t weapon_frame[MAX_WEAPON_FRAMES];
 
 //
 static const uint32_t mkey_sdl[] =
@@ -503,6 +431,56 @@ static void hexdump(uint8_t *src)
 
 //
 // textures
+
+static void vcache_age()
+{
+	for(uint32_t i = VRAM_FIRST_BLOCK; i < VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS; i++)
+	{
+		if(vram_age[i])
+			vram_age[i]--;
+	}
+}
+
+static int32_t vcache_alloc(uint32_t count)
+{
+	uint32_t num = 0;
+	int32_t bas = VRAM_FIRST_BLOCK - 1;
+
+	for(int32_t i = VRAM_FIRST_BLOCK; i < VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS; i++)
+	{
+		if(vram_age[i])
+		{
+			num = 0;
+			bas = i;
+			continue;
+		}
+
+		num++;
+		if(num == count)
+		{
+			bas++;
+
+			for( ; i >= bas; i--)
+			{
+				if(!(vram_owner[1][i] & 0x80))
+				{
+					uint32_t type = vram_owner[1][i] & 0x40;
+					uint32_t light = vram_owner[1][i] & 31;
+					uint32_t idx = vram_owner[0][i];
+printf("purge %s %u:%u @ %u\n", type ? "plane" : "wall", idx, light, i);
+					if(type)
+						load_plane[light][idx] = 0;
+					else
+						load_wall[light][idx] = 0;
+				}
+			}
+
+			return bas;
+		}
+	}
+
+	return -1;
+}
 
 static void vera_tex_data(uint32_t tile_base, uint32_t map_base)
 {
@@ -543,67 +521,79 @@ static void vera_tex_data(uint32_t tile_base, uint32_t map_base)
 	tex_data = vram + offset;
 }
 
-static texture_info_t *tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint8_t flags)
+static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t flags)
 {
-	uint32_t offset;
-	texture_info_t *mt;
-	uint8_t vera_tile_base;
-	uint8_t vera_map_base;
+	uint32_t tmp;
 
+	// "not loaded"
+	tex_type = 1;
+	vera_tex_data(0xF8, 0xF8);
+	projection.ta = 255;
 	tex_swap = 0;
 
-	if(idx & 0x80)
+	if(flags & 8)
 	{
-		if(idx & 0x40)
-		{
+		if(idx == 0xFF)
+		{	
 			// sky
 			tex_type = 0x00;
-			return NULL;
+			return;
 		}
-		// invalid texture
-		mt = map_texture_info + MAX_TEXTURES;
-	} else
-	{
-		idx = texture_remap[idx];
-		mt = map_texture_info + idx;
-	}
 
-	// animation
-	if(mt->effect[0] & 4)
-	{
-		uint32_t etime = etime = anim_tick[mt->effect[1]];
-		etime += mt->effect[3];
-		idx -= mt->effect[3];
-		idx += etime & mt->effect[2]; // TODO: overflow check
-		mt = map_texture_info + idx;
-	}
+		if(idx == 0xFE)
+		{
+			// invalid texture
+			vera_tex_data(0xF8, 0x00); // TODO
+			return;
+		}
 
-	// type
-	if(mt->type & 0x80)
-	{
 		// plane
-		tex_type = 0x01;
-		tex_swap = flags & TEXFLAG_MIRROR_Y_SWAP_XY;
+		idx = idx_plane[idx];
 
-		vera_tile_base = mt->plane.vera_tile_base;
-		vera_map_base = mt->plane.vera_map_base;
-		if(mt->type & 1)
-			colormap = lightmaps + light * LIGHTMAP_SIZE;
-		else
-			colormap = wram + mt->plane.colormap[light];
-		projection.ta = 255;
+		if(!load_plane[light][idx])
+		{
+			// must load to cache
+			int32_t ret = vcache_alloc(2);
+			uint32_t offs;
+printf("must load plane %u:%u @ %d\n", idx, light, ret);
+			if(ret < 0)
+				// no space in VRAM
+				return;
+
+			// mark
+			load_plane[light][idx] = ret;
+
+			vram_owner[0][ret] = idx;
+			vram_owner[1][ret] = 0x40 | light;
+
+			// data
+			ret *= 2048;
+
+			offs = gfx_head->plane.data[0][idx];
+			offs |= gfx_head->plane.data[1][idx] << 8;
+			offs |= gfx_head->plane.data[2][idx] << 16;
+			offs |= gfx_head->plane.data[3][idx] << 24;
+			offs += light * 8;
+			offs *= 512;
+
+			// load
+			memcpy(vram + ret, game_gfx + offs, 4096);
+		}
+
+		// set age
+		tmp = load_plane[light][idx];
+		vram_age[tmp+0] = VRAM_CACHE_AGE;
+		vram_age[tmp+1] = VRAM_CACHE_AGE;
+
+		// use data
+		vera_tex_data(load_plane[light][idx] * 4, gfx_head->plane.info[0][idx]);
+
+		tex_swap = flags & TEXFLAG_SWAP_XY;
 	} else
 	{
-		// wall / sprite
-		tex_type = 0xFF;
-		vera_tile_base = 0xF8;
-		vera_map_base = 0xFE;
-		projection.wx = mt->type;
-		projection.cols = (uint16_t*)(wram + mt->wall.offs_cols);
-		projection.wtex = wram + mt->wall.offs_data[light];
-		projection.ta = 127;
-		if(flags & TEXFLAG_MIRROR_Y_SWAP_XY)
-			projection.wx++;
+		// wall
+		printf("TODO: wall %02X %02X\n", idx, flags);
+		tex_swap = 0;
 	}
 
 	// offset
@@ -614,13 +604,6 @@ static texture_info_t *tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t ligh
 	// math
 
 	projection.tx = flags & TEXFLAG_MIRROR_X ? 0x00 : 0xFF;
-
-	// VERA
-
-	vera_tex_data(vera_tile_base, vera_map_base);
-
-	//
-	return mt;
 }
 
 static uint8_t tex_read()
@@ -651,7 +634,7 @@ static uint8_t tex_read()
 	tile = tex_map[mx + my * tex_map_stride];
 	src = tex_data + tile * 8 * 8;
 
-	return colormap[src[tx + ty * 8]];
+	return src[tx + ty * 8];
 }
 
 //
@@ -1236,7 +1219,7 @@ static void dr_vline(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tno
 	{
 		// wall / sprite
 		tex_offs_y = projection.wx << 9;
-		colormap = projection.wtex + projection.cols[tx];
+//		colormap = projection.wtex + projection.cols[tx];
 	} else
 		// plane
 		tex_offs_y = tx << 9;
@@ -1511,7 +1494,7 @@ static void dr_wall(sector_t *sec, wall_t *wall, vertex_t *ld, uint32_t x0, uint
 	}
 
 	projection.fix = 0;
-
+/*
 	if(	proj_msk_idx < MAX_DRAW_MASKED &&
 		wall->angle & WALL_MARK_EXTENDED &&
 		!(wall->mid.texture & 0x80) &&
@@ -1544,7 +1527,7 @@ static void dr_wall(sector_t *sec, wall_t *wall, vertex_t *ld, uint32_t x0, uint
 
 		proj_msk_idx++;
 	}
-
+*/
 	if(	wall->backsector ||
 		(
 			wall->angle & WALL_MARK_EXTENDED &&
@@ -1756,7 +1739,7 @@ do_solid_bot:
 
 static void dr_sprite(uint32_t idx)
 {
-	proj_spr_t *spr = proj_spr + idx;
+/*	proj_spr_t *spr = proj_spr + idx;
 	uint8_t x0, x1;
 	int16_t tex_step, tex_now;
 
@@ -1831,7 +1814,7 @@ static void dr_sprite(uint32_t idx)
 			y1 = bot;
 
 		dr_vspr(x0, y0, y1, tex_now >> 8, tnow, spr->tex_scale / -4);
-	}
+	}*/
 }
 
 static void dr_masked(uint32_t idx)
@@ -2144,7 +2127,7 @@ do_next:
 
 static void prepare_sprite(uint8_t tdx, sector_t *sec)
 {
-	thing_t *th = thing_ptr(tdx);
+/*	thing_t *th = thing_ptr(tdx);
 	uint8_t light = SECTOR_LIGHT(sec);
 	proj_spr_t *spr;
 	vertex_t d0;
@@ -2366,7 +2349,7 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 			proj_spr_first = proj_spr_idx;
 	}
 
-	proj_spr_idx++;
+	proj_spr_idx++;*/
 }
 
 static void finish_sprite(uint8_t idx)
@@ -2392,9 +2375,9 @@ static int16_t fix_effect_value(uint8_t val, uint8_t flip)
 	return temp;
 }
 
-static uint8_t handle_plane_effect(texture_info_t *ti, uint8_t ang)
+static uint8_t handle_plane_effect(uint8_t ang)
 {
-	uint8_t *effect;
+/*	uint8_t *effect;
 	uint8_t etime;
 	int16_t temp;
 
@@ -2431,7 +2414,7 @@ static uint8_t handle_plane_effect(texture_info_t *ti, uint8_t ang)
 
 		break;
 	}
-
+*/
 	return ang;
 }
 
@@ -2483,10 +2466,9 @@ static void do_sector(uint8_t idx)
 	if(projection.z > sec->floor.height)
 	{
 		uint8_t ang;
-		texture_info_t *ti;
 
-		ti = tex_set(sec->floor.texture, sec->floor.ox, sec->floor.oy, SECTOR_LIGHT(sec), 0x80);
-		ang = handle_plane_effect(ti, sec->floor.angle);
+		tex_set(sec->floor.texture, sec->floor.ox, sec->floor.oy, SECTOR_LIGHT(sec), 0x108);
+		ang = handle_plane_effect(sec->floor.angle);
 
 		projection.pl_x = (projection.x * tab_cos[ang] + projection.y * tab_sin[ang]) >> 8;
 		projection.pl_y = (projection.y * tab_cos[ang] + projection.x * tab_sin[ang ^ 0x80]) >> 8;
@@ -2506,10 +2488,9 @@ static void do_sector(uint8_t idx)
 	if(projection.z < sec->ceiling.height)
 	{
 		uint8_t ang;
-		texture_info_t *ti;
 
-		ti = tex_set(sec->ceiling.texture, sec->ceiling.ox, sec->ceiling.oy, SECTOR_LIGHT(sec), 0x80);
-		ang = handle_plane_effect(ti, sec->ceiling.angle);
+		tex_set(sec->ceiling.texture, sec->ceiling.ox, sec->ceiling.oy, SECTOR_LIGHT(sec), 0x108);
+		ang = handle_plane_effect(sec->ceiling.angle);
 
 		projection.pl_x = (projection.x * tab_cos[ang] + projection.y * tab_sin[ang]) >> 8;
 		projection.pl_y = (projection.y * tab_cos[ang] + projection.x * tab_sin[ang ^ 0x80]) >> 8;
@@ -2577,7 +2558,7 @@ static void do_3D()
 	pidx = (15 + camera_damage) >> 4;
 	if(pidx & 0xFC)
 		pidx = 3;
-	pidx += sec->flags & 0x0C;
+	pidx += (sec->flags & 3) * 4;
 
 	palette = palette_src;
 	palette += pidx * 256 * 3;
@@ -2648,7 +2629,7 @@ static void do_3D()
 
 static void do_2D()
 {
-	show_wpn_t show_wpn;
+/*	show_wpn_t show_wpn;
 
 	// weapon
 	show_wpn.idx = 0xFF;
@@ -2765,7 +2746,7 @@ static void do_2D()
 	}
 
 	// HUD
-	hud_draw();
+	hud_draw();*/
 }
 
 //
@@ -2777,15 +2758,17 @@ static void render()
 	float angle;
 
 	frame_counter++;
-#if 1
+#if 0
 	if(!(frame_counter % 4))
 #else
-	if(!(frame_counter % 32))
+	if(!(frame_counter % 8))
 #endif
 	{
 		level_tick++;
 		tick_run(); // 15 TPS
 		input_action = 0;
+
+		vcache_age();
 #if 0
 		thing_t *th = thing_ptr(player_thing);
 		uint32_t sn = thingsec[player_thing][0];
@@ -3050,14 +3033,7 @@ static uint32_t load_tables()
 	int32_t fd;
 	tables_1100_t tables_1100;
 	tables_A000_t tables_A000;
-	uint16_t pal12bpp[256 * 16];
 	uint8_t *dst;
-
-	if(load_file("DATA/TABLES3.BIN", pal12bpp, sizeof(pal12bpp)) != sizeof(pal12bpp))
-	{
-		printf("Unable to load TABLES3.BIN!\n");
-		return 1;
-	}
 
 	if(load_file("DATA/TABLES0.BIN", &tables_1100, sizeof(tables_1100_t)) != sizeof(tables_1100_t))
 	{
@@ -3085,31 +3061,33 @@ static uint32_t load_tables()
 	memcpy(&hud_info, font_info + 128, sizeof(hud_info));
 
 	// HUD
+	read(fd, vram + 30 * 256, 2 * 256);
 	read(fd, vram + 62 * 256, 2 * 256);
-	read(fd, vram + 94 * 256, 2 * 256);
 
-	// font, 32 characters
+	// font, 48 characters
+	read(fd, vram + 94 * 256, 2 * 256);
 	read(fd, vram + 126 * 256, 2 * 256);
 	read(fd, vram + 158 * 256, 2 * 256);
 
-	// 256x16 / 64x64 tile map
-	// font, next 32 characters
-	// 128x32 tile map
-	// font, last 32 characters
-	read(fd, vram + 464 * 256, 16 * 256);
-
-	// ranges
-	// invalid texture
-	read(fd, vram + 496 * 256, 9 * 256 + 192);
+	// the rest
+	read(fd, vram + 488 * 256, 18 * 256);
 
 	close(fd);
+
+	/// game file
+
+	if(load_file("DATA/GAME.GFX", game_gfx, sizeof(game_gfx)) < 64 * 1024)
+	{
+		printf("Unable to load GAME.GFX!\n");
+		return 1;
+	}
 
 	/// palette
 
 	dst = palette_src;
 	for(uint32_t i = 0; i < 256 * 16; i++)
 	{
-		uint16_t c = pal12bpp[i];
+		uint16_t c = gfx_head->palbuf[i];
 		uint8_t t;
 
 		t = c & 0x000F;
@@ -3225,7 +3203,7 @@ static uint32_t load_tables()
 		tab_cos[(i - 64) & 0xFF] = tab_sin[i];
 
 	// thing types
-	if(thing_init("DATA/TABLES4.BIN"))
+	if(thing_init("DATA/TABLES3.BIN"))
 		return 1;
 
 	return 0;
@@ -3233,67 +3211,6 @@ static uint32_t load_tables()
 
 //
 // map loading
-
-static uint32_t add_texture(texture_info_t *ti)
-{
-	if(num_textures >= MAX_TEXTURES)
-		return 1;
-
-	map_texture_info[num_textures] = *ti;
-
-	num_textures++;
-
-	return 0;
-}
-
-static void generate_cmap_16a(uint8_t *dst, uint32_t light, uint8_t *cmap, uint16_t bright)
-{
-	uint8_t *color = lightmaps + light * LIGHTMAP_SIZE;
-
-	for(uint32_t i = 0; i < 256; i++)
-	{
-		uint32_t ii = i & 15;
-		uint8_t pc = cmap[ii];
-
-		if(bright & (1 << ii))
-			dst[i] = pc;
-		else
-			dst[i] = color[pc];
-	}
-}
-
-static void generate_cmap_16b(uint8_t *dst, uint32_t light, uint8_t *cmap, uint16_t bright)
-{
-	uint8_t *color = lightmaps + light * LIGHTMAP_SIZE;
-
-	for(uint32_t i = 0; i < 256; i++)
-	{
-		uint32_t ii = i >> 4;
-		uint8_t pc = cmap[ii];
-
-		if(bright & (1 << ii))
-			dst[i] = pc;
-		else
-			dst[i] = color[pc];
-	}
-}
-
-static void convert_pixels(uint8_t *dst, uint32_t light, uint16_t *src, uint32_t size)
-{
-	uint8_t *color = lightmaps + light * LIGHTMAP_SIZE;
-
-	for(uint32_t i = 0; i < size; i++)
-	{
-		uint16_t in = *src++;
-
-		if(in & 0xFF00)
-			in &= 0xFF;
-		else
-			in = color[in];
-
-		*dst++ = in;
-	}
-}
 
 static void *get_wram(uint32_t size)
 {
@@ -3311,424 +3228,19 @@ static void *get_wram(uint32_t size)
 	return ret;
 }
 
-static uint32_t find_texture(uint32_t nhash, uint32_t vhash)
-{
-	for(uint32_t i = 0; i < num_textures; i++)
-	{
-		texture_info_t *ti = map_texture_info + i;
-
-		if(ti->nhash == nhash && ti->vhash == vhash)
-			return i;
-	}
-
-	return MAX_TEXTURES;
-}
-
-static uint32_t load_sky(uint8_t *path)
-{
-	uint32_t size;
-	uint8_t *dst;
-
-	sky_base = wram_used / 256;
-
-	dst = get_wram(512 * 128);
-
-	size = load_file(path, dst, 512 * 128);
-	if(size != 512 * 128)
-		return 1;
-
-	return 0;
-}
-
-static uint32_t load_plane(uint8_t *path, uint32_t hash, uint32_t lights)
-{
-	int32_t fd;
-	int32_t size, ret;
-	uint8_t *dst;
-	uint32_t offs;
-	export_plane_t ep;
-	texture_info_t ti;
-	void (*cgen)(uint8_t*, uint32_t, uint8_t*, uint16_t);
-
-	if(vram_8bpp == (vram_4bpp & 0xFE))
-		return 1;
-
-	size = load_file(path, &ep, sizeof(ep));
-	if(size < 2)
-	{
-		printf("Unable to load %s!\n", path);
-		return 1;
-	}
-
-	ti.nhash = hash;
-	ti.plane.vera_map_base = ep.map_base;
-
-	if(ep.num_variants & 0x80)
-	{
-		// 8bpp
-		ti.type = 0x81;
-
-		vram_8bpp -= 2;
-
-		offs = VRAM_TEXTURE_START + vram_8bpp * 2048;
-		dst = vram + offs;
-
-		memcpy(dst, ep.bpp8.data, 4096);
-
-		memcpy(ti.effect, ep.bpp8.effect, 4);
-
-		ti.vhash = 0;
-		ti.plane.vera_tile_base = offs >> 9;
-
-		if(add_texture(&ti))
-			return 1;
-
-		return 0;
-	}
-
-	// 4bpp
-	ti.type = 0x80;
-	offs = VRAM_TEXTURE_START + (vram_4bpp >> 1) * 4096;
-	dst = vram + offs;
-
-	ti.plane.vera_tile_base = offs >> 9;
-
-	if(vram_4bpp & 1)
-	{
-		for(uint32_t i = 0; i < 2048; i++)
-		{
-			*dst++ |= ep.bpp4.data[i] << 4;
-			*dst++ |= ep.bpp4.data[i] & 0xF0;
-		}
-		cgen = generate_cmap_16b;
-	} else
-	{
-		for(uint32_t i = 0; i < 2048; i++)
-		{
-			*dst++ = ep.bpp4.data[i] & 0x0F;
-			*dst++ = ep.bpp4.data[i] >> 4;
-		}
-		cgen = generate_cmap_16a;
-	}
-	vram_4bpp++;
-
-	// variants
-	for(uint32_t i = 0; i < ep.num_variants; i++)
-	{
-		export_plane_variant_t *vi = ep.bpp4.variant + i;
-		uint32_t def_cmap = wram_used;
-		uint32_t ll = lights;
-
-		ti.vhash = vi->hash;
-		memcpy(ti.effect, vi->effect, 4);
-
-		if(vi->bright == 0xFFFF)
-			// only fullbright
-			ll = 1;
-
-		for(uint32_t j = 0; j < map_head.count_lights; j++)
-		{
-			if(ll & (1 << j))
-			{
-				uint8_t *cmap;
-
-				ret = wram_used;
-
-				cmap = get_wram(256);
-				if(!dst)
-					return 1;
-
-				cgen(cmap, j, vi->data, vi->bright);
-			} else
-				ret = def_cmap;
-
-			ti.plane.colormap[j] = ret;
-		}
-
-		if(add_texture(&ti))
-			return 1;
-	}
-
-	return 0;
-}
-
-static uint32_t load_wall(uint8_t *path, uint32_t hash, uint32_t lights)
-{
-	int32_t size;
-	uint8_t data[65536 * 3];
-	uint8_t *src = data;
-	uint32_t datal, count;
-	uint32_t offset;
-	uint8_t *dst;
-	uint8_t anim[3];
-	texture_info_t ti;
-
-	size = load_file(path, data, sizeof(data));
-	if(size < 2)
-	{
-		printf("Unable to load %s!\n", path);
-		return 1;
-	}
-
-	ti.nhash = hash;
-
-	datal = *src++ << 8;
-	count = *src++;
-
-	if(count & 0x80)
-		lights = 1;
-
-	count &= MAX_X16_VARIANTS - 1;
-
-	if(!datal)
-		datal = 0x10000;
-
-	offset = wram_used;
-
-	for(uint32_t i = 0; i < map_head.count_lights; i++)
-	{
-		if(lights & (1 << i))
-		{
-			dst = get_wram(datal);
-			if(!dst)
-				return 1;
-
-			convert_pixels(dst, i, (uint16_t*)src, datal);
-		}
-	}
-
-	src += datal * 2;
-
-	for(uint32_t i = 0; i < count; i++)
-	{
-		uint8_t *cols;
-		uint32_t loffs;
-		uint8_t *srl;
-
-		ti.vhash = *(uint32_t*)src;
-		src += sizeof(uint32_t);
-
-		ti.type = *src++ & 15;
-		ti.wall.offs_cols = wram_used;
-
-		anim[0] = *src++;
-		anim[1] = *src++;
-		anim[2] = *src++;
-
-		if(anim[0])
-		{
-			ti.effect[0] = 4;
-			ti.effect[1] = anim[1];
-			ti.effect[2] = anim[0];
-			ti.effect[3] = anim[2];
-		} else
-			ti.effect[0] = 0;
-
-		cols = get_wram(256);
-		if(!cols)
-			return 1;
-
-		srl = src;
-		src += 128;
-		for(uint32_t x = 0; x < 128; x++)
-		{
-			cols[x*2+0] = *srl++;
-			cols[x*2+1] = *src++;
-		}
-
-		loffs = offset;
-		for(uint32_t j = 0; j < map_head.count_lights; j++)
-		{
-			ti.wall.offs_data[j] = offset;
-			if(lights & (1 << j))
-			{
-				ti.wall.offs_data[j] = loffs;
-				loffs += datal;
-			}
-		}
-
-		if(add_texture(&ti))
-			return 1;
-	}
-
-	return 0;
-}
-
 static uint32_t load_tspr(uint8_t *path)
 {
-	uint32_t top_frame = 0;
-	int32_t size;
-	uint8_t data[65536 * 3];
-	uint8_t *src = data;
-	uint32_t datal, count;
-	uint32_t offset, offs_cols;
-	uint8_t *dst;
-	struct
-	{
-		uint8_t frm;
-		uint8_t rot;
-		int8_t ox, oy;
-		uint8_t width, height;
-	} *info;
-
-	size = load_file(path, data, sizeof(data));
-	if(size < 2)
-	{
-		printf("Unable to load %s!\n", path);
-		return 1;
-	}
-
-	datal = *src++ << 8;
-	count = *src++;
-
-	if(!datal)
-		datal = 0x10000;
-
-	offset = wram_used;
-
-	dst = get_wram(datal);
-	if(!dst)
-		return 1;
-
-	memcpy(dst, src, datal);
-	src += datal;
-
-	for(uint32_t i = 0; i < count; i++)
-	{
-		uint8_t *cols;
-		uint8_t *srl;
-		sprite_info_t *si;
-		sprite_frame_t *frm;
-
-		if(num_sframes >= MAX_SPRITE_FRAMES)
-			return 1;
-
-		info = (void*)src;
-		src += 6;
-
-		if(info->frm >= 32)
-			return 1;
-
-		if(info->rot >= 8)
-			return 1;
-
-		if(info->frm > top_frame)
-		{
-			if(num_sprites + top_frame + 1 > MAX_SPRITES)
-				return 1;
-			top_frame = info->frm;
-		}
-
-		offs_cols = wram_used;
-		cols = get_wram(256);
-		if(!cols)
-			return 1;
-
-		srl = src;
-		src += 128;
-		for(uint32_t x = 0; x < 128; x++)
-		{
-			cols[x*2+0] = *srl++;
-			cols[x*2+1] = *src++;
-		}
-
-		si = sprite_info + num_sprites + info->frm;
-
-		if(info->rot)
-			si->rotate = 1;
-
-		si->rot[info->rot] = num_sframes;
-		frm = sprite_frame + num_sframes;
-		num_sframes++;
-
-		frm->width = info->width;
-		frm->height = info->height;
-		frm->ox = info->ox;
-		frm->oy = info->oy;
-		frm->offs_cols = offs_cols;
-		frm->offs_data = offset;
-	}
-
-	num_sprites += top_frame + 1;
-
 	return 0;
 }
 
 static uint32_t load_wspr(uint8_t *path)
 {
-	uint32_t top_frame = 0;
-	int32_t size;
-	uint8_t data[65536 * 3];
-	uint8_t *src = data;
-	uint32_t datal, count;
-	uint32_t offset;
-	uint8_t *dst;
-	weapon_frame_t *base;
-
-	size = load_file(path, data, sizeof(data));
-	if(size < 2)
-	{
-		printf("Unable to load %s!\n", path);
-		return 1;
-	}
-
-	datal = *src++ << 8;
-	count = *src++;
-
-	count &= 0x1F;
-
-	if(!datal)
-		datal = 0x10000;
-
-	offset = wram_used / 256;
-
-	dst = get_wram(datal);
-	if(!dst)
-		return 1;
-
-	memcpy(dst, src, datal);
-	src += datal;
-
-	if(num_wframes + count >= MAX_WEAPON_FRAMES)
-		return 1;
-
-	base = weapon_frame + num_wframes;
-
-	for(uint32_t i = 0; i < count; i++)
-	{
-		uint32_t frame, start, nsz, bsz, pcnt;
-		weapon_frame_t *wfrm;
-
-		pcnt = *src++;
-		start = *src++;
-		frame = *src++;
-		nsz = *src++;
-		bsz = *src++;
-
-		wfrm = base + frame;
-
-		if(frame > top_frame)
-			top_frame = frame;
-
-		wfrm->info.start = offset + start;
-		wfrm->info.nsz = nsz;
-		wfrm->info.bsz = bsz;
-
-		memcpy(wfrm->part, src, pcnt * sizeof(weapon_part_t));
-		src += pcnt * sizeof(weapon_part_t);
-
-		if(pcnt < 15)
-			wfrm->part[pcnt].addr = 0xFF;
-	}
-
-	num_wframes += top_frame + 1;
-
 	return 0;
 }
 
 static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 {
-	thing_type_t *info = thing_type + type;
+/*	thing_type_t *info = thing_type + type;
 	uint8_t text[64];
 
 	for(int32_t j = NUM_THING_ANIMS-1; j >= 0; j--)
@@ -3769,7 +3281,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 		if(tt < MAX_X16_THING_TYPES && load_thing_sprites(tt, recursion + 1))
 			return 1;
 	}
-
+*/
 	return 0;
 }
 
@@ -3803,17 +3315,76 @@ static void expand_walls(uint32_t idx)
 	}
 }
 
+static int32_t find_sky(uint32_t hash)
+{
+	for(uint32_t i = 0; i < 256; i++)
+	{
+		uint32_t h;
+		uint32_t ii = i + 32;
+
+		h = gfx_head->extra_data[0][ii];
+		h |= (uint32_t)gfx_head->extra_data[1][ii] << 8;
+		h |= (uint32_t)gfx_head->extra_data[2][ii] << 16;
+		h |= (uint32_t)gfx_head->extra_data[3][ii] << 24;
+
+		if(hash == h)
+		{
+			ii = i + 64;
+			h = gfx_head->extra_data[0][ii];
+			h |= (uint32_t)gfx_head->extra_data[1][ii] << 8;
+			h |= (uint32_t)gfx_head->extra_data[2][ii] << 16;
+			h |= (uint32_t)gfx_head->extra_data[3][ii] << 24;
+			return h;
+		}
+	}
+
+	return -1;
+}
+
+static uint32_t find_wall(uint32_t hash)
+{
+	for(uint32_t i = 0; i < 256; i++)
+	{
+		uint32_t h;
+
+		h = gfx_head->wall.name[0][i];
+		h |= (uint32_t)gfx_head->wall.name[1][i] << 8;
+		h |= (uint32_t)gfx_head->wall.name[2][i] << 16;
+		h |= (uint32_t)gfx_head->wall.name[3][i] << 24;
+
+		if(hash == h)
+			return i;
+	}
+
+	return 0x1FE;
+}
+
+static uint32_t find_plane(uint32_t hash)
+{
+	for(uint32_t i = 0; i < 254; i++)
+	{
+		uint32_t h;
+
+		h = gfx_head->plane.name[0][i];
+		h |= (uint32_t)gfx_head->plane.name[1][i] << 8;
+		h |= (uint32_t)gfx_head->plane.name[2][i] << 16;
+		h |= (uint32_t)gfx_head->plane.name[3][i] << 24;
+
+		if(hash == h)
+			return i;
+	}
+
+	return 0x1FE;
+}
+
 static uint32_t load_map()
 {
 	void *dst;
 	int32_t fd;
-	uint32_t temp, esbase;
-	uint8_t text[64];
-	marked_texture_t mt;
-	marked_variant_t mv;
+	uint32_t temp;
+	uint32_t esbase;
 
-	memset(&show_wpn_now, 0xFF, sizeof(show_wpn_t));
-	show_wpn_now.avg = 0;
+	wram_used = 64 * 8192; // TODO
 
 	tick_clear();
 
@@ -3823,17 +3394,8 @@ static uint32_t load_map()
 
 	thing_clear();
 
-	wram_used = wram_used_pc;
-
-	num_textures = 0;
-	num_sprites = num_sprites_pc;
-	num_sframes = num_sframes_pc;
-	num_wframes = num_wframes_pc;
-
-	vram_4bpp = 0;
-	vram_8bpp = (VRAM_TEXTURE_END - VRAM_TEXTURE_START) / 2048;
-
-	memcpy(sprite_remap, sprite_remap_pc, sizeof(sprite_remap));
+	memset(vram_age, 0, sizeof(vram_age));
+	memset(vram_owner, 0xFF, sizeof(vram_owner));
 
 	if(read(fd, &map_head, sizeof(map_head)) != sizeof(map_head))
 		goto error;
@@ -3842,10 +3404,6 @@ static uint32_t load_map()
 		goto error;
 
 	if(map_head.version != MAP_VERSION)
-		goto error;
-
-	map_head.count_lights++;
-	if(map_head.count_lights >= MAX_LIGHTS)
 		goto error;
 
 	temp = map_head.count_starts_normal;
@@ -3873,57 +3431,31 @@ static uint32_t load_map()
 	// sky
 	if(map_head.hash_sky)
 	{
-		sprintf(text, "DATA/%08X.SKY", map_head.hash_sky);
-		if(load_sky(text))
-			goto error;
-	}
-
-	// lights
-	for(uint32_t i = 0; i < 256; i++)
-		lightmaps[i] = i;
-
-	for(uint32_t i = 1; i < map_head.count_lights; i++)
-	{
-		if(read(fd, &temp, sizeof(temp)) != sizeof(temp))
-			goto error;
-
-		sprintf(text, "DATA/%08X.LIT", temp);
-		if(load_file(text, lightmaps + i * LIGHTMAP_SIZE, LIGHTMAP_SIZE) != LIGHTMAP_SIZE)
+		int32_t sky = find_sky(map_head.hash_sky);
+		if(sky >= 0)
 		{
-			printf("Unable to load %s!\n", text);
-			goto error;
+			sky_base = wram_used / 256;
+			dst = get_wram(temp);
+			if(!dst)
+				goto error;
+			memcpy(dst, game_gfx + sky * 512, 65536);
 		}
 	}
 
-	// planes
-	for(uint32_t i = 0; i < map_head.count_ptex; i++)
-	{
-		if(read(fd, &mt, sizeof(mt)) != sizeof(mt))
-			goto error;
-
-		sprintf(text, "DATA/%08X.PLN", mt.hash);
-		if(load_plane(text, mt.hash, mt.lights))
-			goto error;
-	}
-
-	// walls
+	// wall list
 	for(uint32_t i = 0; i < map_head.count_wtex; i++)
 	{
-		if(read(fd, &mt, sizeof(mt)) != sizeof(mt))
+		if(read(fd, &temp, sizeof(temp)) != sizeof(temp))
 			goto error;
-
-		sprintf(text, "DATA/%08X.WAL", mt.hash);
-		if(load_wall(text, mt.hash, mt.lights))
-			goto error;
+		idx_wall[i] = find_wall(temp);
 	}
 
-	// textures
-	for(uint32_t i = 0; i < map_head.count_textures; i++)
+	// plane list
+	for(uint32_t i = 0; i < map_head.count_ptex; i++)
 	{
-		if(read(fd, &mv, sizeof(mv)) != sizeof(mv))
+		if(read(fd, &temp, sizeof(temp)) != sizeof(temp))
 			goto error;
-
-		texture_remap[i] = find_texture(mv.nhash, mv.vhash);
+		idx_plane[i] = find_plane(temp);
 	}
 
 	// map sectors
@@ -4005,7 +3537,7 @@ static uint32_t load_map()
 	close(fd);
 
 	// stats
-	printf("%u sinfo; %u sfrm; %u wfrm\nWRAM %u / %u\nVRAM %u / %u\n", num_sprites, num_sframes, num_wframes, wram_used / 256, sizeof(wram) / 256, ((VRAM_TEXTURE_END - VRAM_TEXTURE_START) - vram_8bpp - vram_4bpp) / 2048, (VRAM_TEXTURE_END - VRAM_TEXTURE_START) / 2048);
+//	printf("%u sinfo; %u sfrm; %u wfrm\nWRAM %u / %u\nVRAM %u / %u\n", num_sprites, num_sframes, num_wframes, wram_used / 256, sizeof(wram) / 256, ((VRAM_TEXTURE_END - VRAM_TEXTURE_START) - vram_8bpp - vram_4bpp) / 2048, (VRAM_TEXTURE_END - VRAM_TEXTURE_START) / 2048);
 
 	return 0;
 
@@ -4019,33 +3551,6 @@ error:
 
 static uint32_t precache()
 {
-	wram_used = 37 * 8192;
-	num_sprites = 0;
-	num_sframes = 0;
-	num_wframes = 0;
-
-	memset(sprite_remap, 0xFF, sizeof(sprite_remap));
-
-	if(	!(thing_state->menu_logo & 0x80) &&
-		load_wspr("DATA/F8845BD5.WPS")
-	)
-		return 1;
-
-	for(uint32_t i = THING_WEAPON_FIRST; i < 128; i++)
-	{
-		if(load_thing_sprites(i, 0))
-			return 1;
-	}
-
-	memcpy(sprite_remap_pc, sprite_remap, sizeof(sprite_remap));
-
-	wram_used_pc = wram_used;
-	num_sprites_pc = num_sprites;
-	num_sframes_pc = num_sframes;
-	num_wframes_pc = num_wframes;
-
-	printf("precache: %u sinfo; %u sfrm; %u wfrm; %u WRAM\n", num_sprites, num_sframes, num_wframes, wram_used / 256);
-
 	return 0;
 }
 
@@ -4076,10 +3581,6 @@ uint8_t rng_val(uint8_t val)
 
 int main(int argc, void **argv)
 {
-	map_texture_info[MAX_TEXTURES].type = 0x81;
-	map_texture_info[MAX_TEXTURES].plane.vera_tile_base = 0xFC;
-	map_texture_info[MAX_TEXTURES].plane.vera_map_base = 0xFC;
-
 	if(load_tables())
 		return 1;
 
@@ -4117,7 +3618,7 @@ int main(int argc, void **argv)
 	glGenTextures(2, texture);
 	glBindTexture(GL_TEXTURE_2D, texture[0]);
 
-	thing_spawn_player();
+	thing_spawn_player(0);
 
 	while(!stopped)
 	{

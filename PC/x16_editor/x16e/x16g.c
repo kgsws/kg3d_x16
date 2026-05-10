@@ -8577,11 +8577,11 @@ void x16g_export()
 		switch(pl->height)
 		{
 			case 128:
-				tmap = 0b11101110;
+				tmap = 0b11110110;
 				w = 32;
 			break;
 			case 64:
-				tmap = 0b11101001;
+				tmap = 0b11111001;
 				w = 64;
 			break;
 			default:

@@ -1,9 +1,6 @@
 
-#define MAP_VERSION	27
+#define MAP_VERSION	28
 #define MAP_MAGIC	0x36315870614D676B
-#define MAX_LIGHTS	8
-#define MAX_X16_VARIANTS	16
-#define MAX_TEXTURES	128
 #define MAX_PLAYER_STARTS	256
 #define MAX_SOBJ	8
 
@@ -30,10 +27,8 @@ typedef struct
 	uint8_t version;
 	uint8_t flags;
 	//
-	uint8_t count_lights;
-	uint8_t count_ptex;
 	uint8_t count_wtex;
-	uint8_t count_textures;
+	uint8_t count_ptex;
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
@@ -41,7 +36,7 @@ typedef struct
 	uint8_t count_extra_storage;
 	uint8_t count_things;
 	//
-	uint8_t unused[8];
+	uint8_t unused[10];
 	//
 	uint32_t hash_sky;
 } map_head_t;
