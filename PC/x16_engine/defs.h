@@ -1,6 +1,8 @@
 
-#define MAP_VERSION	28
+#define MAP_VERSION	29
 #define MAP_MAGIC	0x36315870614D676B
+#define MAX_LIGHTS	8
+#define MAX_TEXTURES	0xFE
 #define MAX_PLAYER_STARTS	256
 #define MAX_SOBJ	8
 
@@ -27,8 +29,8 @@ typedef struct
 	uint8_t version;
 	uint8_t flags;
 	//
-	uint8_t count_wtex;
-	uint8_t count_ptex;
+	uint8_t count_lights;
+	uint8_t count_textures;
 	uint8_t count_starts_normal;
 	uint8_t count_starts_coop;
 	uint8_t count_starts_dm;
@@ -52,12 +54,13 @@ typedef struct
 	uint8_t ycw, ycp;
 	uint8_t x0, x1;
 	uint8_t x0d, x1d;
-	uint8_t ox, oy, wx, fix;
-	uint8_t ta, tx;
+	uint8_t ox, oy, fix;
+	uint8_t tx;
 	int32_t pl_x, pl_y;
 	int16_t pl_sin, pl_cos;
-	uint8_t *wtex;
-	uint16_t *cols;
+	uint8_t *wcol;
+	uint8_t *wlup;
+	uint8_t wmsk, wshi;
 } projection_t;
 
 typedef struct

@@ -21,6 +21,9 @@
 
 #define LIGHTMAP_SIZE	256
 
+#define TEX_BAD_TILEMAP	0xF5
+#define TEX_BAD_TILEDAT	0xF8
+
 #define MAX_DRAW_SPRITES	32
 #define MAX_DRAW_MASKED	16
 #define MAX_DRAW_PORTALS	64
@@ -31,7 +34,7 @@
 #define TEXFLAG_MIRROR_X	2
 #define TEXFLAG_SWAP_XY	4
 
-#define SECTOR_LIGHT(x)	(((x)->flags >> 2) & 31)
+#define SECTOR_LIGHT(x)	(((x)->flags >> 4) & 7)
 
 //#define SHOW_OCTANT
 
@@ -205,7 +208,7 @@ typedef struct
 				uint8_t name[4][256];
 				uint8_t data[4][256];
 				uint8_t anim[3][256];
-				uint8_t info[1][256];
+				uint8_t info[2][256];
 			} wall;
 			uint8_t extra_data[4][256]; // light names, sky names, sky data
 		};
@@ -220,8 +223,20 @@ typedef struct
 	// 1 bank
 	uint8_t lightmap[32][256];
 	// 4 banks
-	uint8_t wallcols[128][256];
+	uint8_t wallcols[256][256];
 } gfx_head_t;
+
+typedef struct
+{
+	uint32_t datptr; // sector (4B)
+	uint32_t colptr; // WRAM (2B)
+	uint8_t type;
+	uint8_t tilemap;
+	uint8_t tiledata;
+	uint8_t vlink;
+	uint8_t lmap[MAX_LIGHTS];
+	uint8_t vram[14]; // 14 * 2048 = 28k
+} texture_info_t;
 
 //
 
@@ -378,14 +393,14 @@ uint8_t game_gfx[32 * 1024 * 1024];
 gfx_head_t *const gfx_head = (gfx_head_t*)game_gfx;
 
 // texture stuff
+static uint32_t texload_idx;
+static texture_info_t texture_info[MAX_TEXTURES + 1];
+
 uint8_t vram[128 * 1024];
 static uint8_t vram_age[VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS];
 static uint8_t vram_owner[2][VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS];
 
-static uint32_t idx_wall[256];
-static uint8_t load_wall[32][256];
-static uint32_t idx_plane[256];
-static uint8_t load_plane[32][256];
+static uint8_t light_remap[MAX_LIGHTS];
 
 static uint8_t *const lightmaps = game_gfx + offsetof(gfx_head_t, lightmap);
 static uint8_t *lightmap;
@@ -432,169 +447,119 @@ static void hexdump(uint8_t *src)
 //
 // textures
 
-static void vcache_age()
-{
-	for(uint32_t i = VRAM_FIRST_BLOCK; i < VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS; i++)
-	{
-		if(vram_age[i])
-			vram_age[i]--;
-	}
-}
-
-static int32_t vcache_alloc(uint32_t count)
-{
-	uint32_t num = 0;
-	int32_t bas = VRAM_FIRST_BLOCK - 1;
-
-	for(int32_t i = VRAM_FIRST_BLOCK; i < VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS; i++)
-	{
-		if(vram_age[i])
-		{
-			num = 0;
-			bas = i;
-			continue;
-		}
-
-		num++;
-		if(num == count)
-		{
-			bas++;
-
-			for( ; i >= bas; i--)
-			{
-				if(!(vram_owner[1][i] & 0x80))
-				{
-					uint32_t type = vram_owner[1][i] & 0x40;
-					uint32_t light = vram_owner[1][i] & 31;
-					uint32_t idx = vram_owner[0][i];
-printf("purge %s %u:%u @ %u\n", type ? "plane" : "wall", idx, light, i);
-					if(type)
-						load_plane[light][idx] = 0;
-					else
-						load_wall[light][idx] = 0;
-				}
-			}
-
-			return bas;
-		}
-	}
-
-	return -1;
-}
-
-static void vera_tex_data(uint32_t tile_base, uint32_t map_base)
+static void vera_tex_data(int32_t tile_base, int32_t map_base)
 {
 	uint32_t offset;
 
 	// MAP
 
-	switch(map_base & 3)
+	if(map_base >= 0)
 	{
-		case 0:
-			tex_map_stride = 2;
-			tex_res_mask = 15;
-		break;
-		case 1:
-			tex_map_stride = 8;
-			tex_res_mask = 63;
-		break;
-		case 2:
-			tex_map_stride = 32;
-			tex_res_mask = 255;
-		break;
-		case 3:
-			tex_map_stride = 128;
-			tex_res_mask = 1023;
-		break;
+		switch(map_base & 3)
+		{
+			case 0:
+				tex_map_stride = 2;
+				tex_res_mask = 15;
+			break;
+			case 1:
+				tex_map_stride = 8;
+				tex_res_mask = 63;
+			break;
+			case 2:
+				tex_map_stride = 32;
+				tex_res_mask = 255;
+			break;
+			case 3:
+				tex_map_stride = 128;
+				tex_res_mask = 1023;
+			break;
+		}
+
+		map_base &= 0xFC;
+		offset = (uint32_t)map_base << 9;
+
+		tex_map = vram + offset;
 	}
-
-	map_base &= 0xFC;
-	offset = (uint32_t)map_base << 9;
-
-	tex_map = vram + offset;
 
 	// TILES
 
-	tile_base &= 0xFC;
-	offset = (uint32_t)tile_base << 9;
+	if(tile_base >= 0)
+	{
+		tile_base &= 0xFC;
+		offset = (uint32_t)tile_base << 9;
 
-	tex_data = vram + offset;
+		tex_data = vram + offset;
+	}
 }
 
 static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t flags)
 {
-	uint32_t tmp;
+	static const uint8_t wall_map_tab[] = {0b11111001, 0b11110110, 0b11111010};
+	static const uint8_t wall_msk_tab[] = {31, 15, 7};
+	static const uint8_t wall_shi_tab[] = {5, 4, 3};
+	texture_info_t *ti = texture_info + idx;
+	uint32_t cols, tmap;
+	void *dst;
 
-	// "not loaded"
-	tex_type = 1;
-	vera_tex_data(0xF8, 0xF8);
-	projection.ta = 255;
-	tex_swap = 0;
-
-	if(flags & 8)
+	if(idx > MAX_TEXTURES)
 	{
-		if(idx == 0xFF)
-		{	
-			// sky
-			tex_type = 0x00;
-			return;
-		}
-
-		if(idx == 0xFE)
-		{
-			// invalid texture
-			vera_tex_data(0xF8, 0x00); // TODO
-			return;
-		}
-
-		// plane
-		idx = idx_plane[idx];
-
-		if(!load_plane[light][idx])
-		{
-			// must load to cache
-			int32_t ret = vcache_alloc(2);
-			uint32_t offs;
-printf("must load plane %u:%u @ %d\n", idx, light, ret);
-			if(ret < 0)
-				// no space in VRAM
-				return;
-
-			// mark
-			load_plane[light][idx] = ret;
-
-			vram_owner[0][ret] = idx;
-			vram_owner[1][ret] = 0x40 | light;
-
-			// data
-			ret *= 2048;
-
-			offs = gfx_head->plane.data[0][idx];
-			offs |= gfx_head->plane.data[1][idx] << 8;
-			offs |= gfx_head->plane.data[2][idx] << 16;
-			offs |= gfx_head->plane.data[3][idx] << 24;
-			offs += light * 8;
-			offs *= 512;
-
-			// load
-			memcpy(vram + ret, game_gfx + offs, 4096);
-		}
-
-		// set age
-		tmp = load_plane[light][idx];
-		vram_age[tmp+0] = VRAM_CACHE_AGE;
-		vram_age[tmp+1] = VRAM_CACHE_AGE;
-
-		// use data
-		vera_tex_data(load_plane[light][idx] * 4, gfx_head->plane.info[0][idx]);
-
-		tex_swap = flags & TEXFLAG_SWAP_XY;
-	} else
-	{
-		// wall
-		printf("TODO: wall %02X %02X\n", idx, flags);
-		tex_swap = 0;
+		// sky
+		tex_type = 0;
+		return;
 	}
+
+	// columns
+	projection.wcol = wram + ti->colptr;
+
+	// apply light
+	idx = ti->lmap[light];
+	ti = texture_info + idx;
+
+	// VRAM link
+	idx = ti->vlink;
+	ti = texture_info + idx;
+
+	// basic info
+	tex_type = ti->type;
+	tex_swap = ti->type & 0x40;
+
+	tmap = ti->tilemap;
+
+	// cache
+	if(ti->vram[0] != 0xFF)
+	{
+		// TEST: copy to VRAM
+		uint32_t count = (tex_type & 0x80) ? 2 : tex_type;
+		uint32_t size = count * 2048;
+		uint32_t tmp;
+
+		tmp = (VRAM_FIRST_BLOCK * 2048) >> 9;
+		dst = vram + VRAM_FIRST_BLOCK * 2048;
+
+		memcpy(dst, game_gfx + ti->datptr, size);
+		ti->tiledata = tmp; // only planes
+
+		for(uint32_t i = 0; i < count; i++)
+			ti->vram[i] = VRAM_FIRST_BLOCK + i;
+	}
+
+	// wall
+	if(!(tex_type & 0x80))
+	{
+		projection.wmsk = wall_msk_tab[tmap];
+		projection.wshi = wall_shi_tab[tmap];
+		projection.wlup = ti->vram;
+		tmap = wall_map_tab[tmap];
+	}
+
+	// source
+
+	vera_tex_data(ti->tiledata, tmap);
+
+	// flags
+
+	if(tex_type & 0x80)
+		tex_swap |= flags & TEXFLAG_SWAP_XY;
 
 	// offset
 
@@ -1215,32 +1180,38 @@ static void dr_vline(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tno
 		return;
 	}
 
+	tex_offs_x = tnow << 1;
+	tex_step_y = 0;
+	tex_step_x = step << 1;
+	tex_y_start = 0;
+	tex_x_start = projection.oy;
+
 	if(tex_type & 0x80)
 	{
-		// wall / sprite
-		tex_offs_y = projection.wx << 9;
-//		colormap = projection.wtex + projection.cols[tx];
-	} else
 		// plane
 		tex_offs_y = tx << 9;
 
-	if(tex_swap)
-	{
-		tex_offs_x = tex_offs_y;
-		tex_offs_y = tnow << 1;
-		tex_step_x = 0;
-		tex_step_y = step << 1;
-
-		tex_y_start = projection.oy;
-		tex_x_start = 0;
+		if(tex_swap)
+		{
+			tex_offs_x = tex_offs_y;
+			tex_offs_y = tnow << 1;
+			tex_step_x = 0;
+			tex_step_y = step << 1;
+			tex_y_start = projection.oy;
+			tex_x_start = 0;
+		}
 	} else
 	{
-		tex_offs_x = tnow << 1;
-		tex_step_y = 0;
-		tex_step_x = step << 1;
+		// wall
+		uint32_t data;
 
-		tex_y_start = 0;
-		tex_x_start = projection.oy;
+		tx = projection.wcol[tx & 0xFF];
+
+		data = projection.wlup[tx >> projection.wshi] << 2;
+		vera_tex_data(data, -1);
+
+		tx &= projection.wmsk;
+		tex_offs_y = tx << 9;
 	}
 
 	dst = framebuffer + x;
@@ -1257,7 +1228,7 @@ static void dr_vline(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tno
 
 static void dr_vspr(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tnow, int32_t step)
 {
-	uint8_t *dst;
+/*	uint8_t *dst;
 
 	if(render_flags & 4)
 		return;
@@ -1280,7 +1251,7 @@ static void dr_vspr(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tnow
 		dst -= 160;
 		if(col)
 			*dst = col;
-	}
+	}*/
 }
 
 static void dr_textured_strip(uint8_t x0, uint8_t x1, int32_t top_now, int32_t top_step, int32_t bot_now, int32_t bot_step, uint32_t flags)
@@ -1339,9 +1310,9 @@ static void dr_textured_strip(uint8_t x0, uint8_t x1, int32_t top_now, int32_t t
 		} else
 			portal_top = 0;
 
-		dr_vline(xx, y0, y1, ((tmap_coord[xx] - projection.ox) ^ projection.tx) & projection.ta, tnow, tmap_scale[x0] >> 2);
+		dr_vline(xx, y0, y1, (tmap_coord[xx] - projection.ox) ^ projection.tx, tnow, tmap_scale[x0] >> 2);
 		xx++;
-		dr_vline(xx, y0, y1, ((tmap_coord[xx] - projection.ox) ^ projection.tx) & projection.ta, tnow, tmap_scale[x0] >> 2);
+		dr_vline(xx, y0, y1, (tmap_coord[xx] - projection.ox) ^ projection.tx, tnow, tmap_scale[x0] >> 2);
 		xx++;
 
 go_next:
@@ -1819,7 +1790,7 @@ static void dr_sprite(uint32_t idx)
 
 static void dr_masked(uint32_t idx)
 {
-	proj_msk_t *mt = proj_msk + idx;
+/*	proj_msk_t *mt = proj_msk + idx;
 	uint8_t x0, x1;
 	uint8_t *src_data;
 	uint16_t *src_offs;
@@ -1892,7 +1863,7 @@ static void dr_masked(uint32_t idx)
 next:
 		if(x0 & 1)
 			scale_now += scale_step;
-	}
+	}*/
 }
 
 //
@@ -2558,7 +2529,7 @@ static void do_3D()
 	pidx = (15 + camera_damage) >> 4;
 	if(pidx & 0xFC)
 		pidx = 3;
-	pidx += (sec->flags & 3) * 4;
+	pidx += sec->flags & 12;
 
 	palette = palette_src;
 	palette += pidx * 256 * 3;
@@ -2767,8 +2738,6 @@ static void render()
 		level_tick++;
 		tick_run(); // 15 TPS
 		input_action = 0;
-
-		vcache_age();
 #if 0
 		thing_t *th = thing_ptr(player_thing);
 		uint32_t sn = thingsec[player_thing][0];
@@ -3315,6 +3284,25 @@ static void expand_walls(uint32_t idx)
 	}
 }
 
+static uint32_t find_light(uint32_t hash)
+{
+	for(uint32_t i = 0; i < 32; i++)
+	{
+		uint32_t h;
+
+		h = gfx_head->extra_data[0][i];
+		h |= (uint32_t)gfx_head->extra_data[1][i] << 8;
+		h |= (uint32_t)gfx_head->extra_data[2][i] << 16;
+		h |= (uint32_t)gfx_head->extra_data[3][i] << 24;
+
+		if(hash == h)
+			return i;
+	}
+
+	// default to white
+	return 0;
+}
+
 static int32_t find_sky(uint32_t hash)
 {
 	for(uint32_t i = 0; i < 256; i++)
@@ -3341,7 +3329,7 @@ static int32_t find_sky(uint32_t hash)
 	return -1;
 }
 
-static uint32_t find_wall(uint32_t hash)
+static int32_t find_wall(uint32_t hash)
 {
 	for(uint32_t i = 0; i < 256; i++)
 	{
@@ -3356,10 +3344,10 @@ static uint32_t find_wall(uint32_t hash)
 			return i;
 	}
 
-	return 0x1FE;
+	return -1;
 }
 
-static uint32_t find_plane(uint32_t hash)
+static int32_t find_plane(uint32_t hash)
 {
 	for(uint32_t i = 0; i < 254; i++)
 	{
@@ -3374,7 +3362,77 @@ static uint32_t find_plane(uint32_t hash)
 			return i;
 	}
 
-	return 0x1FE;
+	return -1;
+}
+
+static void add_texture(uint32_t hash, uint32_t info, uint8_t *lmap)
+{
+	texture_info_t *ti = texture_info + texload_idx++;
+	uint32_t light = info & 7;
+	int32_t idx;
+	void *data;
+
+	memcpy(ti->lmap, lmap, MAX_LIGHTS);
+
+	if(info & 0x80)
+	{
+		// plane
+		idx = find_plane(hash);
+		if(idx < 0)
+			goto fail;
+
+		ti->type = 0x80;
+		ti->tilemap = gfx_head->plane.info[0][idx];
+		ti->vlink = info >> 8;
+
+		hash = gfx_head->plane.data[0][idx];
+		hash |= (uint32_t)gfx_head->plane.data[1][idx] << 8;
+		hash |= (uint32_t)gfx_head->plane.data[2][idx] << 16;
+		hash |= (uint32_t)gfx_head->plane.data[3][idx] << 24;
+
+		hash *= 512;
+		hash += light_remap[light] * 4096;
+
+		ti->datptr = hash;
+
+		return;
+	} else
+	{
+		// wall
+		idx = find_wall(hash);
+		if(idx < 0)
+			goto fail;
+
+		ti->type = gfx_head->wall.info[0][idx];
+		ti->tilemap = gfx_head->wall.info[1][idx];
+		ti->vlink = info >> 8;
+
+		hash = gfx_head->wall.data[0][idx];
+		hash |= (uint32_t)gfx_head->wall.data[1][idx] << 8;
+		hash |= (uint32_t)gfx_head->wall.data[2][idx] << 16;
+		hash |= (uint32_t)gfx_head->wall.data[3][idx] << 24;
+
+		hash *= 512;
+		hash += light_remap[light] * ti->type * 2048;
+
+		ti->datptr = hash;
+
+		if(info & 0x40)
+		{
+			ti->colptr = wram_used;
+
+			data = get_wram(256);
+			if(!data)
+				goto fail;
+
+			memcpy(data, gfx_head->wallcols[idx], 256);
+		}
+
+		return;
+	}
+
+fail:
+	*ti = texture_info[MAX_TEXTURES];
 }
 
 static uint32_t load_map()
@@ -3418,6 +3476,12 @@ static uint32_t load_map()
 	)
 		goto error;
 
+	if(map_head.count_lights >= MAX_LIGHTS) // white light is excluded
+		goto error;
+
+	if(map_head.count_textures > MAX_TEXTURES)
+		goto error;
+
 	if(!map_head.count_things)
 		goto error;
 
@@ -3442,20 +3506,31 @@ static uint32_t load_map()
 		}
 	}
 
-	// wall list
-	for(uint32_t i = 0; i < map_head.count_wtex; i++)
+	// light list
+	map_head.count_lights++;
+	for(uint32_t i = 0; i < map_head.count_lights; i++)
 	{
 		if(read(fd, &temp, sizeof(temp)) != sizeof(temp))
 			goto error;
-		idx_wall[i] = find_wall(temp);
+		light_remap[i+1] = find_light(temp);
 	}
 
-	// plane list
-	for(uint32_t i = 0; i < map_head.count_ptex; i++)
+	// texture list
+	texload_idx = 0;
+	memset(texture_info, 0, sizeof(texture_info_t) * MAX_TEXTURES);
+	for(uint32_t i = 0; i < map_head.count_textures; i++)
 	{
-		if(read(fd, &temp, sizeof(temp)) != sizeof(temp))
+		union
+		{
+			uint32_t hash;
+			uint8_t u8[6 + MAX_LIGHTS];
+			uint16_t u16[3];
+		} __attribute__((packed)) info;
+
+		if(read(fd, &info, sizeof(info)) != sizeof(info))
 			goto error;
-		idx_plane[i] = find_plane(temp);
+
+		add_texture(info.hash, info.u16[2], info.u8 + 6);
 	}
 
 	// map sectors
@@ -3581,6 +3656,13 @@ uint8_t rng_val(uint8_t val)
 
 int main(int argc, void **argv)
 {
+	texture_info[MAX_TEXTURES].type = 0xFF;
+	texture_info[MAX_TEXTURES].tilemap = TEX_BAD_TILEMAP;
+	texture_info[MAX_TEXTURES].tiledata = TEX_BAD_TILEDAT;
+	texture_info[MAX_TEXTURES].vlink = MAX_TEXTURES;
+	texture_info[MAX_TEXTURES].vram[0] = 0xFF;
+	memset(texture_info[MAX_TEXTURES].lmap, MAX_TEXTURES, MAX_LIGHTS);
+
 	if(load_tables())
 		return 1;
 

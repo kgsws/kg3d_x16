@@ -463,7 +463,7 @@ typedef struct
 				uint8_t name[4][256];
 				uint8_t data[4][256];
 				uint8_t anim[3][256];
-				uint8_t info[1][256];
+				uint8_t info[2][256];
 			} wall;
 			uint8_t extra_data[4][256]; // light names, sky names, sky data
 		};
@@ -473,8 +473,8 @@ typedef struct
 	uint16_t palette[MAX_X16_PALETTE][256];
 	// 1 bank
 	uint8_t lightmap[MAX_X16_LIGHTS][256];
-	// 4 banks
-	uint8_t wallcols[128][256];
+	// 8 banks
+	uint8_t wallcols[256][256];
 } export_head_t;
 
 //
@@ -1405,7 +1405,8 @@ static uint32_t check_wall_resolution(uint32_t width, uint32_t height)
 			width != 16 &&
 			width != 32 &&
 			width != 64 &&
-			width != 128
+			width != 128 &&
+			width != 256
 		) ||
 		(
 			height != 64 &&
@@ -2640,9 +2641,35 @@ static void recalc_lights()
 }
 
 //
-// plane export
+// tile export
 
-static void place_vera_tile(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
+static void place_wall_tile(uint8_t *dst, uint8_t *src, uint32_t tx)
+{
+	for(uint32_t y = 0; y < 8; y++)
+	{
+		uint8_t *ss = src;
+		for(uint32_t x = 0; x < 8; x++)
+			*dst++ = *ss++;
+		src += tx;
+	}
+}
+
+static void make_wall_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
+{
+	for(uint32_t y = 0; y < ty; y += 8)
+	{
+		uint8_t *ss = src;
+		for(uint32_t x = 0; x < tx; x += 8)
+		{
+			place_wall_tile(dst, ss, tx);
+			dst += 8 * 8;
+			ss += 8;
+		}
+		src += tx * 8;
+	}
+}
+
+static void place_plane_tile(uint8_t *dst, uint8_t *src, uint32_t ty)
 {
 	for(uint32_t y = 0; y < 8; y++)
 	{
@@ -2656,14 +2683,14 @@ static void place_vera_tile(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty
 	}
 }
 
-static void make_vera_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
+static void make_plane_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
 {
 	for(uint32_t y = 0; y < ty; y += 8)
 	{
 		uint8_t *ss = src;
 		for(uint32_t x = 0; x < tx; x += 8)
 		{
-			place_vera_tile(dst, ss, tx, ty);
+			place_plane_tile(dst, ss, ty);
 			dst += 8 * 8;
 			ss += ty * 8;
 		}
@@ -2671,9 +2698,9 @@ static void make_vera_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty
 	}
 }
 
-static void place_vera_tiles(uint8_t *dst, uint8_t *src)
+static void fix_hax_tiles(uint8_t *dst, uint8_t *src, uint32_t count)
 {
-	for(uint32_t i = 0; i < 256; i++)
+	for(uint32_t i = 0; i < count; i++)
 	{
 		uint32_t ii = i & 63;
 		uint8_t in = *src++;
@@ -8152,7 +8179,7 @@ uint32_t x16g_init()
 	editor_texture[0].width = 64;
 	editor_texture[0].height = 64;
 	editor_texture[0].gltex = x16_editor_gt[0];
-	editor_texture[0].data = x16e_tex_bad_data; // hack for software preview; resolution is 16x16
+	editor_texture[0].data = x16e_tex_bad_data; // hack for software renderer
 
 	// 'SKY'
 	editor_texture[1].name[0] = 7;
@@ -8421,21 +8448,17 @@ void x16g_export()
 	{
 		uint32_t i;
 		uint8_t ttmp[256];
-		uint8_t ttex[256];
+		uint8_t *rtex = edit_cbor_buffer;
+		uint8_t *ttex = edit_cbor_buffer + 2048;
 		hud_export_t *hud = (hud_export_t*)(ttmp + 128);
 
 		// generate sys textures
-		for(uint32_t i = 0; i < 256; i++)
-			ttex[i] = x16g_palette_match(((uint32_t*)x16e_tex_mem_data)[i], 0);
-		make_vera_tiles(ttmp, ttex, 16, 16);
-		place_vera_tiles(vram_ranges.r1, ttmp);
+		for(uint32_t i = 0; i < 2048; i++)
+			rtex[i] = x16g_palette_match(((uint32_t*)x16e_tex_bad_data)[i], 0);
+		make_plane_tiles(ttex, rtex, 64, 32);
+		fix_hax_tiles(vram_ranges.r1, ttex, 2048);
 		for(uint32_t i = 0; i < 0x40; i++)
 			vram_ranges.r1[i] = i;
-
-		for(uint32_t i = 0; i < 256; i++)
-			ttex[i] = x16g_palette_match(((uint32_t*)x16e_tex_bad_data)[i], 0);
-		make_vera_tiles(ttmp, ttex, 16, 16);
-		place_vera_tiles(vram_ranges.r1 + 1024, ttmp);
 
 		// clear
 		memset(ttmp + FONT_CHAR_COUNT, 0, sizeof(ttmp) - FONT_CHAR_COUNT);
@@ -8552,7 +8575,6 @@ void x16g_export()
 	for(uint32_t i = 0; i < num_li; i++)
 	{
 		editor_light_t *el = editor_light + i;
-		uint32_t ii = i;
 
 		make_light_data(i);
 
@@ -8570,7 +8592,7 @@ void x16g_export()
 		variant_list_t *pl = x16_plane + i;
 		void *bptr = ptr;
 		uint32_t w, h;
-		uint32_t base, tmap;
+		uint32_t base, tmap, hash;
 
 		base = (ptr - edit_cbor_buffer) / 512;
 
@@ -8588,7 +8610,7 @@ void x16g_export()
 			continue;
 		}
 
-		make_vera_tiles(ptr, pl->data, pl->height, w);
+		make_plane_tiles(ptr, pl->data, pl->height, w);
 		ptr += 4096;
 
 		for(uint32_t i = 1; i < num_li; i++)
@@ -8597,10 +8619,12 @@ void x16g_export()
 			ptr += 4096;
 		}
 
-		head->plane.name[0][num_pl] = pl->hash;
-		head->plane.name[1][num_pl] = pl->hash >> 8;
-		head->plane.name[2][num_pl] = pl->hash >> 16;
-		head->plane.name[3][num_pl] = pl->hash >> 24;
+		hash = pl->hash;
+
+		head->plane.name[0][num_pl] = hash;
+		head->plane.name[1][num_pl] = hash >> 8;
+		head->plane.name[2][num_pl] = hash >> 16;
+		head->plane.name[3][num_pl] = hash >> 24;
 
 		head->plane.data[0][num_pl] = base;
 		head->plane.data[1][num_pl] = base >> 8;
@@ -8624,7 +8648,7 @@ void x16g_export()
 		variant_list_t *vl = x16_wall + i;
 		void *bptr = ptr;
 		uint32_t cols, bsize, bused;
-		uint32_t base, tmap, hash;
+		uint32_t base, type, hash;
 
 		if(!vl->max)
 			continue;
@@ -8641,20 +8665,20 @@ void x16g_export()
 		cols = vl->swal_colt - vl->swal_colr;
 		bsize = cols * vl->swal_height;
 		bused = (bsize + 2047) / 2048;
-		bused *= 2048;
-		cols = bused / vl->swal_height;
+		bsize = bused * 2048;
+		cols = bsize / vl->swal_height;
 
 		// tilemap
 		switch(vl->swal_height)
 		{
 			case 256:
-				tmap = 0b11111010;
+				type = 2;
 			break;
 			case 128:
-				tmap = 0b11110110;
+				type = 1;
 			break;
 			case 64:
-				tmap = 0b11111001;
+				type = 0;
 			break;
 			default:
 			continue;
@@ -8662,13 +8686,13 @@ void x16g_export()
 
 		// make tiles
 
-		make_vera_tiles(ptr, vl->data, vl->swal_height, cols);
-		ptr += bused;
+		make_wall_tiles(ptr, vl->data, vl->swal_height, cols);
+		ptr += bsize;
 
 		for(uint32_t i = 1; i < num_li; i++)
 		{
-			memcpy_light(ptr, bptr, bused, i);
-			ptr += bused;
+			memcpy_light(ptr, bptr, bsize, i);
+			ptr += bsize;
 		}
 
 		// save variants
@@ -8683,8 +8707,8 @@ void x16g_export()
 
 			// columns
 
-			for(uint32_t x = 0; x < 128; x++)
-				head->wallcols[num_wa & 0x7F][x | (num_wa & 0x80)] = vi->sw.offset[x & (vi->sw.width-1)] / vl->swal_height;
+			for(uint32_t x = 0; x < 256; x++)
+				head->wallcols[num_wa][x] = vi->sw.offset[x & (vi->sw.width-1)] / vl->swal_height;
 
 			// add
 
@@ -8700,7 +8724,8 @@ void x16g_export()
 			head->wall.data[2][num_wa] = base >> 16;
 			head->wall.data[3][num_wa] = base >> 24;
 
-			head->wall.info[1][num_wa] = tmap;
+			head->wall.info[0][num_wa] = bused;
+			head->wall.info[1][num_wa] = type;
 
 			head->wall.anim[0][num_wa] = vi->sw.anim[0];
 			head->wall.anim[1][num_wa] = vi->sw.anim[1] + ANIM_TIME_EXPORT_OFFSET;

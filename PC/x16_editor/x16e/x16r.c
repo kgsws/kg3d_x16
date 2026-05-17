@@ -478,8 +478,9 @@ static editor_texture_t *tex_set(kge_x16_tex_t *x16tex, uint8_t flags)
 
 	if(!idx)
 	{
-		tex_width = 16;
-		tex_height = 16;
+		tex_width = 32;
+		tex_height = 64;
+		tex_swap_xy = 1;
 	} else
 	{
 		tex_width = et->width;
