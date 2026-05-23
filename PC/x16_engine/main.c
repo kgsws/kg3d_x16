@@ -15,8 +15,9 @@
 
 #define VRAM_FIRST_BLOCK	20
 #define VRAM_NUM_BLOCKS	37
+#define VRAM_STOP_BLOCK	(VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS)
 #define VRAM_TEXTURE_START	(VRAM_FIRST_BLOCK * 2048)
-#define VRAM_TEXTURE_END	(VRAM_TEXTURE_START + VRAM_NUM_BLOCKS * 2048)
+#define VRAM_TEXTURE_END	(VRAM_STOP_BLOCK * 2048)
 #define VRAM_CACHE_AGE	4
 
 #define LIGHTMAP_SIZE	256
@@ -236,7 +237,16 @@ typedef struct
 	uint8_t vlink;
 	uint8_t lmap[MAX_LIGHTS];
 	uint8_t vram[14]; // 14 * 2048 = 28k
+	uint8_t used; // not on X16
 } texture_info_t;
+
+typedef struct
+{
+	uint8_t prev;
+	uint8_t next;
+	uint8_t texture;
+	uint8_t texslot;
+} vcache_link_t;
 
 //
 
@@ -394,11 +404,11 @@ gfx_head_t *const gfx_head = (gfx_head_t*)game_gfx;
 
 // texture stuff
 static uint32_t texload_idx;
-static texture_info_t texture_info[MAX_TEXTURES + 1];
+static texture_info_t texture_info[256];
 
 uint8_t vram[128 * 1024];
-static uint8_t vram_age[VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS];
-static uint8_t vram_owner[2][VRAM_FIRST_BLOCK + VRAM_NUM_BLOCKS];
+static uint8_t vcache_top, vcache_cur;
+static vcache_link_t vcache[256];
 
 static uint8_t light_remap[MAX_LIGHTS];
 
@@ -441,6 +451,114 @@ static void hexdump(uint8_t *src)
 			printf("0x%02X, ", *src);
 
 		src++;
+	}
+}
+
+//
+// VRAM cache
+
+static uint8_t vcache_get()
+{
+	uint8_t ret = vcache_top;
+	uint8_t now = vcache_top;
+	uint8_t tex = vcache[now].texture;
+	uint8_t slt = vcache[now].texslot;
+
+	printf("vcache_get: old top %u\n", now);
+
+	now = vcache[now].next;
+	vcache[now].prev = 0;
+	vcache_top = now;
+
+	if(tex != 0xFF)
+	{
+		printf("vcache_get: free %u:%u\n", tex, slt);
+		texture_info[tex].vram[slt] = 0;
+	}
+
+	vcache[vcache_cur].next = ret;
+
+	vcache[ret].prev = vcache_cur;
+	vcache_cur = ret;
+	vcache[ret].next = 0;
+
+	printf("vcache_get: new top %u new cur %u\n", vcache_top, vcache_cur);
+
+	return ret;
+}
+
+static void vcache_carve(uint8_t blk)
+{
+	uint8_t next, prev;
+
+	next = vcache[blk].next;
+	prev = vcache[blk].prev;
+
+	printf("vcache_carve: %u; p %u n %u\n", blk, prev, next);
+
+	vcache[prev].next = next;
+
+	if(next)
+		vcache[next].prev = prev;
+	else
+		vcache_cur = prev;
+}
+
+static void vcache_demote(uint8_t blk)
+{
+	if(blk != vcache_top)
+	{
+		vcache_carve(blk);
+
+		vcache[vcache_top].prev = blk;
+
+		vcache[blk].next = vcache_top;
+		vcache[blk].prev = 0;
+
+		vcache_top = blk;
+	}
+}
+
+static void vcache_verify(const char *place)
+{
+	uint32_t i;
+	uint32_t blk = vcache_top;
+	uint32_t prev = 0;
+
+	for(i = 0; i < 64; i++)
+	{
+		uint32_t next = vcache[blk].next;
+		uint32_t texi = vcache[blk].texture;
+		uint32_t texs = vcache[blk].texslot;
+
+		if(vcache[blk].prev != prev)
+		{
+			printf("vcache_verify(%s): blk->prev{%u} != prev{%u} @ %u\n", place, vcache[blk].prev, prev, blk);
+			exit(1);
+		}
+
+		if(texi != 0xFF)
+		{
+			texture_info_t *ti = texture_info + texi;
+
+			if(ti->vram[texs] != blk)
+			{
+				printf("vcache_verify(%s): bad tex link\n", place);
+				exit(1);
+			}
+		}
+
+		if(!next)
+			break;
+
+		prev = blk;
+		blk = next;
+	}
+
+	if(i != VRAM_NUM_BLOCKS - 1)
+	{
+		printf("vcache_verify(%s): miscounted %u\n", place, i + 1);
+		exit(1);
 	}
 }
 
@@ -499,7 +617,6 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 	static const uint8_t wall_shi_tab[] = {5, 4, 3};
 	texture_info_t *ti = texture_info + idx;
 	uint32_t cols, tmap;
-	void *dst;
 
 	if(idx > MAX_TEXTURES)
 	{
@@ -521,17 +638,20 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 
 	// basic info
 	tex_type = ti->type;
-	tex_swap = ti->type & 0x40;
+	tex_swap = ti->type & 0x40; // 'bad texture'
 
 	tmap = ti->tilemap;
 
 	// cache
 	if(ti->vram[0] != 0xFF)
 	{
+		ti->used = 1;
+#if 0
 		// TEST: copy to VRAM
 		uint32_t count = (tex_type & 0x80) ? 2 : tex_type;
 		uint32_t size = count * 2048;
 		uint32_t tmp;
+		void *dst;
 
 		tmp = (VRAM_FIRST_BLOCK * 2048) >> 9;
 		dst = vram + VRAM_FIRST_BLOCK * 2048;
@@ -541,6 +661,123 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 
 		for(uint32_t i = 0; i < count; i++)
 			ti->vram[i] = VRAM_FIRST_BLOCK + i;
+#else
+		uint32_t count = tex_type & 15;
+		void *src;
+
+		if(tex_type != 0xFF)
+		{
+			if(tex_type == 0x82)
+			{
+				if(!(ti->vram[0] | ti->vram[1]))
+				{
+					uint8_t blk;
+					uint8_t next, prev;
+
+					if(vcache_top >= VRAM_STOP_BLOCK - 1)
+					{
+						blk = vcache[vcache_top].next;
+						next = vcache[blk].next;
+
+						vcache[next].prev = vcache_top;
+
+						vcache[vcache_top].next = next;
+						vcache[vcache_top].prev = blk;
+
+						vcache[blk].next = vcache_top;
+						vcache[blk].prev = 0;
+
+						vcache_top = blk;
+
+						vcache_verify("PlnS");
+					}
+
+					blk = vcache_top & 0xFE;
+					ti->tiledata = blk << 2;
+
+					//
+
+					vcache_carve(vcache_top ^ 1);
+
+					//
+
+					next = vcache[vcache_top].next;
+
+					vcache_top = blk;
+
+					vcache[next].prev = blk + 1;
+
+					vcache[blk].next = blk + 1;
+					vcache[blk].prev = 0;
+
+					blk++;
+					vcache[blk].next = next;
+					vcache[blk].prev = blk - 1;
+
+					vcache_verify("PlnC");
+				} else
+				if(!ti->vram[0] && ti->vram[1])
+				{
+					uint8_t blk = ti->vram[1] & 0xFE;
+					vcache_demote(blk);
+					ti->tiledata = blk << 2;
+					vcache_verify("PlnA");
+				} else
+				if(!ti->vram[1] && ti->vram[0])
+				{
+					vcache_demote(ti->vram[0] | 0x01);
+					vcache_verify("PlnB");
+				}
+			}
+
+			for(uint32_t i = 0; i < count; i++)
+			{
+				uint8_t blk = ti->vram[i];
+
+				if(blk)
+				{
+					if(blk != vcache_cur)
+					{
+						uint8_t prev, next;
+
+						//
+
+						next = vcache[blk].next;
+						prev = vcache[blk].prev;
+
+						if(prev)
+							vcache[prev].next = next;
+						else
+							vcache_top = next;
+
+						vcache[next].prev = prev;
+
+						//
+
+						vcache[blk].next = 0;
+						vcache[blk].prev = vcache_cur;
+						vcache[vcache_cur].next = blk;
+						vcache_cur = blk;
+
+//						printf("TEX: refresh %u:%u @ %u\n", idx, i, blk);
+					}
+				} else
+				{
+					blk = vcache_get();
+
+					vcache[blk].texture = idx;
+					vcache[blk].texslot = i;
+
+					src = game_gfx + ti->datptr + i * 2048;
+					memcpy(vram + blk * 2048, src, 2048);
+
+					ti->vram[i] = blk;
+				}
+			}
+
+			vcache_verify("TexSet");
+		}
+#endif
 	}
 
 	// wall
@@ -2508,6 +2745,9 @@ static void do_3D()
 	sector_t *sec;
 	uint32_t pidx;
 
+	for(int32_t i = 0; i < MAX_TEXTURES; i++)
+		texture_info[i].used = 0;
+
 	for(int32_t i = 0; i < 4; i++)
 		anim_tick[i] = level_tick << (4-i);
 	for(int32_t i = 0; i < 6; i++)
@@ -2596,6 +2836,14 @@ static void do_3D()
 		if(portal_rd == portals)
 			break;
 	}
+
+	// info
+	pidx = 0;
+	for(int32_t i = 0; i < MAX_TEXTURES; i++)
+		if(texture_info[i].used)
+			pidx += texture_info[i].type & 15;
+
+	printf("VCACHE: %u\n", pidx);
 }
 
 static void do_2D()
@@ -3381,7 +3629,7 @@ static void add_texture(uint32_t hash, uint32_t info, uint8_t *lmap)
 		if(idx < 0)
 			goto fail;
 
-		ti->type = 0x80;
+		ti->type = 0x82;
 		ti->tilemap = gfx_head->plane.info[0][idx];
 		ti->vlink = info >> 8;
 
@@ -3444,16 +3692,25 @@ static uint32_t load_map()
 
 	wram_used = 64 * 8192; // TODO
 
-	tick_clear();
-
 	fd = open("DATA/DEFAULT.MAP", O_RDONLY);
 	if(fd < 0)
 		return 1;
 
-	thing_clear();
+	for(uint32_t i = VRAM_FIRST_BLOCK; i < VRAM_STOP_BLOCK; i++)
+	{
+		vcache[i].prev = i - 1;
+		vcache[i].next = i + 1;
+		vcache[i].texture = 0xFF;
+	}
 
-	memset(vram_age, 0, sizeof(vram_age));
-	memset(vram_owner, 0xFF, sizeof(vram_owner));
+	vcache[VRAM_FIRST_BLOCK].prev = 0;
+	vcache[VRAM_STOP_BLOCK - 1].next = 0;
+
+	vcache_top = VRAM_FIRST_BLOCK;
+	vcache_cur = VRAM_STOP_BLOCK - 1;
+
+	tick_clear();
+	thing_clear();
 
 	if(read(fd, &map_head, sizeof(map_head)) != sizeof(map_head))
 		goto error;
@@ -3499,7 +3756,7 @@ static uint32_t load_map()
 		if(sky >= 0)
 		{
 			sky_base = wram_used / 256;
-			dst = get_wram(temp);
+			dst = get_wram(65536);
 			if(!dst)
 				goto error;
 			memcpy(dst, game_gfx + sky * 512, 65536);
