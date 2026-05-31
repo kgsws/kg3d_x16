@@ -8440,10 +8440,9 @@ void x16g_export()
 
 	edit_busy_window("Exporting graphics ...");
 
-	/// TABLES2.BIN
-	// HUD + FONT + TILES + TILEMAPS
+	/// HUD + FONT + TILES + TILEMAPS
 
-	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "TABLES2.BIN", O_WRONLY | O_TRUNC | O_CREAT, 0644);
+	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "KG3D.VRG", O_WRONLY | O_TRUNC | O_CREAT, 0644);
 	if(fd >= 0)
 	{
 		uint32_t i;
@@ -8783,7 +8782,7 @@ void x16g_export()
 
 	// save
 
-	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "GAME.GFX", O_WRONLY | O_TRUNC | O_CREAT, 0644);
+	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "KG3D.GFX", O_WRONLY | O_TRUNC | O_CREAT, 0644);
 	if(fd >= 0)
 	{
 		write(fd, edit_cbor_buffer, ptr - edit_cbor_buffer);
