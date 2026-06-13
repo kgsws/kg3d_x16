@@ -53,11 +53,13 @@ typedef struct
 		uint8_t swap[256];	// @ 0x0E00
 		uint8_t bank[256];	// @ 0x0F00
 		uint8_t sign[256];	// @ 0x1000
-		uint8_t jmp_spr_l[128];	// @ 0x1100
-		uint8_t jmp_spr_h[128];	// @ 0x1180
-		uint8_t jmp_sky_l[256];	// @ 0x1200
-		uint8_t jmp_sky_h[256];	// @ 0x1300
-		uint8_t drcode[0x0C00];	// @ 0x1400 // size 0x0B52
+		uint8_t jmp_spw_l[128];	// @ 0x1100
+		uint8_t jmp_spw_h[128];	// @ 0x1180
+		uint8_t jmp_spr_l[128];	// @ 0x1200
+		uint8_t jmp_spr_h[128];	// @ 0x1280
+		uint8_t jmp_sky_l[256];	// @ 0x1300
+		uint8_t jmp_sky_h[256];	// @ 0x1400
+		uint8_t drcode[0x1000];	// @ 0x1500 // size 0x0F53
 	} t0;
 	struct
 	{
@@ -92,6 +94,8 @@ typedef struct
 		uint8_t vidoffs_x[128];	// @ 0xBC00
 		uint8_t vidoffs_y[128];	// @ 0xBC80
 		uint8_t printint[256];	// @ 0xBD00
+		//
+		uint8_t e_pad[0x100];
 	} t1;
 } export_tables_t;
 
@@ -285,6 +289,13 @@ static const uint8_t code_sprpx[] =
 	0xB1, COLORMAP_ZP,	// lda	(COLORMAP_L),y
 	0xA8,	// tay
 	0xB1, LIGHTMAP_ZP,	// lda	(LIGHTMAP_L),y
+	0x8D, 0x23, 0x9F	// sta	VERA_DATA0
+};
+
+static const uint8_t code_spwpx[] =
+{
+	0xAC, 0x24, 0x9F,	// ldy	VERA_DATA1
+	0xB1, COLORMAP_ZP,	// lda	(COLORMAP_L),y
 	0x8D, 0x23, 0x9F	// sta	VERA_DATA0
 };
 
@@ -2211,6 +2222,7 @@ void x16r_generate()
 {
 	uint8_t *ptr;
 	uint32_t last;
+	uint32_t code_base_spwpx;
 	uint32_t code_base_sprpx;
 	uint32_t code_base_skypx;
 	uint32_t code_base_rawpx_a;
@@ -2399,12 +2411,19 @@ void x16r_generate()
 	*ptr++ = 0x60; // RTS
 //	printf("psky end 0x%04X\n", ptr - export_tables.t0.drcode);
 
-	// pixel loop (thing sprite)
+	// pixel loop (thing sprite, with light)
 	code_base_sprpx = DRAW_CODE_T0(ptr);
 	for(uint32_t i = 0; i < 128; i++)
 		ptr = put_code(ptr, code_sprpx, sizeof(code_sprpx));
 	*ptr++ = 0x60; // RTS
 //	printf("pthg end 0x%04X\n", ptr - export_tables.t0.drcode);
+
+	// pixel loop (thing sprite, with light)
+	code_base_spwpx = DRAW_CODE_T0(ptr);
+	for(uint32_t i = 0; i < 128; i++)
+		ptr = put_code(ptr, code_spwpx, sizeof(code_spwpx));
+	*ptr++ = 0x60; // RTS
+//	printf("pthw end 0x%04X\n", ptr - export_tables.t0.drcode);
 
 	// pixel jump offsets (sky)
 	// this uses pixel X as offset
@@ -2418,7 +2437,7 @@ void x16r_generate()
 		export_tables.t0.jmp_sky_h[i] = jmp >> 8;
 	}
 
-	// pixel jump offsets (thing sprites)
+	// pixel jump offsets (thing sprites, with light)
 	// this uses line length as offset
 	for(uint32_t i = 0; i < 128; i++)
 	{
@@ -2428,6 +2447,18 @@ void x16r_generate()
 		jmp = code_base_sprpx + ((120 - idx) + 8) * sizeof(code_sprpx);
 		export_tables.t0.jmp_spr_l[i] = jmp;
 		export_tables.t0.jmp_spr_h[i] = jmp >> 8;
+	}
+
+	// pixel jump offsets (thing sprites, no light)
+	// this uses line length as offset
+	for(uint32_t i = 0; i < 128; i++)
+	{
+		uint16_t jmp;
+		uint32_t idx = i <= 120 ? i : 0;
+
+		jmp = code_base_spwpx + ((120 - idx) + 8) * sizeof(code_spwpx);
+		export_tables.t0.jmp_spw_l[i] = jmp;
+		export_tables.t0.jmp_spw_h[i] = jmp >> 8;
 	}
 
 	/// CODE T1 ///

@@ -43,6 +43,8 @@ k_CLOSE = $FFC3
 
 k_CHKIN = $FFC6
 
+k_BASIN = $FFCF
+
 ;; extended
 
 e_ps2data_fetch = $08

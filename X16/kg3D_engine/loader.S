@@ -1,3 +1,6 @@
+;; KG3D engine
+; second stage loader
+
 .include "../kernal.inc"
 .include "../vera.inc"
 .include "../smc.inc"
@@ -5,31 +8,32 @@
 .include "banks.inc"
 .include "tables.inc"
 
-LOADER_BLOCK_COUNT = $0D
-LOADER_PRG_ADDR = $080D
-LOADER_DST_ADDR = $7900
-
-COLORS_TITLE = $67
 COLORS_STATUS = $0F
 COLORS_ERROR = $0A
 COLORS_INFO = $05
 
-VAR_COPY_L = $02
-VAR_COPY_H = $03
+ADDR_L = $F8
+ADDR_M = $F9
+
+PTR_L = $3C
+PTR_H = $3D
+PTR_I = $3E
+
+FILE_ERROR = $3F
 
 VAR_FILE_BUF_SIZE = $E0
 VAR_FILE_DEST = $E2
 
 BLOCK_READ_SIZE = 240
-FILE_HANDLE = 2
-FILE_DEVICE_ID = 8
-FILE_DEST_WRAM = 0
-FILE_DEST_VRAM0 = 2
-FILE_DEST_VRAM1 = 3
 
-.org LOADER_DST_ADDR
-; NOTE:
-; Loader is loaded at LOADER_PRG_ADDR and copies itself to LOADER_DST_ADDR.
+DEVICE_ID = 8
+
+FILE_HANDLE = 2
+FILE_CHANNEL = 2
+
+;;;
+
+.org $2500
 
 .segment "STARTUP"
 .segment "INIT"
@@ -37,557 +41,158 @@ FILE_DEST_VRAM1 = 3
 .segment "CODE"
 
 ;;;
-; loader main
+; main
 ;;;
 
 start:
-	;;;;
-	;; copy self
+	stz	FILE_ERROR
 
-	ldx	#LOADER_BLOCK_COUNT
-@loop_copy:
-	ldy	#0
-@loop_row:
-	lda	LOADER_PRG_ADDR,y
-	sta	LOADER_DST_ADDR,y
-	dey
-	bne	@loop_row
-	inc	@loop_row+2-LOADER_DST_ADDR+LOADER_PRG_ADDR
-	inc	@loop_row+5-LOADER_DST_ADDR+LOADER_PRG_ADDR
-	dex
-	bne	@loop_row
+	;; ENGINE CODE
 
-	jmp	entry
-entry:
-	;;;;
-	;; setup video RAM
+	jsr	read_data
+	.byte	LDR_ENGINE_SIZE / 512
+	.byte	LDR_ENGINE_DEST / 256
 
-	; reset stack
-	ldx	#$FF
-	txs
+	;; EXTRA CODE
 
-	; copy character set to VRAM
-	stz	VERA_CTRL
-	stz	VERA_ADDRx_L
-	lda	#$22
-	sta	VERA_ADDRx_M
-	lda	#%00010001
-	sta	VERA_ADDRx_H
-	ldy	#6
-	ldx	#0
-@vram_tile_loop:
-	lda	dos_font,x	; modified opcode
-	sta	VERA_DATA0
-	inx
-	bne	@vram_tile_loop
-	inc	@vram_tile_loop+2
-	dey
-	bne	@vram_tile_loop
-
-	; setup VRAM clear (using cache)
-	lda	#$04
-	sta	VERA_CTRL
-	lda	#%01000000
-	sta	VERA_FX_CTRL
-	lda	#$0C
-	sta	VERA_CTRL
-	lda	#%00110001
-	sta	VERA_ADDRx_H
-
-	; setup clear character
-	lda	#' '
-	sta	VERA_FX_CACHE_L
-	sta	VERA_FX_CACHE_H
-
-	; setup clear colors
-	lda	#COLORS_TITLE
-	sta	VERA_FX_CACHE_M
-	sta	VERA_FX_CACHE_U
-
-	; clear first line (title)
-	stz	VERA_ADDRx_L
-	stz	VERA_ADDRx_M
-	jsr	clear_line
-
-	; setup clear colors
-	lda	#COLORS_STATUS
-	sta	VERA_FX_CACHE_M
-	sta	VERA_FX_CACHE_U
-
-	; clear lines (status)
-	ldx	#13
-@clear_loop:
-	inc	VERA_ADDRx_M
-	stz	VERA_ADDRx_L
-	jsr	clear_line
-	dex
-	bne	@clear_loop
-
-	; setup clear colors
-	lda	#COLORS_INFO
-	sta	VERA_FX_CACHE_M
-	sta	VERA_FX_CACHE_U
-
-	; clear last line (info)
-	inc	VERA_ADDRx_M
-	stz	VERA_ADDRx_L
-	jsr	clear_line
-
-	; clear 'loading GFX' line
-	stz	VERA_FX_CACHE_M
-	stz	VERA_FX_CACHE_U
-	lda	#$05
-	sta	VERA_ADDRx_M
-	stz	VERA_ADDRx_L
-	jsr	clear_line
-
-	; disable cache
-	lda	#$04
-	sta	VERA_CTRL
-	stz	VERA_FX_CTRL
-	stz	VERA_CTRL
-
-	; text: title
-	jsr	write_text
-	.word	$0014
-	.word	text_title
-
-	;;;;
-	;; setup video MODE
-
-	; backup video mode
-	lda	VERA_DC_VIDEO
-	and	#%00001111
-	sta	REG_VIDEO_MODE
-	and	#2
-	asl
-	asl
-	tax
-
-	; disable all layers
-	sta	VERA_DC_VIDEO
-
-	; setup layer 1
-	lda	#%00100000
-	sta	VERA_L1_CONFIG
-	lda	#%10000000
-	sta	VERA_L1_MAPBASE
-	lda	#%10010010
-	sta	VERA_L1_TILEBASE
-	stz	VERA_L1_HSCROLL_L
-	stz	VERA_L1_HSCROLL_H
-	stz	VERA_L1_VSCROLL_L
-	stz	VERA_L1_VSCROLL_H
-
-	; dcsel = 1, addrsel = 0
-	lda	#$02
-	sta	VERA_CTRL
-
-	; set offset
-	lda	video_table+0,x
-	sta	VERA_DC_HSTART
-	lda	video_table+1,x
-	sta	VERA_DC_HSTOP
-	lda	video_table+2,x
-	sta	VERA_DC_VSTART
-	lda	video_table+3,x
-	sta	VERA_DC_VSTOP
-
-	; dcsel = 0, addrsel = 0
-	stz	VERA_CTRL
-
-	; set scale
-	lda	video_table+4,x
-	sta	VERA_DC_HSCALE
-	lda	video_table+5,x
-	sta	VERA_DC_VSCALE
-
-	; enable layer 1
-	lda	REG_VIDEO_MODE
-	ora	#%00100000
-	sta	VERA_DC_VIDEO
-
-	;;;;
-	;; WRAM check
-
-	; check RAM size
-	sec
-	jsr	k_MEMTOP
-	beq	:+	; 2MB check
-	cmp	#$80	; 1MB check
-	bcs	:+
-
-	; text: error
-	jsr	write_text
-	.word	$070A
-	.word	text_error_ram
-
-	jmp	error
-:
-	;;;;
-	;; setup sprites
-
-	; ADDR0 = 0x01FFFF, decrement = 1
-	stz	VERA_CTRL
-	lda	#$FF
-	sta	VERA_ADDRx_L
-	lda	#$FF
-	sta	VERA_ADDRx_M
-	lda	#%00011001
-	sta	VERA_ADDRx_H
-
-	; setup sprites
-	ldy	#48
-@loop_spr:
-	lda	sprite_data-1,y
-	sta	VERA_DATA0
-	dey
-	bne	@loop_spr
-
-	;;;;
-	;; load engine
-
-	; text: loading binary
-	jsr	write_text
-	.word	$0100
-	.word	text_load_bin
-
-	; open engine binary
-	lda	#(fn_engine_end-fn_engine)
-	ldx	#<fn_engine
-	ldy	#>fn_engine
-	jsr	file_open_rd
-
-	; load main code
-	lda	#<LDR_ENGINE_DEST
-	sta	VAR_FILE_DEST+0
-	lda	#>LDR_ENGINE_DEST
-	sta	VAR_FILE_DEST+1
-	lda	#<LDR_ENGINE_SIZE
-	sta	VAR_FILE_BUF_SIZE+0
-	lda	#>LDR_ENGINE_SIZE
-	sta	VAR_FILE_BUF_SIZE+1
-	jsr	file_read_16_wram
-	bcs	@error_engine
-
-	; code bank
 	lda	#BANK_EXTRA_CODE
 	sta	REG_RAM_BANK
 
-	; load extra code
-	lda	#<LDR_CODE_EXTRA_SIZE
-	sta	VAR_FILE_BUF_SIZE+0
-	lda	#>LDR_CODE_EXTRA_SIZE
-	sta	VAR_FILE_BUF_SIZE+1
-	jsr	file_read_16_wram_bank
-	bcs	@error_engine
+	jsr	read_data
+	.byte	LDR_EXTRA_SIZE / 512
+	.byte	LDR_EXTRA_DEST / 256
 
-	; code bank
+	;; SWAPPABLE CODE
+
 	lda	#BANK_SWAP_CODE
 	sta	REG_RAM_BANK
 
-	; load swap code
-	lda	#<LDR_CODE_SWAP_SIZE
-	sta	VAR_FILE_BUF_SIZE+0
-	lda	#>LDR_CODE_SWAP_SIZE
-	sta	VAR_FILE_BUF_SIZE+1
-	jsr	file_read_16_wram_bank
-	bcs	@error_engine
+	jsr	read_data
+	.byte	LDR_SWAP_SIZE / 512
+	.byte	LDR_SWAP_DEST / 256
 
-	; engine loaded
-	jsr	file_close
-
-	bra	:+
-
-@error_engine:
-	; loading failed
-	jsr	file_close
-
-	; text: error
-	jsr	write_text
-	.word	$070A
-	.word	text_error_bin
-
-	jmp	error
-:
-	;;;;
-	; load tables
-
-	jsr	load_tables
-
-	; text: video init
-	jsr	write_text
-	.word	$0300
-	.word	text_init_video
-
-	;;;;
-	;; clear frame buffers
-
-	; ADDR0 = 0x000000, increment = 4
-	stz	VERA_CTRL
-	stz	VERA_ADDRx_L
-	stz	VERA_ADDRx_M
-	lda	#%00110000
-	sta	VERA_ADDRx_H
-
-	; dcsel = 6, addrsel = 0
-	lda	#$0C
-	sta	VERA_CTRL
-
-	; clear cache
-	stz	VERA_FX_CACHE_L
-	stz	VERA_FX_CACHE_M
-	stz	VERA_FX_CACHE_H
-	stz	VERA_FX_CACHE_U
-
-	; dcsel = 2, addrsel = 0
-	lda	#$04
-	sta	VERA_CTRL
-
-	; enable cache write
-	lda	#%01000000
-	sta	VERA_FX_CTRL
-
-	;; clear screens
-	ldx	#0
-	ldy	#10
-@loop_clr:
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	stz	VERA_DATA0
-	dex
-	bne	@loop_clr
-	dey
-	bne	@loop_clr
-
-	; disable cache write
-	stz	VERA_FX_CTRL
-	stz	VERA_CTRL
-
-	;;;;
-	;; rearrange video tables
-
-	; ADDR0 = 0x01D600, increment = 1
-	stz	VERA_CTRL
-	stz	VERA_ADDRx_L
-	lda	#$D6
-	sta	VERA_ADDRx_M
-	lda	#%00010001
-	sta	VERA_ADDRx_H
-
-	; extra code bank
-	lda	#BANK_EXTRA_CODE
-	sta	REG_RAM_BANK
-
-	; copy from VRAM
-	ldx	#0
-@loop_font0:
-	lda	VERA_DATA0
-	sta	TAB_FONT_SPACE,x
-	inx
-	bne	@loop_font0
-@loop_font1:
-	lda	VERA_DATA0
-	sta	TAB_FONT_YOFFS,x
-	inx
-	bne	@loop_font1
-
-	; ADDR1 = 0x00??00, increment = 1
-	lda	#%00000001
-	sta	VERA_CTRL
-	stz	VERA_ADDRx_L
-	lda	#%00010000
-	sta	VERA_ADDRx_H
-
-	; HUD (1/2)
-	jsr	vram_move
-	.byte	$3E, $02
-
-	; HUD (2/2)
-	jsr	vram_move
-	.byte	$5E, $02
-
-	; font (1 / 4)
-	jsr	vram_move
-	.byte	$7E, $02
-
-	; font (2 / 4)
-	jsr	vram_move
-	.byte	$9E, $02
-
-	; ADDR1 = 0x01????, increment = 1
-	lda	#%00010001
-	sta	VERA_ADDRx_H
-
-	; part of ranges (4096 B)
-	jsr	vram_move
-	.byte	$D0, $10
-
-	;;;;
-	;; generate quick remap
-
-	; ADDR0 = 0x001E00, increment = 1
-	stz	VERA_CTRL
-	stz	VERA_ADDRx_L
-	lda	#$1E
-	sta	VERA_ADDRx_M
-	lda	#%00010000
-	sta	VERA_ADDRx_H
-
-	; loop
-	ldx	#0
-@loop_remap:
-	stx	VERA_DATA0
-	inx
-	bne	@loop_remap
-
-	;;;;
-	;; DEMO MESSAGE
-
-	bra	@skip_msg
-
-	jsr	write_text
-	.word	$0706
-	.word	text_demo_wait0
-	jsr	write_text
-	.word	$0810
-	.word	text_demo_wait1
-	jsr	write_text
-	.word	$0A0A
-	.word	text_demo_wait3
-	jsr	write_text
-	.word	$0B16
-	.word	text_demo_wait4
-	jsr	write_text
-	.word	$0C10
-	.word	text_demo_wait5
-	jsr	write_text
-	.word	$0E0E
-	.word	text_demo_start
-
-	jsr	wait_key
-
-	; ADDR0 = 0x010800, increment = 2
-	stz	VERA_CTRL
-	stz	VERA_ADDRx_L
-	lda	#$08
-	sta	VERA_ADDRx_M
-	lda	#%00100001
-	sta	VERA_ADDRx_H
-
-	ldx	#6
-@loop_msgclr:
-	ldy	#0
-@loop_lnclr:
-	lda	#' '
-	sta	VERA_DATA0
-	dey
-	bne	@loop_lnclr
-	dex
-	bne	@loop_msgclr
-
-@skip_msg:
-	;;;;
-	;; start engine
-
-	; text: starting
-	jsr	write_text
-	.word	$0400
-	.word	text_start
-
-	; text: precaching (hidden)
-	jsr	write_text
-	.word	$0500
-	.word	text_cache
-
-	; disable IRQ
-	sei
-
-	; clear zero page
-	ldx	#$FC
-@loop_zclr:
-	stz	$02,x
-	dex
-	bne	@loop_zclr
-
-	; code bank
-	lda	#BANK_EXTRA_CODE
-	sta	REG_RAM_BANK
-
-	; start
-	jmp	LDR_ENGINE_DEST
-
-;;;
-; load all tables
-;;;
-
-load_tables:
-	;; load tables0
+	;; TABLES (VRAM)
 
 	; text: loading tables
 	jsr	write_text
-	.word	$0200
-	.word	text_load_tab
+	.word	$0400
+	.word	text_tabload
 
-	; load from file
-	jsr	file_load_tab
-	.word	TABLES_0_ADDR
-	.byte	FILE_DEST_WRAM
-	bcs	error_tab
+	; get sector
+	clc
+	lda	LDR_GFX_SECTOR+0
+	adc	#1
+	sta	LDR_TEMP_L
+	lda	LDR_GFX_SECTOR+1
+	adc	#0
+	sta	LDR_TEMP_H
+	lda	LDR_GFX_SECTOR+2
+	adc	#0
+	sta	LDR_TEMP_I
+	lda	LDR_GFX_SECTOR+3
+	adc	#0
+	sta	LDR_TEMP_T
 
-	;; load tables1
+	; change opcode
+	lda	#$8D
+	sta	sd_sta_opcode+0
+	lda	#<VERA_DATA0
+	sta	sd_sta_opcode+1
+	lda	#>VERA_DATA0
+	sta	sd_sta_opcode+2
 
-	inc	fn_tablesX_end-5
+	;; HUD
 
-	; tables bank
-	lda	#BANK_TABLES
-	sta	REG_RAM_BANK
+	jsr	read_secvram
+	.word	30 | 4096
 
-	; load from file
-	jsr	file_load_tab
-	.word	$A000
-	.byte	FILE_DEST_WRAM
-	bcs	error_tab
+	jsr	read_secvram
+	.word	62 | 4096
 
-	;; load tables2
+	;; font (first part)
 
-	inc	fn_tablesX_end-5
+	jsr	read_secvram
+	.word	94 | 4096
 
-	; load from file
-	jsr	file_load_tab
-	.word	$D600
-	.byte	FILE_DEST_VRAM1
-	bcs	error_tab
+	jsr	read_secvram
+	.word	126 | 4096
 
-	;; load tables3
+	jsr	read_secvram
+	.word	158 | 4096
 
-	inc	fn_tablesX_end-5
+	;; everything else
 
-	; palette bank
-	lda	#BANK_PALETTE
-	sta	REG_RAM_BANK
+	; address
+	lda	#$E8
+	sta	VERA_ADDRx_M
+	lda	#%00010001
+	sta	VERA_ADDRx_H
 
-	; load from file
-	jsr	file_load_tab
-	.word	$A000
-	.byte	FILE_DEST_WRAM
-	bcs	error_tab
+	; loop
+	lda	#9
+	sta	PTR_I
+@loop_vram:
+	jsr	read_sector
+	dec	PTR_I
+	bne	@loop_vram
 
-	;; load tables4
+	;; TABLES (WRAM)
 
-	inc	fn_tablesX_end-5
+	lda	#'W'
+	sta	text_tabload+8
+	sta	FILE_ERROR
+
+	; text: loading tables
+	jsr	write_text
+	.word	$0500
+	.word	text_tabload
 
 	; open
-	lda	#(fn_tablesX_end-fn_tablesX)
-	ldx	#<fn_tablesX
-	ldy	#>fn_tablesX
-	jsr	file_open_rd
+	jsr	file_open
+	bcc	:+
+	jmp	error
+:
+	;; T0
+
+	jsr	file_read
+	.byte	TAB_T0_SIZE / 256
+	.byte	TAB_T0_ADDR / 256
+
+	;; T1
+
+	lda	#BANK_TABLES_T1
+	sta	REG_RAM_BANK
+
+	jsr	file_read
+	.byte	TAB_T1_SIZE / 256
+	.byte	TAB_T1_ADDR / 256
+
+	; close
+	lda	#FILE_HANDLE
+	jsr	k_CLOSE
+
+	;; THINGDEF
+
+	; text: starting
+	jsr	write_text
+	.word	$0600
+	.word	text_thgload
+
+	; change name
+	lda	#'H'
+	sta	text_readfail+16
+	lda	#'D'
+	sta	text_readfail+17
 
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
+	; open
+	jsr	file_open
+	bcc	:+
+	jmp	error
+:
 	; load thing info
 	stz	VAR_FILE_DEST+0
 	lda	#$A0
@@ -595,9 +200,10 @@ load_tables:
 	stz	VAR_FILE_BUF_SIZE+0
 	lda	#$20
 	sta	VAR_FILE_BUF_SIZE+1
-	jsr	file_read_16_wram
-	bcs	error_tab
-
+	jsr	file_read_16
+	bcc	:+
+	jmp	error
+:
 	; load thing states
 	lda	#BANK_THING_STATES
 	sta	REG_RAM_BANK
@@ -608,33 +214,142 @@ load_tables:
 	stz	VAR_FILE_BUF_SIZE+0
 	lda	#$08
 	sta	VAR_FILE_BUF_SIZE+1
-	jsr	file_read_16_wram
-	bcs	error_tab
-
+	jsr	file_read_16
+	bcc	:+
+	jmp	error
+:
 	inc	REG_RAM_BANK
 	lda	REG_RAM_BANK
 	cmp	#BANK_THING_STATES+8
 	bne	@loop_sta
 
 	; close
-	jsr	file_close
+	lda	#FILE_HANDLE
+	jsr	k_CLOSE
 
-	rts
+	;; START
 
-;;;
-; error handlers
-;;;
-
-error_tab:
-	lda	fn_tablesX_end-5
-	sta	text_error_tab_end-3
-
-	; text: error
+	; text: starting
 	jsr	write_text
-	.word	$0712
-	.word	text_error_tab
+	.word	$0700
+	.word	text_starting
+
+; TODO: copy some info values to T0 empty space
+
+	; disable IRQ
+	sei
+
+	; clear VSYNC flag
+	lda	#1
+	sta	VERA_ISR
+	stz	VERA_IEN
+
+	; increment = 2
+	lda	#%00100001
+	sta	VERA_ADDRx_H
+
+	; second line
+	lda	#$01
+	sta	VERA_ADDRx_M
+
+	; reset
+	lda	#<anim_ent
+	sta	PTR_L
+	lda	#>anim_ent
+	sta	PTR_H
+
+	; animate
+	ldx	#43
+@loop_anim:
+	; line color loop
+	lda	#$01
+	sta	VERA_ADDRx_L
+	ldy	#39
+@loop_line:
+	lda	(PTR_L),y
+	sta	VERA_DATA0
+	dey
+	bpl	@loop_line
+
+	; vsync wait
+@loop_vsync:
+	lda	VERA_ISR
+	lsr
+	bcc	@loop_vsync
+	lda	#1
+	sta	VERA_ISR
+
+	; next
+	dec	PTR_L
+	dex
+	bne	@loop_anim
+
+	; RUN
+	jmp	LDR_ENGINE_DEST
+
+.align	128
+
+anim_tab:
+	.byte	$0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C
+	.byte	$0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C
+	.byte	$0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C
+	.byte	$0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C
+	.byte	$0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0F, $01
+anim_ent:
+	.byte	$0F, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C
+	.byte	$0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C
+	.byte	$0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C
+	.byte	$0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C
+
+;;;
+; errors
+;;;
 
 error:
+	; reset input
+	ldx	#0
+	jsr	k_CHKIN
+
+	; address
+	lda	ADDR_L
+	sta	VERA_ADDRx_L
+	lda	ADDR_M
+	sta	VERA_ADDRx_M
+
+	; increment = 1
+	lda	#%00010001
+	sta	VERA_ADDRx_H
+
+	; character
+	lda	#'-'
+	sta	VERA_DATA0
+	lda	#COLORS_STATUS
+	sta	VERA_DATA0
+
+	; ERROR with colors
+	ldy	#0
+	ldx	#COLORS_ERROR
+	lda	#<text_error
+	sta	PTR_L
+	lda	#>text_error
+	sta	PTR_H
+:
+	lda	(PTR_L),y
+	beq	:+
+	sta	VERA_DATA0
+	stx	VERA_DATA0
+	iny
+	bra	:-
+:
+	; file error
+	lda	FILE_ERROR
+	beq	:+
+
+	; text: read fail
+	jsr	write_text
+	.word	$0A0E
+	.word	text_readfail
+:
 	; text: reboot
 	jsr	write_text
 	.word	$0E0E
@@ -686,14 +401,14 @@ write_text:
 	lda	#%00100001
 	sta	VERA_ADDRx_H
 
-	; read statck
+	; read stack
 	tsx
 
 	; load pointer
 	lda	$0101,x
-	sta	FUNC_ARG_L
+	sta	PTR_L
 	lda	$0102,x
-	sta	FUNC_ARG_H
+	sta	PTR_H
 
 	; advance return address
 	clc
@@ -705,22 +420,22 @@ write_text:
 :
 	; VERA address (lo)
 	ldy	#1
-	lda	(FUNC_ARG_L),y
+	lda	(PTR_L),y
 	sta	VERA_ADDRx_L
 
 	; VERA address (hi)
 	iny
-	lda	(FUNC_ARG_L),y
+	lda	(PTR_L),y
 	sta	VERA_ADDRx_M
 
 	; text address (lo)
 	iny
-	lda	(FUNC_ARG_L),y
+	lda	(PTR_L),y
 	sta	@write_opcode+1
 
 	; text address (hi)
 	iny
-	lda	(FUNC_ARG_L),y
+	lda	(PTR_L),y
 	sta	@write_opcode+2
 
 	; actual write
@@ -732,79 +447,54 @@ write_text:
 	iny
 	bne	@write_opcode
 :
+	; store position (-6)
+	sec
+	lda	VERA_ADDRx_L
+	sbc	#6
+	sta	ADDR_L
+	lda	VERA_ADDRx_M
+	sbc	#0
+	sta	ADDR_M
+
 	rts
 
 ;;;
-; load file to WRAM
+; open file
 ;;;
-; FILE_DEST_* is destination pointer
-; X and Y is file name (lo/hi)
-; A is file name length
 
-file_load_tab:
-	lda	#(fn_tablesX_end-fn_tablesX)
-	ldx	#<fn_tablesX
-	ldy	#>fn_tablesX
-
-file_load:
-	; setup file name
+file_open:
+	; name
+	lda	#8
+	ldx	#<(text_readfail+10)
+	ldy	#>(text_readfail+10)
 	jsr	k_SETNAM
 
-	; read statck
-	tsx
-
-	; load pointer
-	lda	$0101,x
-	sta	FUNC_ARG_L
-	lda	$0102,x
-	sta	FUNC_ARG_H
-
-	; advance return address
-	clc
-	lda	$0101,x
-	adc	#3
-	sta	$0101,x
-	bcc	:+
-	inc	$0102,x
-:
-	; setup file transfer
+	; set mode
 	lda	#FILE_HANDLE
-	ldx	#FILE_DEVICE_ID
-	ldy	#2
+	ldx	#DEVICE_ID
+	ldy	#FILE_CHANNEL
 	jsr	k_SETLFS
 
-	; address (lo)
-	ldy	#1
-	lda	(FUNC_ARG_L),y
-	pha
+	; open
+	jsr	k_OPEN
 
-	; address (hi)
-	iny
-	lda	(FUNC_ARG_L),y
-	pha
-
-	; mode
-	iny
-	lda	(FUNC_ARG_L),y
-
-	; load file
-	ply
-	plx
-	jmp	k_LOAD
+	; set handle
+	ldx	#FILE_HANDLE
+	jmp	k_CHKIN
 
 ;;;
-; move data in VRAM
+; read from file
 ;;;
 
-vram_move:
-	; read statck
+file_read:
+	; read stack
 	tsx
 
 	; load pointer
 	lda	$0101,x
-	sta	FUNC_ARG_L
+	sta	PTR_L
 	lda	$0102,x
-	sta	FUNC_ARG_H
+	sta	PTR_H
 
 	; advance return address
 	clc
@@ -814,70 +504,234 @@ vram_move:
 	bcc	:+
 	inc	$0102,x
 :
-	; address
-	ldy	#1
-	lda	(FUNC_ARG_L),y
-	sta	VERA_ADDRx_M
-
 	; block count
+	ldy	#1
+	lda	(PTR_L),y
+	sta	PTR_I
+
+	; destination
 	iny
-	lda	(FUNC_ARG_L),y
-	tay
+	lda	(PTR_L),y
+	sta	PTR_H
 
 	; block loop
-@loop_block:
-	; copy loop
-	ldx	#64
-@loop_copy:
-	lda	VERA_DATA0
-	sta	VERA_DATA1
-	lda	VERA_DATA0
-	sta	VERA_DATA1
-	lda	VERA_DATA0
-	sta	VERA_DATA1
-	lda	VERA_DATA0
-	sta	VERA_DATA1
-	dex
-	bne	@loop_copy
+@loop:
+	; first half
+	lda	#$80
+	ldx	#$00
+	ldy	PTR_H
+	clc
+	jsr	k_MACPTR
+	bcc	:+
+	jmp	error
+:
+	; second half
+	lda	#$80
+	tax
+	ldy	PTR_H
+	clc
+	jsr	k_MACPTR
+	bcc	:+
+	jmp	error
+:
+	; increment
+	inc	PTR_H
 
-	; next block
-	dey
-	bne	@loop_block
+	; bank check
+	lda	#$C0
+	cmp	PTR_H
+	bne	:+
+
+	; bank change
+	lda	#$A0
+	sta	PTR_H
+	inc	REG_RAM_BANK
+:
+	; next
+	dec	PTR_I
+	bne	@loop
 
 	rts
 
 ;;;
-; open file (read)
-;;;
-; X and Y is file name (lo/hi)
-; A is file name length
-
-file_open_rd:
-	; set file name
-	jsr	k_SETNAM
-
-	; set open mode
-	lda	#FILE_HANDLE
-	ldx	#FILE_DEVICE_ID
-	tay
-	jsr	k_SETLFS
-
-	; open file
-	jsr	k_OPEN
-
-	; redirect output
-	ldx	#FILE_HANDLE
-	jmp	k_CHKIN
-
-;;;
-; close file
+; SD card read sector
 ;;;
 
-file_close:
-	lda	#FILE_HANDLE
-	jsr	k_CLOSE
-	ldx	#0
-	jmp	k_CHKIN
+read_sector:
+	; dummy byte
+	lda	#$FF
+	sta	VERA_SPI_DATA
+
+	; select
+	lda	#$01
+	sta	VERA_SPI_CTRL
+
+	; sector read command
+	lda	#$51
+	sta	VERA_SPI_DATA
+	lda	LDR_TEMP_T
+	sta	VERA_SPI_DATA
+	lda	LDR_TEMP_I
+	sta	VERA_SPI_DATA
+	lda	LDR_TEMP_H
+	sta	VERA_SPI_DATA
+	lda	LDR_TEMP_L
+	sta	VERA_SPI_DATA
+	nop
+	stz	VERA_SPI_DATA
+
+	; wait for response
+	lda	#$FF
+	sta	VERA_SPI_DATA
+	lda	#$05
+	sta	VERA_SPI_CTRL
+@loop_cmd:
+	lda	VERA_SPI_DATA
+	bmi	@loop_cmd
+@got_cmd:
+	; check
+	beq	:+
+
+	; got error
+@fail:
+	jsr	@stop
+	jmp	error
+:
+	; wait for data
+@loop_dw:
+	lda	VERA_SPI_DATA
+	ina
+	beq	@loop_dw
+
+	; check
+	ina
+	bne	@fail
+
+	; read 512 bytes
+	jsr	@read
+	inc	PTR_H
+	jsr	@read
+
+	; dummy checksum
+	lda	VERA_SPI_DATA
+	inc	PTR_H
+
+@stop:
+	; deselect
+	stz	VERA_SPI_CTRL
+
+	; dummy byte
+	lda	#$FF
+	sta	VERA_SPI_DATA
+
+	rts
+
+@read:
+	ldy	#0
+sd_loop_data:
+	lda	VERA_SPI_DATA
+sd_sta_opcode:
+	sta	(PTR_L),y ; modified
+	nop	 ; modified
+	iny
+	bne	sd_loop_data
+	rts
+
+;;;
+; read data block
+;;;
+
+read_data:
+	; read stack
+	tsx
+
+	; load pointer
+	lda	$0101,x
+	sta	PTR_L
+	lda	$0102,x
+	sta	PTR_H
+
+	; advance return address
+	clc
+	lda	$0101,x
+	adc	#2
+	sta	$0101,x
+	bcc	:+
+	inc	$0102,x
+:
+	; block count
+	ldy	#1
+	lda	(PTR_L),y
+	tax
+
+	; destination
+	iny
+	lda	(PTR_L),y
+	sta	PTR_H
+	stz	PTR_L
+
+	; block loop
+@loop:
+	; read
+	jsr	read_sector
+
+	; increment sector
+	inc	LDR_TEMP_L
+	bne	:+
+	inc	LDR_TEMP_H
+	bne	:+
+	inc	LDR_TEMP_I
+	bne	:+
+	inc	LDR_TEMP_T
+:
+	; bank check
+	lda	PTR_H
+	cmp	#$C0
+	bne	:+
+
+	; bank change
+	lda	#$A0
+	sta	PTR_H
+	inc	REG_RAM_BANK
+:
+	; next
+	dex
+	bne	@loop
+
+	rts
+
+;;;
+; read sector to VRAM
+;;;
+
+read_secvram:
+	; read stack
+	tsx
+
+	; load pointer
+	lda	$0101,x
+	sta	PTR_L
+	lda	$0102,x
+	sta	PTR_H
+
+	; advance return address
+	clc
+	lda	$0101,x
+	adc	#2
+	sta	$0101,x
+	bcc	:+
+	inc	$0102,x
+:
+	; addr
+	ldy	#1
+	lda	(PTR_L),y
+	sta	VERA_ADDRx_M
+	iny
+	lda	(PTR_L),y
+	sta	VERA_ADDRx_H
+	stz	VERA_ADDRx_L
+
+	jmp	read_sector
 
 ;;;
 ; read from file (65536 bytes max)
@@ -886,12 +740,7 @@ file_close:
 ; VAR_FILE_DEST is destination pointer, assumend to be in banked area; this value is advanced, with banking support
 ; C is set on error
 
-file_read_16_wram_bank:
-	stz	VAR_FILE_DEST+0
-	lda	#$A0
-	sta	VAR_FILE_DEST+1
-
-file_read_16_wram:
+file_read_16:
 	; first block size
 	lda	#BLOCK_READ_SIZE
 	sta	FILE_LOAD_RDSIZE
@@ -948,209 +797,18 @@ read16_loop:
 	rts
 
 ;;;
-; EGA font 8x16
-;;;
-
-dos_font:
-	.byte	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $18, $3C, $3C, $3C, $18, $18, $18, $00, $18, $18, $00, $00, $00, $00
-	.byte	$00, $C6, $C6, $C6, $44, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $6C, $6C, $FE, $6C, $6C, $6C, $FE, $6C, $6C, $00, $00, $00, $00
-	.byte	$18, $18, $7C, $C6, $C2, $C0, $7C, $06, $06, $86, $C6, $7C, $18, $18, $00, $00
-	.byte	$00, $00, $00, $00, $C2, $C6, $0C, $18, $30, $60, $C6, $86, $00, $00, $00, $00
-	.byte	$00, $00, $38, $6C, $6C, $38, $76, $DC, $CC, $CC, $CC, $76, $00, $00, $00, $00
-	.byte	$00, $30, $30, $30, $60, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $0C, $18, $30, $30, $30, $30, $30, $30, $18, $0C, $00, $00, $00, $00
-	.byte	$00, $00, $30, $18, $0C, $0C, $0C, $0C, $0C, $0C, $18, $30, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $66, $3C, $FF, $3C, $66, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $18, $18, $7E, $18, $18, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $00, $00, $00, $00, $18, $18, $18, $30, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $00, $00, $FE, $00, $00, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $18, $18, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $02, $06, $0C, $18, $30, $60, $C0, $80, $00, $00, $00, $00
-	.byte	$00, $00, $38, $6C, $C6, $C6, $D6, $D6, $C6, $C6, $6C, $38, $00, $00, $00, $00
-	.byte	$00, $00, $18, $38, $78, $18, $18, $18, $18, $18, $18, $7E, $00, $00, $00, $00
-	.byte	$00, $00, $7C, $C6, $06, $0C, $18, $30, $60, $C0, $C6, $FE, $00, $00, $00, $00
-	.byte	$00, $00, $7C, $C6, $06, $06, $3C, $06, $06, $06, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $0C, $1C, $3C, $6C, $CC, $FE, $0C, $0C, $0C, $1E, $00, $00, $00, $00
-	.byte	$00, $00, $FE, $C0, $C0, $C0, $FC, $06, $06, $06, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $38, $60, $C0, $C0, $FC, $C6, $C6, $C6, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $FE, $C6, $06, $0C, $18, $30, $30, $30, $30, $30, $00, $00, $00, $00
-	.byte	$00, $00, $7C, $C6, $C6, $C6, $7C, $C6, $C6, $C6, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $7C, $C6, $C6, $C6, $7E, $06, $06, $06, $0C, $78, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $18, $18, $00, $00, $00, $18, $18, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $18, $18, $00, $00, $00, $18, $18, $30, $00, $00, $00, $00
-	.byte	$00, $00, $00, $06, $0C, $18, $30, $60, $30, $18, $0C, $06, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $7E, $00, $00, $7E, $00, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $60, $30, $18, $0C, $06, $0C, $18, $30, $60, $00, $00, $00, $00
-	.byte	$00, $00, $7C, $C6, $C6, $0C, $18, $18, $18, $00, $18, $18, $00, $00, $00, $00
-	.byte	$00, $00, $00, $7C, $C6, $C6, $DE, $DE, $DE, $DC, $C0, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $10, $38, $6C, $C6, $C6, $FE, $C6, $C6, $C6, $C6, $00, $00, $00, $00
-	.byte	$00, $00, $FC, $66, $66, $66, $7C, $66, $66, $66, $66, $FC, $00, $00, $00, $00
-	.byte	$00, $00, $3C, $66, $C2, $C0, $C0, $C0, $C0, $C2, $66, $3C, $00, $00, $00, $00
-	.byte	$00, $00, $F8, $6C, $66, $66, $66, $66, $66, $66, $6C, $F8, $00, $00, $00, $00
-	.byte	$00, $00, $FE, $66, $62, $68, $78, $68, $60, $62, $66, $FE, $00, $00, $00, $00
-	.byte	$00, $00, $FE, $66, $62, $68, $78, $68, $60, $60, $60, $F0, $00, $00, $00, $00
-	.byte	$00, $00, $3C, $66, $C2, $C0, $C0, $DE, $C6, $C6, $66, $3A, $00, $00, $00, $00
-	.byte	$00, $00, $C6, $C6, $C6, $C6, $FE, $C6, $C6, $C6, $C6, $C6, $00, $00, $00, $00
-	.byte	$00, $00, $3C, $18, $18, $18, $18, $18, $18, $18, $18, $3C, $00, $00, $00, $00
-	.byte	$00, $00, $1E, $0C, $0C, $0C, $0C, $0C, $CC, $CC, $CC, $78, $00, $00, $00, $00
-	.byte	$00, $00, $E6, $66, $66, $6C, $78, $78, $6C, $66, $66, $E6, $00, $00, $00, $00
-	.byte	$00, $00, $F0, $60, $60, $60, $60, $60, $60, $62, $66, $FE, $00, $00, $00, $00
-	.byte	$00, $00, $C6, $EE, $FE, $FE, $D6, $C6, $C6, $C6, $C6, $C6, $00, $00, $00, $00
-	.byte	$00, $00, $C6, $E6, $F6, $FE, $DE, $CE, $C6, $C6, $C6, $C6, $00, $00, $00, $00
-	.byte	$00, $00, $7C, $C6, $C6, $C6, $C6, $C6, $C6, $C6, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $FC, $66, $66, $66, $7C, $60, $60, $60, $60, $F0, $00, $00, $00, $00
-	.byte	$00, $00, $7C, $C6, $C6, $C6, $C6, $C6, $C6, $D6, $DE, $7C, $0C, $0E, $00, $00
-	.byte	$00, $00, $FC, $66, $66, $66, $7C, $6C, $66, $66, $66, $F6, $00, $00, $00, $00
-	.byte	$00, $00, $7C, $C6, $C6, $60, $38, $0C, $06, $C6, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $7E, $7E, $5A, $18, $18, $18, $18, $18, $18, $3C, $00, $00, $00, $00
-	.byte	$00, $00, $C6, $C6, $C6, $C6, $C6, $C6, $C6, $C6, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $C6, $C6, $C6, $C6, $C6, $C6, $C6, $6C, $38, $10, $00, $00, $00, $00
-	.byte	$00, $00, $C6, $C6, $C6, $C6, $D6, $D6, $D6, $FE, $EE, $6C, $00, $00, $00, $00
-	.byte	$00, $00, $C6, $C6, $6C, $7C, $38, $38, $7C, $6C, $C6, $C6, $00, $00, $00, $00
-	.byte	$00, $00, $66, $66, $66, $66, $3C, $18, $18, $18, $18, $3C, $00, $00, $00, $00
-	.byte	$00, $00, $FE, $C6, $86, $0C, $18, $30, $60, $C2, $C6, $FE, $00, $00, $00, $00
-	.byte	$00, $00, $3C, $30, $30, $30, $30, $30, $30, $30, $30, $3C, $00, $00, $00, $00
-	.byte	$00, $00, $00, $80, $C0, $E0, $70, $38, $1C, $0E, $06, $02, $00, $00, $00, $00
-	.byte	$00, $00, $3C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $3C, $00, $00, $00, $00
-	.byte	$10, $38, $6C, $C6, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $FF, $00, $00
-	.byte	$30, $30, $18, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $78, $0C, $7C, $CC, $CC, $CC, $76, $00, $00, $00, $00
-	.byte	$00, $00, $E0, $60, $60, $78, $6C, $66, $66, $66, $66, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $7C, $C6, $C0, $C0, $C0, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $1C, $0C, $0C, $3C, $6C, $CC, $CC, $CC, $CC, $76, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $7C, $C6, $FE, $C0, $C0, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $1C, $36, $32, $30, $78, $30, $30, $30, $30, $78, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $76, $CC, $CC, $CC, $CC, $CC, $7C, $0C, $CC, $78, $00
-	.byte	$00, $00, $E0, $60, $60, $6C, $76, $66, $66, $66, $66, $E6, $00, $00, $00, $00
-	.byte	$00, $00, $18, $18, $00, $38, $18, $18, $18, $18, $18, $3C, $00, $00, $00, $00
-	.byte	$00, $00, $06, $06, $00, $0E, $06, $06, $06, $06, $06, $06, $66, $66, $3C, $00
-	.byte	$00, $00, $E0, $60, $60, $66, $6C, $78, $78, $6C, $66, $E6, $00, $00, $00, $00
-	.byte	$00, $00, $38, $18, $18, $18, $18, $18, $18, $18, $18, $3C, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $EC, $FE, $D6, $D6, $D6, $D6, $C6, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $DC, $66, $66, $66, $66, $66, $66, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $7C, $C6, $C6, $C6, $C6, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $DC, $66, $66, $66, $66, $66, $7C, $60, $60, $F0, $00
-	.byte	$00, $00, $00, $00, $00, $76, $CC, $CC, $CC, $CC, $CC, $7C, $0C, $0C, $1E, $00
-	.byte	$00, $00, $00, $00, $00, $DC, $76, $66, $60, $60, $60, $F0, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $7C, $C6, $60, $38, $0C, $C6, $7C, $00, $00, $00, $00
-	.byte	$00, $00, $10, $30, $30, $FC, $30, $30, $30, $30, $36, $1C, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $CC, $CC, $CC, $CC, $CC, $CC, $76, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $CC, $CC, $CC, $CC, $CC, $78, $30, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $C6, $C6, $D6, $D6, $D6, $FE, $6C, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $C6, $6C, $38, $38, $38, $6C, $C6, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $00, $C6, $C6, $C6, $C6, $C6, $C6, $7E, $06, $0C, $F8, $00
-	.byte	$00, $00, $00, $00, $00, $FE, $CC, $18, $30, $60, $C6, $FE, $00, $00, $00, $00
-	.byte	$00, $00, $0E, $18, $18, $18, $70, $18, $18, $18, $18, $0E, $00, $00, $00, $00
-	.byte	$00, $00, $18, $18, $18, $18, $00, $18, $18, $18, $18, $18, $00, $00, $00, $00
-	.byte	$00, $00, $70, $18, $18, $18, $0E, $18, $18, $18, $18, $70, $00, $00, $00, $00
-	.byte	$00, $00, $76, $DC, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-	.byte	$00, $00, $00, $00, $10, $38, $6C, $C6, $C6, $C6, $FE, $00, $00, $00, $00, $00
-
-;;;
-; sprite data (framebuffers for bitmap)
-;;;
-
-sprite_data:
-	;;;
-	.word	$8200
-	.word	128
-	.word	0
-	.word	$F00C
-	;;;
-	.word	$8280
-	.word	128
-	.word	64
-	.word	$F00C
-	;;;
-	.word	$8100
-	.word	64
-	.word	0
-	.word	$F00C
-	;;;
-	.word	$8180
-	.word	64
-	.word	64
-	.word	$F00C
-	;;;
-	.word	$8000
-	.word	0
-	.word	0
-	.word	$F00C
-	;;;
-	.word	$8080
-	.word	0
-	.word	64
-	.word	$F00C
-
-;;;
-; video scale and offset
-;;;
-
-video_table:
-	; VGA
-	.byte	0
-	.byte	160
-	.byte	0
-	.byte	240
-	.byte	64
-	.byte	64
-	.byte	0, 0
-	; composite
-	.byte	9
-	.byte	151
-	.byte	13
-	.byte	226
-	.byte	72
-	.byte	72
-	.byte	0, 0
-
-;;;
 ; strings
 ;;;
 
-fn_engine:
-	.byte	"ENGINE.BIN"
-fn_engine_end:
-
-fn_tablesX:
-	.byte	"DATA/TABLES0.BIN"
-fn_tablesX_end:
-
-text_title:
-	.asciiz	"kgsws' 3D engine DEMO"
-text_load_bin:
-	.asciiz	"Loading engine code ..."
-text_load_tab:
-	.asciiz	"Loading engine data ..."
-text_init_video:
-	.asciiz	"Initializing video ..."
-text_start:
-	.asciiz	"Starting engine ..."
-text_cache:
-	.asciiz	"Loading graphics ..."
 text_reboot:
 	.asciiz	"Press any key to reboot ..."
-text_error_ram:
-	.asciiz	"This game requires 1MB of RAM!"
-text_error_bin:
-	.asciiz	"Unable to load engine binary!"
-text_error_tab:
-	.asciiz	"Unable to load TABLES0!"
-text_error_tab_end:
-
-text_demo_wait0:
-	.asciiz	"This is a work in progress, there"
-text_demo_wait1:
-	.asciiz	"isn't much to do ... yet."
-text_demo_wait3:
-	.asciiz	"Use numbers to switch weapons."
-text_demo_wait4:
-	.asciiz	"Use MOUSE to aim."
-text_demo_wait5:
-	.asciiz	"Press ESC to enter menu."
-text_demo_start:
-	.asciiz	"Press any key to start ..."
-
+text_error:
+	.asciiz	" ERROR"
+text_readfail:
+	.asciiz	"Read from KG3D.TBL failed!"
+text_tabload:
+	.asciiz	"Loading VRAM tables ..."
+text_thgload:
+	.asciiz	"Loading thing tables ..."
+text_starting:
+	.asciiz	"Starting engine ..."

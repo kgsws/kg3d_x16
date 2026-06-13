@@ -1,26 +1,62 @@
 
 ; code stuff
+; these are values from linker config
+; all reads are sector (512B) based
+; = every size has to be divisible by 512
 
-LDR_ENGINE_DEST = $3800
-LDR_ENGINE_SIZE = $4100
+;;;;;;;;;;;;;;;
+;;;;;;;;; $0000
+; zero page
+;;;;;;;;; $0100
+; stack
+;;;;;;;;; $0200
+; kernal
+;;;;;;;;; $0400
+; tables T0
+;;;;;;;;; $2500
+; temp data
+;;;;;;;;; $2900
+; light tables
+;;;;;;;;; $3100
+; swappable code
+;;;;;;;;; $5700
+; engine code
+;;;;;;;;; $9F00
+; IO
+;;;;;;;;; $A000
+;;;;;;;;;;;;;;;
 
-LDR_CODE_DEST = $7900
+LDR_LOADER_ADDR = $2500
+LDR_LOADER_SIZE = $0600
 
-LDR_CODE_EXTRA_SIZE = $1000
+LDR_ENGINE_DEST = $5700
+LDR_ENGINE_SIZE = $4800
+
+LDR_EXTRA_DEST = $A000
+LDR_EXTRA_SIZE = $1000
+
+LDR_SWAP_DEST = $A000
+LDR_SWAP_SIZE = $3600
+
+LDR_CODE_DEST = $3100
 
 LDR_CODE_MAPFS_ADDR = $A000
 LDR_CODE_MAPFS_SIZE = $1000
 
-LDR_CODE_RENDER_ADDR = (LDR_CODE_MAPFS_ADDR + LDR_CODE_MAPFS_SIZE)
+LDR_CODE_RENDER_ADDR = $B000
 LDR_CODE_RENDER_SIZE = $2600
-
-LDR_CODE_SWAP_SIZE = (LDR_CODE_MAPFS_SIZE + LDR_CODE_RENDER_SIZE)
 
 ; internal storage
 
-TAB_LIGHTMAPS = $0400	; 2048 bytes (8 lightmaps)
+TAB_T0_ADDR = $0400
+TAB_T0_SIZE = $2100
 
-TAB_TEMP_DATA = $0C00	; 1024 bytes
+TAB_T1_ADDR = $A000
+TAB_T1_SIZE = $E000
+
+TAB_LIGHTMAPS = $2900	; 256 * 8 bytes
+
+TAB_TEMP_DATA = $2500	; 1024 bytes
 
 ; overlaps with renderer
 TAB_SOBJ_SORT = TAB_TEMP_DATA + $2D8

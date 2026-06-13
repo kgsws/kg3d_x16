@@ -648,7 +648,6 @@ video_draw_hline:
 	lsr
 	pha
 
-hline_code:
 	; jump table lookup (start)
 	clc
 	plx

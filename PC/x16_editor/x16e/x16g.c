@@ -437,15 +437,22 @@ typedef struct
 
 typedef struct
 {
+	// info block
 	union
 	{
 		struct
 		{
+			uint8_t font_space[128];
+			uint8_t hudinfo[126];
 			uint8_t num_walls;
 			uint8_t num_planes;
+			uint8_t font_x[128];
+			uint8_t font_y[128];
 		};
 		uint8_t skip_info[512];
 	};
+	// VRAM
+	uint8_t vram[0x1C00];
 	// 1 bank
 	union
 	{
@@ -2710,6 +2717,15 @@ static void fix_hax_tiles(uint8_t *dst, uint8_t *src, uint32_t count)
 
 		dst++;
 	}
+}
+
+//
+// data export
+
+static void *place_data(void *ptr, void *src, uint32_t size)
+{
+	memcpy(ptr, src, size);
+	return ptr + size;
 }
 
 //
@@ -8430,6 +8446,7 @@ void x16g_generate()
 void x16g_export()
 {
 	// TODO: free space check in export buffer
+	uint32_t i;
 	int32_t fd;
 	void *ptr;
 	export_head_t *head;
@@ -8437,115 +8454,106 @@ void x16g_export()
 	uint32_t num_pl = 0;
 	uint32_t num_wa = 0;
 	uint32_t num_li = gfx_idx[GFX_MODE_LIGHTS].max;
+	uint8_t pxtmp[4096];
+	uint8_t *rtex = pxtmp;
+	uint8_t *ttex = pxtmp + 2048;
+	hud_export_t *hud = edit_cbor_buffer + offsetof(export_head_t, hudinfo);
 
 	edit_busy_window("Exporting graphics ...");
 
+	/// header
+	head = edit_cbor_buffer;
+
+	memset(head, 0, sizeof(export_head_t));
+
 	/// HUD + FONT + TILES + TILEMAPS
 
-	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "KG3D.VRG", O_WRONLY | O_TRUNC | O_CREAT, 0644);
-	if(fd >= 0)
+	ptr = head->vram;
+
+	// generate sys textures
+	for(uint32_t i = 0; i < 2048; i++)
+		rtex[i] = x16g_palette_match(((uint32_t*)x16e_tex_bad_data)[i], 0);
+
+	make_plane_tiles(ttex, rtex, 64, 32);
+	fix_hax_tiles(vram_ranges.r1, ttex, 2048);
+
+	for(uint32_t i = 0; i < 0x40; i++)
+		vram_ranges.r1[i] = i;
+
+	// font space + HUD info
+	for(i = 0; i < FONT_CHAR_COUNT; i++)
+		head->font_space[i] = font_char[i].space;
+
+	i = hud_cfg.stat_cfg.bar_digs & 1 ? 4 : 3;
+	i *= hud_cfg.stat_cfg.bar_space;
+	if(hud_cfg.stat_cfg.bar_space > 8)
+		i--;
+
+	hud->menu_color = hud_cfg.menu_color;
+
+	hud->stat_color.info = hud_cfg.stat_color.info | 0b01000000;
+	hud->stat_color.msg = hud_cfg.stat_color.msg | 0b01000000;
+	hud->stat_color.hp = hud_cfg.stat_color.hp | 0b01000000;
+	hud->stat_color.ammo = hud_cfg.stat_color.ammo | 0b01000000;
+
+	hud->style.info_x = hud_cfg.stat_cfg.info & 1 ? 80 : 0;
+	hud->style.info_y = hud_cfg.stat_cfg.info & 2 ? 120 - font_char[0].yoffs : 0;
+	hud->style.hp_x[0] = hud_cfg.stat_cfg.bar_pos[0];
+	hud->style.hp_x[1] = 0;
+	hud->style.hp_x[2] = 0;
+	hud->style.am_x[0] = 160 - hud_cfg.stat_cfg.bar_pos[0] - i;
+	hud->style.am_x[1] = 0;
+	hud->style.am_x[2] = 0;
+	hud->style.bar_y = hud_cfg.stat_cfg.bar_pos[1];
+	hud->style.space = hud_cfg.stat_cfg.bar_space;
+	hud->style.digits = hud_cfg.stat_cfg.bar_digs << 6;
+
+	if(hud_cfg.stat_cfg.bar_box)
 	{
-		uint32_t i;
-		uint8_t ttmp[256];
-		uint8_t *rtex = edit_cbor_buffer;
-		uint8_t *ttex = edit_cbor_buffer + 2048;
-		hud_export_t *hud = (hud_export_t*)(ttmp + 128);
+		hud->style.am_x[1] = 152 - hud_cfg.stat_cfg.bar_pos[0] + hud_cfg.stat_cfg.bar_box;
+		hud->style.am_x[2] = 160 - hud_cfg.stat_cfg.bar_pos[0] - i - hud_cfg.stat_cfg.bar_box;
 
-		// generate sys textures
-		for(uint32_t i = 0; i < 2048; i++)
-			rtex[i] = x16g_palette_match(((uint32_t*)x16e_tex_bad_data)[i], 0);
-		make_plane_tiles(ttex, rtex, 64, 32);
-		fix_hax_tiles(vram_ranges.r1, ttex, 2048);
-		for(uint32_t i = 0; i < 0x40; i++)
-			vram_ranges.r1[i] = i;
-
-		// clear
-		memset(ttmp + FONT_CHAR_COUNT, 0, sizeof(ttmp) - FONT_CHAR_COUNT);
-
-		// font space + HUD info
-		for(i = 0; i < FONT_CHAR_COUNT; i++)
-			ttmp[i] = font_char[i].space;
-
-		i = hud_cfg.stat_cfg.bar_digs & 1 ? 4 : 3;
+		i = hud_cfg.stat_cfg.bar_digs & 2 ? 4 : 3;
 		i *= hud_cfg.stat_cfg.bar_space;
 		if(hud_cfg.stat_cfg.bar_space > 8)
 			i--;
 
-		hud->menu_color = hud_cfg.menu_color;
-
-		hud->stat_color.info = hud_cfg.stat_color.info | 0b01000000;
-		hud->stat_color.msg = hud_cfg.stat_color.msg | 0b01000000;
-		hud->stat_color.hp = hud_cfg.stat_color.hp | 0b01000000;
-		hud->stat_color.ammo = hud_cfg.stat_color.ammo | 0b01000000;
-
-		hud->style.info_x = hud_cfg.stat_cfg.info & 1 ? 80 : 0;
-		hud->style.info_y = hud_cfg.stat_cfg.info & 2 ? 120 - font_char[0].yoffs : 0;
-		hud->style.hp_x[0] = hud_cfg.stat_cfg.bar_pos[0];
-		hud->style.hp_x[1] = 0;
-		hud->style.hp_x[2] = 0;
-		hud->style.am_x[0] = 160 - hud_cfg.stat_cfg.bar_pos[0] - i;
-		hud->style.am_x[1] = 0;
-		hud->style.am_x[2] = 0;
-		hud->style.bar_y = hud_cfg.stat_cfg.bar_pos[1];
-		hud->style.space = hud_cfg.stat_cfg.bar_space;
-		hud->style.digits = hud_cfg.stat_cfg.bar_digs << 6;
-
-		if(hud_cfg.stat_cfg.bar_box)
-		{
-			hud->style.am_x[1] = 152 - hud_cfg.stat_cfg.bar_pos[0] + hud_cfg.stat_cfg.bar_box;
-			hud->style.am_x[2] = 160 - hud_cfg.stat_cfg.bar_pos[0] - i - hud_cfg.stat_cfg.bar_box;
-
-			i = hud_cfg.stat_cfg.bar_digs & 2 ? 4 : 3;
-			i *= hud_cfg.stat_cfg.bar_space;
-			if(hud_cfg.stat_cfg.bar_space > 8)
-				i--;
-
-			hud->style.hp_x[1] = hud_cfg.stat_cfg.bar_pos[0] - hud_cfg.stat_cfg.bar_box;
-			hud->style.hp_x[2] = hud_cfg.stat_cfg.bar_pos[0] + i - 8 + hud_cfg.stat_cfg.bar_box;
-		}
-
-		write(fd, ttmp, sizeof(ttmp));
-
-		// font offsets
-		for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
-		{
-			ttmp[i] = font_char[i].yoffs;
-			ttmp[i + 128] = font_char[i].xoffs;
-		}
-		write(fd, ttmp, sizeof(ttmp));
-
-		// numeric
-		for(i = 0; i < NUMS_CHAR_COUNT; i++)
-			write(fd, nums_char[i].data, 64);
-
-		// font, first 48 characters
-		for(i = 1; i <= 48; i++)
-			write(fd, font_char[i].data, 32);
-
-		// 128x32 tilemap
-		write(fd, vram_ranges.r0, sizeof(vram_ranges.r0));
-
-		// font, next 32 characters
-		for( ; i <= 80; i++)
-			write(fd, font_char[i].data, 32);
-
-		// 64x64 / 128x16! / tiles
-		write(fd, vram_ranges.r1, sizeof(vram_ranges.r1));
-
-		// font, last 32 characters
-		for( ; i <= 94; i++)
-			write(fd, font_char[i].data, 32);
-
-		close(fd);
+		hud->style.hp_x[1] = hud_cfg.stat_cfg.bar_pos[0] - hud_cfg.stat_cfg.bar_box;
+		hud->style.hp_x[2] = hud_cfg.stat_cfg.bar_pos[0] + i - 8 + hud_cfg.stat_cfg.bar_box;
 	}
+
+	// font offsets
+	for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
+	{
+		head->font_x[i] = font_char[i].yoffs;
+		head->font_y[i] = font_char[i].xoffs;
+	}
+
+	// numeric
+	for(i = 0; i < NUMS_CHAR_COUNT; i++)
+		ptr = place_data(ptr, nums_char[i].data, 64);
+
+	// font, first 48 characters
+	for(i = 1; i <= 48; i++)
+		ptr = place_data(ptr, font_char[i].data, 32);
+
+	// 128x32 tilemap
+	ptr = place_data(ptr, vram_ranges.r0, sizeof(vram_ranges.r0));
+
+	// font, next 32 characters
+	for( ; i <= 80; i++)
+		ptr = place_data(ptr, font_char[i].data, 32);
+
+	// 64x64 / 128x16! / tiles
+	ptr = place_data(ptr, vram_ranges.r1, sizeof(vram_ranges.r1));
+
+	// font, last 32 characters
+	for( ; i <= 94; i++)
+		ptr = place_data(ptr, font_char[i].data, 32);
 
 	/// GRAPHICS
 
-	// header
-	head = edit_cbor_buffer;
 	ptr = head + 1;
-
-	memset(head, 0, sizeof(export_head_t));
 
 	// palettes
 

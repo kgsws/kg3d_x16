@@ -145,7 +145,7 @@ typedef struct
 
 //
 
-extern uint8_t font_info[512];
+extern uint8_t *const font_info;
 
 extern player_start_t player_starts[MAX_PLAYER_STARTS];
 

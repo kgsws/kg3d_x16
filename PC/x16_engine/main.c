@@ -94,11 +94,13 @@ typedef struct
 		uint8_t swap[256];	// @ 0x0E00
 		uint8_t bank[256];	// @ 0x0F00
 		uint8_t sign[256];	// @ 0x1000
-		uint8_t jmp_spr_l[128];	// @ 0x1100
-		uint8_t jmp_spr_h[128];	// @ 0x1180
-		uint8_t jmp_sky_l[256];	// @ 0x1200
-		uint8_t jmp_sky_h[256];	// @ 0x1300
-		uint8_t drcode[0x0C00];	// @ 0x1400 // size 0x0B52
+		uint8_t jmp_spw_l[128];	// @ 0x1100
+		uint8_t jmp_spw_h[128];	// @ 0x1180
+		uint8_t jmp_spr_l[128];	// @ 0x1200
+		uint8_t jmp_spr_h[128];	// @ 0x1280
+		uint8_t jmp_sky_l[256];	// @ 0x1300
+		uint8_t jmp_sky_h[256];	// @ 0x1400
+		uint8_t drcode[0x1000];	// @ 0x1500 // size 0x0F53
 	} t0;
 	struct
 	{
@@ -133,6 +135,8 @@ typedef struct
 		uint8_t vidoffs_x[128];	// @ 0xBC00
 		uint8_t vidoffs_y[128];	// @ 0xBC80
 		uint8_t printint[256];	// @ 0xBD00
+		//
+		uint8_t e_pad[0x100];
 	} t1;
 } export_tables_t;
 
@@ -186,15 +190,22 @@ typedef struct
 
 typedef struct
 {
+	// info block
 	union
 	{
 		struct
 		{
+			uint8_t font_space[128];
+			uint8_t hudinfo[126];
 			uint8_t num_walls;
 			uint8_t num_planes;
+			uint8_t font_x[128];
+			uint8_t font_y[128];
 		};
 		uint8_t skip_info[512];
 	};
+	// VRAM
+	uint8_t vram[0x1C00];
 	// 1 bank
 	union
 	{
@@ -219,14 +230,10 @@ typedef struct
 		uint8_t bank_textures[8192];
 	};
 	// 1 bank
-	union
-	{
-		uint16_t palette[16][256];
-		uint16_t palbuf[16 * 256];
-	};
+	uint16_t palette[16][256];
 	// 1 bank
 	uint8_t lightmap[32][256];
-	// 4 banks
+	// 8 banks
 	uint8_t wallcols[256][256];
 } gfx_head_t;
 
@@ -397,13 +404,13 @@ map_head_t map_head;
 sector_t map_sectors[256];
 wall_t map_walls[WALL_BANK_COUNT][256];
 
-// font stuff
-uint8_t font_info[512];
-
 // graphics
 
-uint8_t game_gfx[32 * 1024 * 1024];
+uint8_t game_gfx[64 * 1024 * 1024];
 gfx_head_t *const gfx_head = (gfx_head_t*)game_gfx;
+
+// font stuff
+uint8_t *const font_info = game_gfx;
 
 // texture stuff
 static uint32_t texload_idx;
@@ -3260,33 +3267,6 @@ static uint32_t load_tables()
 		return 1;
 	}
 
-	/// VRAM tables
-
-	fd = open("DATA/KG3D.VRG", O_RDONLY);
-	if(fd < 0)
-	{
-		printf("Unable to load KG3D.VRG!\n");
-		return 1;
-	}
-
-	// font info
-	read(fd, font_info, sizeof(font_info));
-	memcpy(&hud_info, font_info + 128, sizeof(hud_info));
-
-	// HUD
-	read(fd, vram + 30 * 256, 2 * 256);
-	read(fd, vram + 62 * 256, 2 * 256);
-
-	// font, 48 characters
-	read(fd, vram + 94 * 256, 2 * 256);
-	read(fd, vram + 126 * 256, 2 * 256);
-	read(fd, vram + 158 * 256, 2 * 256);
-
-	// the rest
-	read(fd, vram + 488 * 256, 18 * 256);
-
-	close(fd);
-
 	/// game file
 
 	if(load_file("DATA/KG3D.GFX", game_gfx, sizeof(game_gfx)) < 64 * 1024)
@@ -3295,12 +3275,28 @@ static uint32_t load_tables()
 		return 1;
 	}
 
+	/// HUD info
+
+	memcpy(&hud_info, gfx_head->hudinfo, sizeof(hud_info));
+
+	/// HUD
+	memcpy(vram + 30 * 256, gfx_head->vram + 0x0000, 2 * 256);
+	memcpy(vram + 62 * 256, gfx_head->vram + 0x0200, 2 * 256);
+
+	/// font, 48 characters
+	memcpy(vram + 94 * 256, gfx_head->vram + 0x0400, 2 * 256);
+	memcpy(vram + 126 * 256, gfx_head->vram + 0x0600, 2 * 256);
+	memcpy(vram + 158 * 256, gfx_head->vram + 0x0800, 2 * 256);
+
+	/// the rest
+	memcpy(vram + 488 * 256, gfx_head->vram + 0x0A00, 18 * 256);
+
 	/// palette
 
 	dst = palette_src;
 	for(uint32_t i = 0; i < 256 * 16; i++)
 	{
-		uint16_t c = gfx_head->palbuf[i];
+		uint16_t c = *(&gfx_head->palette[0][0] + i);
 		uint8_t t;
 
 		t = c & 0x000F;
@@ -3953,7 +3949,7 @@ int main(int argc, void **argv)
 	glGenTextures(2, texture);
 	glBindTexture(GL_TEXTURE_2D, texture[0]);
 
-	thing_spawn_player(0);
+	thing_spawn_player(-1);
 
 	while(!stopped)
 	{

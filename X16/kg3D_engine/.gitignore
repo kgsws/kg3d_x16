@@ -1,4 +1,5 @@
 *.o
 *.BIN
 *.PRG
-DATA/
+card.img
+release/

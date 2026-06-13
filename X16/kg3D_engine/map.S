@@ -2693,6 +2693,8 @@ make_hash:
 load_error:
 	; TODO
 	sta DBG_BYTE1
+	lda #$EE
+	sta DBG_BYTE1
 	bra *
 
 	; restore stack pointer

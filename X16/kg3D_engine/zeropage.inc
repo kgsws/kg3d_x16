@@ -3,6 +3,16 @@
 REG_RAM_BANK = $00
 REG_ROM_BANK = $01
 
+; loader zero page
+
+LDR_GFX_SECTOR = $F0
+LDR_BIN_SECTOR = $F4
+
+LDR_TEMP_L = $60
+LDR_TEMP_H = $61
+LDR_TEMP_I = $62
+LDR_TEMP_T = $63
+
 ; kernal registers
 ; entire kernal register range is used for various function argumens
 REG_0_L = $02
@@ -37,9 +47,9 @@ COLORMAP_H = $23	; forced by tables, do not change address
 LIGHTMAP_L = $24	; forced by tables, do not change address
 LIGHTMAP_H = $25	; forced by tables, do not change address
 COLORMAP_B = $26
-PLANE_PTR_TOP_L = $27	; this must stay at zero
+PLANE_PTR_TOP_L = $27	; this must stay zero
 PLANE_PTR_TOP_H = $28
-PLANE_PTR_BOT_L = $29	; this must stay at zero
+PLANE_PTR_BOT_L = $29	; this must stay zero
 PLANE_PTR_BOT_H = $2A
 THMOVE_PTR_L = $2B
 THMOVE_PTR_H = $2C
