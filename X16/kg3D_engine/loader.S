@@ -71,7 +71,7 @@ start:
 	.byte	LDR_SWAP_SIZE / 512
 	.byte	LDR_SWAP_DEST / 256
 
-	;; TABLES (VRAM)
+	;; TABLES (WRAM)
 
 	; text: loading tables
 	jsr	write_text
@@ -81,7 +81,98 @@ start:
 	; get sector
 	clc
 	lda	LDR_GFX_SECTOR+0
-	adc	#1
+	adc	#TAB_GFX_PALETTE
+	sta	LDR_TEMP_L
+	lda	LDR_GFX_SECTOR+1
+	adc	#0
+	sta	LDR_TEMP_H
+	lda	LDR_GFX_SECTOR+2
+	adc	#0
+	sta	LDR_TEMP_I
+	lda	LDR_GFX_SECTOR+3
+	adc	#0
+	sta	LDR_TEMP_T
+
+	;; palette
+	lda	#BANK_PALETTE
+	sta	REG_RAM_BANK
+
+	jsr	read_data
+	.byte	$20
+	.byte	$A0
+
+	; open
+	jsr	file_open
+	bcc	:+
+	jmp	error
+:
+	;; T0
+
+	jsr	file_read
+	.byte	TAB_T0_SIZE / 256
+	.byte	TAB_T0_ADDR / 256
+
+	;; T1
+
+	lda	#BANK_TABLES_T1
+	sta	REG_RAM_BANK
+
+	jsr	file_read
+	.byte	TAB_T1_SIZE / 256
+	.byte	TAB_T1_ADDR / 256
+
+	; close
+	lda	#FILE_HANDLE
+	jsr	k_CLOSE
+
+	;; TABLES (VRAM)
+
+	lda	#'V'
+	sta	text_tabload+8
+	sta	FILE_ERROR
+
+	; text: loading tables
+	jsr	write_text
+	.word	$0500
+	.word	text_tabload
+
+	; setup VRAM clear (using cache)
+	lda	#$04
+	sta	VERA_CTRL
+	lda	#%01000000
+	sta	VERA_FX_CTRL
+	lda	#$0C
+	sta	VERA_CTRL
+	stz	VERA_ADDRx_L
+	stz	VERA_ADDRx_M
+	lda	#%00110000
+	sta	VERA_ADDRx_H
+	stz	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+	stz	VERA_FX_CACHE_H
+	stz	VERA_FX_CACHE_U
+
+	; clear loop
+	ldy	#$28
+@loop_vclr_h:
+	ldx	#$00
+@loop_vclr_l:
+	stz	VERA_DATA0
+	dex
+	bne	@loop_vclr_l
+	dey
+	bpl	@loop_vclr_h
+
+	; disable cache
+	lda	#$04
+	sta	VERA_CTRL
+	stz	VERA_FX_CTRL
+	stz	VERA_CTRL
+
+	; get sector
+	clc
+	lda	LDR_GFX_SECTOR+0
+	adc	#TAB_GFX_VRAM
 	sta	LDR_TEMP_L
 	lda	LDR_GFX_SECTOR+1
 	adc	#0
@@ -135,41 +226,6 @@ start:
 	jsr	read_sector
 	dec	PTR_I
 	bne	@loop_vram
-
-	;; TABLES (WRAM)
-
-	lda	#'W'
-	sta	text_tabload+8
-	sta	FILE_ERROR
-
-	; text: loading tables
-	jsr	write_text
-	.word	$0500
-	.word	text_tabload
-
-	; open
-	jsr	file_open
-	bcc	:+
-	jmp	error
-:
-	;; T0
-
-	jsr	file_read
-	.byte	TAB_T0_SIZE / 256
-	.byte	TAB_T0_ADDR / 256
-
-	;; T1
-
-	lda	#BANK_TABLES_T1
-	sta	REG_RAM_BANK
-
-	jsr	file_read
-	.byte	TAB_T1_SIZE / 256
-	.byte	TAB_T1_ADDR / 256
-
-	; close
-	lda	#FILE_HANDLE
-	jsr	k_CLOSE
 
 	;; THINGDEF
 
@@ -542,10 +598,9 @@ file_read:
 	cmp	PTR_H
 	bne	:+
 
-	; bank change
+	; bank change; actual bank increment was done by MACPTR
 	lda	#$A0
 	sta	PTR_H
-	inc	REG_RAM_BANK
 :
 	; next
 	dec	PTR_I
@@ -616,6 +671,15 @@ read_sector:
 	lda	VERA_SPI_DATA
 	inc	PTR_H
 
+	; increment sector
+	inc	LDR_TEMP_L
+	bne	:+
+	inc	LDR_TEMP_H
+	bne	:+
+	inc	LDR_TEMP_I
+	bne	:+
+	inc	LDR_TEMP_T
+:
 @stop:
 	; deselect
 	stz	VERA_SPI_CTRL
@@ -675,15 +739,6 @@ read_data:
 	; read
 	jsr	read_sector
 
-	; increment sector
-	inc	LDR_TEMP_L
-	bne	:+
-	inc	LDR_TEMP_H
-	bne	:+
-	inc	LDR_TEMP_I
-	bne	:+
-	inc	LDR_TEMP_T
-:
 	; bank check
 	lda	PTR_H
 	cmp	#$C0
@@ -807,7 +862,7 @@ text_error:
 text_readfail:
 	.asciiz	"Read from KG3D.TBL failed!"
 text_tabload:
-	.asciiz	"Loading VRAM tables ..."
+	.asciiz	"Loading WRAM tables ..."
 text_thgload:
 	.asciiz	"Loading thing tables ..."
 text_starting:

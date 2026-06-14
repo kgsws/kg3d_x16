@@ -32,6 +32,9 @@
 .export thing_tick_plyr
 .export thing_tick_pded
 
+
+TAB_SPRITE_REMAP = $0100	;; TODO
+
 ;;;
 ; CODE
 ;;;

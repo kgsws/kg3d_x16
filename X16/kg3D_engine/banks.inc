@@ -10,16 +10,7 @@ BANK_THING_INFO = 4
 BANK_PALETTE = 5
 
 ; graphics
-; these also contain one-time pre-loaded stuff
-BANK_TSPR_INFO = 6
-BANK_WSPR_INFO = 7
-
-; GRAPHICS overlap
-; map loading requires up to 16 banks of temp data
-; this is only needed before map layout is loaded
-; 8 banks overlap run-time game data
-; 8 banks overlap map layout data
-BANK_MAP_TEMP = 8	; [16 banks]
+; TODO
 
 ; things
 ; holds 128 slots, slot 0 is used for local player weapon
@@ -45,8 +36,6 @@ BANK_TEXTURES = 13
 ; visibility table
 BANK_VISTAB = 14
 
-;; 1 game bank available here
-
 ; MAP DATA overlap
 ; walls are loaded in up to 16 banks
 ; walls use only 4096 bytes per bank (first half)
@@ -64,10 +53,7 @@ BANK_PLAYER_START = BANK_MAPWALLS + 0	; loaded from map file
 BANK_THING_SECTORS = BANK_MAPWALLS + 7
 
 ; thing states
-BANK_THING_STATES = BANK_MAPWALLS + 8	; [8 banks] must be divisible by 8, overlaps with 'sprite images'
-
-; sprite images
-BANK_SPRITE_GFX = BANK_MAPWALLS + 12	; [4 banks] must be divisible by 4, overlaps with 'thing states'
+BANK_THING_STATES = BANK_MAPWALLS + 8	; [8 banks] must be divisible by 8
 
 ; tables T1
 BANK_TABLES_T1 = 32

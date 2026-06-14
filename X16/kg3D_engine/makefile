@@ -6,6 +6,7 @@ image = /tmp/card.img
 file_tbl = ../../PC/x16_editor/data/export/KG3D.TBL
 file_gfx = ../../PC/x16_editor/data/export/KG3D.GFX
 file_thd = ../../PC/x16_editor/data/export/KG3D.THD
+file_map = ../../PC/x16_editor/data/export/DEFAULT.MAP
 OBJ = main.o file.o math.o video.o render.o map.o tick.o things.o actions.o hitscan.o menu.o hud.o text.o input.o sound.o
 CC = cc65
 AS = ca65
@@ -34,8 +35,9 @@ ${engine}: ${loader} ${compiled}
 	cat ${loader} > ${engine}
 	cat ${compiled} >> ${engine}
 
-${image}: ${engine} ${program} ${file_tbl} ${file_thd} ${file_gfx}
+${image}: ${engine} ${program} ${file_tbl} ${file_thd} ${file_gfx} ${file_map}
 	cp card.img ${image}
+	dd conv=notrunc if=${file_map} of=${image} bs=512 seek=100752
 	dd conv=notrunc if=${file_tbl} of=${image} bs=512 seek=100495
 	dd conv=notrunc if=${file_thd} of=${image} bs=512 seek=100624
 	dd conv=notrunc if=${file_gfx} of=${image} bs=512 seek=2179

@@ -10,7 +10,7 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	29
+#define MAP_VERSION	30
 #define MAP_MAGIC	0x36315870614D676B
 
 #define MAX_LIGHTS	8	// white light is always present
@@ -1153,7 +1153,7 @@ void x16_export_map()
 	edit_save_file("/tmp/vis.data", vis_tab, sizeof(vis_tab));
 #endif
 	// save map info
-	map_head.count_lights = count_lights - 1; // skip white light
+	map_head.count_lights = count_lights;
 	map_head.count_textures = ex_textures; // all colored variants
 	map_head.count_starts_normal = count_starts[0];
 	map_head.count_starts_coop = count_starts[1];
@@ -1202,7 +1202,6 @@ void x16_export_map()
 	{
 		if(!(light_bitmap & (1 << i)))
 			continue;
-
 		write(fd, &editor_light[i].hash, sizeof(uint32_t));
 	}
 

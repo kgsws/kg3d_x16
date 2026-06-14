@@ -37,11 +37,11 @@ typedef struct
 		uint8_t idiv_h[256];	// @ 0x0400
 		uint8_t ydepth_h[256];	// @ 0x0500
 		uint8_t x2a_l[160];	// @ 0x0600
-		uint8_t _padA[96];	// used by engine code; 0x0660
+		uint8_t _padA[96];	// used by engine code; 0x06A0
 		uint8_t x2a_h[160];	// @ 0x0700
-		uint8_t _padB[96];	// used by engine code; 0x0760
+		uint8_t _padB[96];	// used by engine code; 0x07A0
 		uint8_t xoffs_h[160];	// @ 0x0800
-		uint8_t _padC[96];
+		uint8_t _padC[96];	// used by engine code; 0x08A0
 		uint8_t yoffs_l[128];	// @ 0x0900
 		uint8_t yoffs_h[128];	// @ 0x0980
 		uint8_t htan_l[128];	// @ 0x0A00
@@ -280,7 +280,7 @@ static const uint8_t code_skypx[] =
 {
 	0xB1, COLORMAP_ZP,	// lda	(COLORMAP_L),y
 	0x8D, 0x23, 0x9F,	// sta	VERA_DATA0
-	0x88,			// dey
+	0x88,			// dey; replaced by 'iny' later
 };
 
 static const uint8_t code_sprpx[] =

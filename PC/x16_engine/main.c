@@ -3725,7 +3725,7 @@ static uint32_t load_map()
 	)
 		goto error;
 
-	if(map_head.count_lights >= MAX_LIGHTS) // white light is excluded
+	if(map_head.count_lights >= MAX_LIGHTS-1) // white light is excluded
 		goto error;
 
 	if(map_head.count_textures > MAX_TEXTURES)
@@ -3757,11 +3757,11 @@ static uint32_t load_map()
 
 	// light list
 	map_head.count_lights++;
-	for(uint32_t i = 0; i < map_head.count_lights; i++)
+	for(uint32_t i = 1; i < map_head.count_lights; i++)
 	{
 		if(read(fd, &temp, sizeof(temp)) != sizeof(temp))
 			goto error;
-		light_remap[i+1] = find_light(temp);
+		light_remap[i] = find_light(temp);
 	}
 
 	// texture list
