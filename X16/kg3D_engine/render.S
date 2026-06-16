@@ -372,6 +372,7 @@ render_view:
 	lda	#$08
 	sta	VERA_CTRL
 
+;;; TODO: sprite FX settings
 	; set affine X position (256px, mirrored)
 	lda	#1
 	sta	VERA_FX_Y_POS_L
@@ -4079,9 +4080,9 @@ render_sprite:
 	sta	LIGHTMAP_H
 
 	; use remapping code
-	lda	#<video_draw_tline
+	lda	#<video_draw_wline
 	sta	sprite_draw_opcode+1
-	lda	#>video_draw_tline
+	lda	#>video_draw_wline
 	sta	sprite_draw_opcode+2
 :
 	; column loop
@@ -4421,7 +4422,7 @@ sprite_loop_col:
 
 	; draw column
 sprite_draw_opcode:
-	jsr	video_draw_tline	; modified address
+	jsr	video_draw_wline	; modified address
 
 	; dcsel = 2, addrsel = 0
 	lda	#$04
@@ -5165,6 +5166,8 @@ masked_loop_col:
 ;;;
 
 plane_apply_effect:
+	rts
+
 	; check texture index
 	ldy	RENDER_TEXTURE_INFO_IDX
 	bpl	:+
@@ -5473,112 +5476,6 @@ plane_set_angle:
 update_weapon_gfx:
 	;; TODO
 	rts
-
-	; sprite info pointer
-	sta	TMP_PTR_H
-	stz	TMP_PTR_L
-	lsr	TMP_PTR_H
-	ror	TMP_PTR_L
-	lsr	TMP_PTR_H
-	ror	TMP_PTR_L
-	lda	#$A0
-	tsb	TMP_PTR_H
-
-	; wsprite frame bank
-;	lda	#BANK_WSPR_INFO
-;	sta	REG_RAM_BANK
-
-	; get offset
-	lda	(TMP_PTR_L)
-	sta	TMP_REND_WPN_OFFS_L
-	inc	TMP_PTR_L
-	lda	(TMP_PTR_L)
-	sta	TMP_REND_WPN_OFFS_H
-	inc	TMP_PTR_L
-
-	; check offset
-	lda	TMP_REND_WPN_OFFS_L
-	cmp	G_WPN_NOW_OFFS_L
-	bne	:+
-	lda	TMP_REND_WPN_OFFS_H
-	cmp	G_WPN_NOW_OFFS_H
-	beq	@wspr_no_copy
-:
-	lda	TMP_REND_WPN_OFFS_L
-	sta	G_WPN_NOW_OFFS_L
-	lda	TMP_REND_WPN_OFFS_H
-	sta	G_WPN_NOW_OFFS_H
-
-	; force light update
-	lda	#$FF
-	sta	G_WPN_NOW_LIGHT
-
-	; swap bank
-	lda	G_WPN_VERA_SLOT
-	eor	#1
-	sta	G_WPN_VERA_SLOT
-	and	#1
-	tax
-
-	; check bright count
-	ldy	#1
-	lda	(TMP_PTR_L),y
-	beq	@wspr_no_copy
-	pha
-
-	; ADDR0 = 0x1C000+offs, increment = 1
-	clc
-	stz	VERA_ADDRx_L
-	lda	@page_lookup,x
-	adc	(TMP_PTR_L)
-	sta	VERA_ADDRx_M
-	lda	#%00010001
-	sta	VERA_ADDRx_H
-
-	; copy pixels
-	clc
-	lda	TMP_REND_WPN_OFFS_L
-	adc	(TMP_PTR_L)
-	tax
-	lda	TMP_REND_WPN_OFFS_H
-	adc	#0
-	tay
-	pla
-	jsr	video_copy_normal
-
-	; wsprite frame bank
-;	lda	#BANK_WSPR_INFO
-;	sta	REG_RAM_BANK
-
-@wspr_no_copy:
-	; check light
-	lda	G_WPN_LIGHT_NEW
-	cmp	G_WPN_NOW_LIGHT
-	beq	@wspr_no_light
-	sta	G_WPN_NOW_LIGHT
-
-	; ADDR0 = 0x1C000, increment = 1
-	lda	G_WPN_VERA_SLOT
-	and	#1
-	tax
-	stz	VERA_ADDRx_L
-	lda	@page_lookup,x
-	sta	VERA_ADDRx_M
-	lda	#%00010001
-	sta	VERA_ADDRx_H
-
-	; copy pixels
-	ldx	TMP_REND_WPN_OFFS_L
-	ldy	TMP_REND_WPN_OFFS_H
-	lda	(TMP_PTR_L)
-	beq	@wspr_no_light
-	jsr	video_copy_remap
-
-@wspr_no_light:
-	rts
-
-@page_lookup:
-	.word	$E0C0
 
 ;;;
 ; update weapon XY offset
@@ -6004,5 +5901,91 @@ loop_texture_map_x:
 ; A is texture ID
 
 texture_set:
-	;;; TODO
+	phy
+	tay
+
+	; sky check
+	ina
+	bne	@not_sky
+
+	; set sky mapping
+	lda	#<set_affine_sky
+	sta	wall_affine_opcode_A+1
+	sta	wall_affine_opcode_B+1
+	lda	#>set_affine_sky
+	sta	wall_affine_opcode_A+2
+	sta	wall_affine_opcode_B+2
+
+	; set sky drawing
+	lda	#<video_draw_sline
+	sta	wall_vline_opcode_A+1
+	sta	wall_vline_opcode_B+1
+	lda	#>video_draw_sline
+	sta	wall_vline_opcode_A+2
+	sta	wall_vline_opcode_B+2
+
+	; done
+	ply
+	rts
+
+@not_sky:
+	; dcsel = 3, addrsel = 0
+	lda	#$06
+	sta	VERA_CTRL
+
+	; reset affine increment
+	stz	VERA_FX_X_INCR_L
+	stz	VERA_FX_X_INCR_H
+	stz	VERA_FX_Y_INCR_L
+	stz	VERA_FX_Y_INCR_H
+
+	; dcsel = 5, addrsel = 0
+	lda	#$0A
+	sta	VERA_CTRL
+
+	; reset affine sub
+	stz	VERA_FX_X_POS_S
+	stz	VERA_FX_Y_POS_S
+
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
+	; invalid
+	lda	#$F8
+	sta	VERA_FX_TILEBASE
+	lda	#$F5
+	sta	VERA_FX_MAPBASE
+
+	; set textured drawing
+	lda	#<video_draw_vline
+	sta	wall_vline_opcode_A+1
+	sta	wall_vline_opcode_B+1
+	lda	#>video_draw_vline
+	sta	wall_vline_opcode_A+2
+	sta	wall_vline_opcode_B+2
+
+	; set 'swapped plane' type
+	lda	#<set_affine_xps
+	sta	wall_affine_opcode_A+1
+	sta	wall_affine_opcode_B+1
+	lda	#>set_affine_xps
+	sta	wall_affine_opcode_A+2
+	sta	wall_affine_opcode_B+2
+
+	; set 'XY swap'
+	lda	#<set_affine_ys
+	sta	wall_affine_opcode_C+1
+	lda	#>set_affine_ys
+	sta	wall_affine_opcode_C+2
+	lda	#<set_affine_yhs
+	sta	wall_affine_opcode_D+1
+	lda	#>set_affine_yhs
+	sta	wall_affine_opcode_D+2
+
+	; math XOR
+	lda	#$FF
+	sta	WALL_TEXTURE_XOR
+
+	ply
 	rts

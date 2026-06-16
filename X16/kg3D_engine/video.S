@@ -16,11 +16,10 @@
 .export video_image_from_file
 .export video_data_from_file
 .export video_draw_vline
-.export video_draw_tline
+.export video_draw_wline
+.export video_draw_lline
 .export video_draw_hline
 .export video_draw_sline
-.export video_copy_normal
-.export video_copy_remap
 
 .segment "CODE"
 
@@ -516,6 +515,7 @@ video_data_from_file:
 
 ;;;
 ; vertical textured line
+; RAW, from VRAM
 ;;;
 ; assuming affine helper set-up
 ; assuming addrsel = 0
@@ -525,15 +525,15 @@ video_data_from_file:
 ; uses X and Y
 
 video_draw_vline:
-	; colormap bank
-	lda	COLORMAP_B
+	; render code bank
+	lda	#BANK_RCODE
 	sta	REG_RAM_BANK
 
 	; jump table lookup (length)
 	ldx	VIDEO_DRAW_L
-	lda	TAB_PVJUMP_L,x
+	lda	TAB_JMP_WAL_L,x
 	sta	@opcode + 1
-	lda	TAB_PVJUMP_H,x
+	lda	TAB_JMP_WAL_H,x
 	sta	@opcode + 2
 
 	; decrement = 64
@@ -580,17 +580,28 @@ video_draw_vline:
 ; VIDEO_DRAW_Y is off by one
 ; uses X and Y
 
-video_draw_tline:
+video_draw_wline:
+	; jump table lookup (length)
+	ldx	VIDEO_DRAW_L
+	lda	TAB_JMP_SPW_L,x
+	sta	vdraw_topcode + 1
+	lda	TAB_JMP_SPW_H,x
+	sta	vdraw_topcode + 2
+
+	bra	vdraw_tline
+
+video_draw_lline:
+	; jump table lookup (length)
+	ldx	VIDEO_DRAW_L
+	lda	TAB_JMP_SPR_L,x
+	sta	vdraw_topcode + 1
+	lda	TAB_JMP_SPR_H,x
+	sta	vdraw_topcode + 2
+
+vdraw_tline:
 	; colormap bank
 	lda	COLORMAP_B
 	sta	REG_RAM_BANK
-
-	; jump table lookup (length)
-	ldx	VIDEO_DRAW_L
-	lda	TAB_PTJUMP_L,x
-	sta	@opcode + 1
-	lda	TAB_PTJUMP_H,x
-	sta	@opcode + 2
 
 	; decrement = 64
 	lda	#%01111000
@@ -620,7 +631,7 @@ video_draw_tline:
 	adc	TAB_YOFFS_L,y
 	sta	VERA_ADDRx_L
 
-@opcode:
+vdraw_topcode:
 	jsr	$C0DE	; modified address
 
 	; TIME
@@ -628,6 +639,7 @@ video_draw_tline:
 
 ;;;
 ; horizontal textured line
+; RAW, from VRAM
 ;;;
 ; assuming affine helper set-up
 ; assuming addrsel = 0
@@ -648,20 +660,24 @@ video_draw_hline:
 	lsr
 	pha
 
+	; render code bank
+	lda	#BANK_RCODE
+	sta	REG_RAM_BANK
+
 	; jump table lookup (start)
 	clc
 	plx
-	lda	TAB_PHJUMP_L,x
+	lda	TAB_JMP_PLN_L,x
 	sta	@opcode + 1
-	lda	TAB_PHJUMP_H,x
+	lda	TAB_JMP_PLN_H,x
 	sta	@opcode + 2
 
 	; jump table lookup (end)
 	clc
 	plx
-	lda	TAB_PHJUMP_L,x
+	lda	TAB_JMP_PLN_L,x
 	sta	VIDEO_TMP_0
-	lda	TAB_PHJUMP_H,x
+	lda	TAB_JMP_PLN_H,x
 	sta	VIDEO_TMP_1
 
 	; backup opcode
@@ -671,10 +687,6 @@ video_draw_hline:
 	; place 'rts'
 	lda	#$60
 	sta	(VIDEO_TMP_0)
-
-	; colormap bank
-	lda	COLORMAP_B
-	sta	REG_RAM_BANK
 
 	; Y lookup + X lookup
 	ldx	VIDEO_DRAW_X
@@ -777,9 +789,9 @@ video_draw_sline:
 
 	; jump table lookup (start)
 	ldy	VIDEO_DRAW_S
-	lda	TAB_PSJUMP_L,y
+	lda	TAB_JMP_SKY_L,y
 	sta	@opcode + 1
-	lda	TAB_PSJUMP_H,y
+	lda	TAB_JMP_SKY_H,y
 	sta	@opcode + 2
 
 	; jump table lookup (end)
@@ -787,9 +799,9 @@ video_draw_sline:
 	lda	VIDEO_DRAW_S
 	sbc	VIDEO_DRAW_L
 	tax
-	lda	TAB_PSJUMP_L,x
+	lda	TAB_JMP_SKY_L,x
 	sta	VIDEO_TMP_0
-	lda	TAB_PSJUMP_H,x
+	lda	TAB_JMP_SKY_H,x
 	sta	VIDEO_TMP_1
 
 	; backup opcode
@@ -849,107 +861,3 @@ video_draw_sline:
 	; TIME
 	jmp	time_update
 
-;;;
-; copy to VRAM
-;;;
-; copy from WRAM to VRAM in 256B blocks
-; YX is VRAM 256B block source
-; A is number of blocks
-; 
-
-video_copy_normal:
-	pha
-video_copy_normal_x:
-	; sky rendering loop (128 pixels)
-	lda	TAB_PSJUMP_L+255
-	sta	FUNC_ARG_L
-	lda	TAB_PSJUMP_H+255
-	sta	FUNC_ARG_H
-
-	; ADDRSEL = 1
-	lda	#%00000001
-	sta	VERA_CTRL
-
-video_copy_blocks:
-	; source
-	tya
-	asl
-	asl
-	asl
-	ora	TAB_BANK,x
-	sta	REG_RAM_BANK
-	txa
-	and	#$1F
-	ora	#$A0
-	sta	COLORMAP_H
-	stz	COLORMAP_L
-
-	; the loop
-	ldy	#0
-	plx
-@loop:
-	jsr	func_jsr
-	jsr	func_jsr
-
-	; check end
-	dex
-	beq	@done
-
-	; reset ADDR1
-	lda	#$1E
-	sta	VERA_ADDRx_M
-
-	; update destination
-	inc	COLORMAP_H
-	lda	COLORMAP_H
-	cmp	#$C0
-	bcc	:+
-	lda	#$A0
-	sta	COLORMAP_H
-	inc	REG_RAM_BANK
-:
-	; next
-	bra	@loop
-
-@done:
-	stz	VERA_CTRL
-
-	; TIME
-	jmp	time_update
-
-;;;
-; variant of 'video_copy_normal' with light remap
-;;;
-; uses G_WPN_NOW_LIGHT for light index
-
-video_copy_remap:
-	pha
-
-	; light map
-	clc
-	lda	G_WPN_NOW_LIGHT
-	beq	video_copy_normal_x
-	phx
-	tax
-	lda	TAB_SWAP,x
-	and	#$07
-	adc	#>TAB_LIGHTMAPS
-	sta	LIGHTMAP_H
-	plx
-
-	; ADDR1 = 0x001E00, increment = 1
-	lda	#%00000001
-	sta	VERA_CTRL
-	stz	VERA_ADDRx_L
-	lda	#$1E
-	sta	VERA_ADDRx_M
-	lda	#%00010000
-	sta	VERA_ADDRx_H
-
-	; sprite rendering loop (128 pixels)
-	lda	TAB_PTJUMP_L+127
-	sta	FUNC_ARG_L
-	lda	TAB_PTJUMP_H+127
-	sta	FUNC_ARG_H
-
-	jmp	video_copy_blocks

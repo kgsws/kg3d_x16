@@ -357,8 +357,6 @@ ex_map_load:
 	dec	MAP_HEAD_COUNT_TEXTURES
 	bne	@loop_textures
 
-bra *
-
 	;;;;
 	; sectors
 
