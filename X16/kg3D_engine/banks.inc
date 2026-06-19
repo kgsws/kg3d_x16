@@ -6,11 +6,9 @@ BANK_SWAP_CODE = 2	; [2 banks]
 ; thing info
 BANK_THING_INFO = 4
 
-; palette
-BANK_PALETTE = 5
-
-; graphics
-; TODO
+; loaded from GFX
+BAMK_GFX_INFO = 5
+BANK_PALETTE = 6
 
 ; things
 ; holds 128 slots, slot 0 is used for local player weapon

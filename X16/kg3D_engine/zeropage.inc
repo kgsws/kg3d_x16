@@ -20,6 +20,12 @@ REG_0_H = $03
 REG_1_L = $04
 REG_1_H = $05
 
+; SD card read sector
+SD_SEC_L = $02
+SD_SEC_M = $03
+SD_SEC_H = $04
+SD_SEC_U = $05
+
 ; PS2 input (mouse)
 INPUT_MOUSE_A = $02
 INPUT_MOUSE_B = $03

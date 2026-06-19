@@ -64,7 +64,7 @@ do_skip_state:
 
 	; next
 	ldx	THSTATE_STRUCT_FRM_NXT,y
-	lda	TAB_BANK,x
+	lda	TAB_DIV32,x
 	ldx	THSTATE_STRUCT_NEXT,y
 
 	; thing info bank
@@ -187,7 +187,7 @@ vis_check:
 	sta	TMP_PTR_H
 
 	; (1 << (s1 >> 5)
-	lda	TAB_BANK,x
+	lda	TAB_DIV32,x
 	tax
 	lda	TAB_POW2,x
 

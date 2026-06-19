@@ -55,7 +55,7 @@ MAP_TEMP_THING_EXTRA = MAP_TEMP_THING + 13
 ; info
 ;;;
 
-MAP_HEAD__VERSION = 30
+MAP_HEAD__VERSION = 31
 MAP_HEAD__SIZE = 32
 MAP_LIGHT__SIZE = 4
 MAP_TEXTURE__SIZE = 14
@@ -73,6 +73,10 @@ MAP_TEMP_COUNT_LIGHTS = TICK_CMD_PITCH
 MAP_TEMP_START_COUNT = G_TICKER_IDX
 MAP_LOAD_WRAM_L = FUNC_ARG_L
 MAP_LOAD_WRAM_H = FUNC_ARG_H
+MAP_LOAD_WTST_L = COLORMAP_L
+MAP_LOAD_WTST_H = COLORMAP_H
+MAP_LOAD_WRET_L = LIGHTMAP_L
+MAP_LOAD_WRET_H = LIGHTMAP_H
 
 ;;;
 ; CODE
@@ -283,6 +287,74 @@ ex_map_load:
 	ora	MAP_HEAD_HASH_SKY+3
 	beq	@after_sky
 
+	; GFX info bank
+	lda	#BAMK_GFX_INFO
+	sta	REG_RAM_BANK
+
+	; find sky
+	ldy	#31
+@loop_skyfind:
+	lda	TAB_GINFO_SKY_HASH_L,y
+	cmp	MAP_HEAD_HASH_SKY+0
+	bne	:+
+	lda	TAB_GINFO_SKY_HASH_M,y
+	cmp	MAP_HEAD_HASH_SKY+1
+	bne	:+
+	lda	TAB_GINFO_SKY_HASH_H,y
+	cmp	MAP_HEAD_HASH_SKY+2
+	bne	:+
+	lda	TAB_GINFO_SKY_HASH_U,y
+	cmp	MAP_HEAD_HASH_SKY+3
+	bne	:+
+
+	; source sector
+	clc
+	lda	TAB_GINFO_SKY_SECT_L,y
+	adc	TAB_GFX_SECTOR_L
+	sta	SD_SEC_L
+	lda	TAB_GINFO_SKY_SECT_M,y
+	adc	TAB_GFX_SECTOR_M
+	sta	SD_SEC_M
+	lda	TAB_GINFO_SKY_SECT_H,y
+	adc	TAB_GFX_SECTOR_H
+	sta	SD_SEC_H
+	lda	TAB_GINFO_SKY_SECT_U,y
+	adc	TAB_GFX_SECTOR_U
+	sta	SD_SEC_U
+
+	; WRAM pointer
+	lda	MAP_LOAD_WRAM_L
+	sta	TAB_SKY_BASE+0
+	lda	MAP_LOAD_WRAM_H
+	sta	TAB_SKY_BASE+1
+
+	; WRAM space
+	lda	#0
+	jsr	get_wram
+
+	; get destination pointer
+	lda	TAB_SKY_BASE+1
+	asl
+	asl
+	asl
+	ldx	TAB_SKY_BASE+0
+	ora	TAB_DIV32,x
+	sta	REG_RAM_BANK
+	txa
+	and	#$1F
+	ora	#$A0
+
+	; read data
+	ldx	#$80
+	jsr	file_read_sectors
+
+	; done
+	bra	@after_sky
+:
+	; next
+	dey
+	bpl	@loop_skyfind
+
 	;;; TODO: load sky texture
 
 @after_sky:
@@ -315,13 +387,13 @@ ex_map_load:
 :
 	; DEBUG
 	lda	MAP_TEMP_LIGHT+0
-	sta	DBG_BYTE0
+;	sta	DBG_BYTE0
 	lda	MAP_TEMP_LIGHT+1
-	sta	DBG_BYTE0
+;	sta	DBG_BYTE0
 	lda	MAP_TEMP_LIGHT+2
-	sta	DBG_BYTE0
+;	sta	DBG_BYTE0
 	lda	MAP_TEMP_LIGHT+3
-	sta	DBG_BYTE1
+;	sta	DBG_BYTE1
 
 	; next
 	dec	MAP_HEAD_COUNT_LIGHTS
@@ -345,13 +417,13 @@ ex_map_load:
 :
 	; DEBUG
 	lda	MAP_TEMP_TEX+0
-	sta	DBG_BYTE0
+;	sta	DBG_BYTE0
 	lda	MAP_TEMP_TEX+1
-	sta	DBG_BYTE0
+;	sta	DBG_BYTE0
 	lda	MAP_TEMP_TEX+2
-	sta	DBG_BYTE0
+;	sta	DBG_BYTE0
 	lda	MAP_TEMP_TEX+3
-	sta	DBG_BYTE1
+;	sta	DBG_BYTE1
 
 	; next
 	dec	MAP_HEAD_COUNT_TEXTURES
@@ -431,36 +503,23 @@ ex_map_load:
 	lda	MAP_TEMP_COUNT_EBLOCKS
 	beq	@no_extra
 
-	; check WRAM space
-	clc
+	; WRAM pointer
 	lda	MAP_LOAD_WRAM_L
 	sta	MAP_LOAD_TMP_L
-	adc	MAP_TEMP_COUNT_EBLOCKS
 	lda	MAP_LOAD_WRAM_H
 	sta	MAP_LOAD_TMP_H
-	adc	#0
-	cmp	#$20
-	bcc	:+
 
-	; error
-	lda	#11
-	jmp	load_error
-:
-	; advance WRAM pointer
-	clc
+	; WRAM space
 	lda	MAP_TEMP_COUNT_EBLOCKS
-	adc	MAP_LOAD_WRAM_L
-	sta	MAP_LOAD_WRAM_L
-	bcc	:+
-	inc	MAP_LOAD_WRAM_H
-:
+	jsr	get_wram
+
 	; get destination pointer
 	lda	MAP_LOAD_TMP_H
 	asl
 	asl
 	asl
 	ldx	MAP_LOAD_TMP_L
-	ora	TAB_BANK,x
+	ora	TAB_DIV32,x
 	sta	REG_RAM_BANK
 	txa
 	and	#$1F
@@ -765,6 +824,54 @@ lda #2 ;; TODO remove
 
 load_thing_sprites:
 	rts
+
+;;;
+; check reserve space in WRAM
+;;;
+; A - block count; 0 = 256
+
+get_wram:
+	; check count
+	tax
+	bne	:+
+
+	; = 256
+	lda	MAP_LOAD_WRAM_L
+	sta	MAP_LOAD_WTST_L
+	lda	MAP_LOAD_WRAM_H
+	ina
+	sta	MAP_LOAD_WTST_H
+
+	bra	:++
+:
+	; < 256
+	clc
+	adc	MAP_LOAD_WRAM_L
+	sta	MAP_LOAD_WTST_L
+	lda	MAP_LOAD_WRAM_H
+	adc	#0
+	sta	MAP_LOAD_WTST_H
+:
+	; check size
+	lda	MAP_LOAD_WTST_H
+	cmp	#$20
+	bcs	:+
+
+@pass:
+	lda	MAP_LOAD_WTST_L
+	sta	MAP_LOAD_WRAM_L
+	lda	MAP_LOAD_WTST_H
+	sta	MAP_LOAD_WRAM_H
+	rts
+:
+	cmp	#$21
+	bcs	@fail
+	lda	MAP_LOAD_WTST_L
+	beq	@pass
+
+@fail:
+	lda	#$FF
+	; FALL TROUGH TO 'load_error'
 
 ;;;
 ; map loading error

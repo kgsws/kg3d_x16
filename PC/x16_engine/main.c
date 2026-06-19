@@ -206,7 +206,7 @@ typedef struct
 	};
 	// VRAM
 	uint8_t vram[0x1C00];
-	// 1 bank
+	// 2 banks
 	union
 	{
 		struct
@@ -229,7 +229,6 @@ typedef struct
 		};
 		uint8_t bank_textures[8192];
 	};
-	// 1 bank
 	uint16_t palette[16][256];
 	// 1 bank
 	uint8_t lightmap[32][256];
@@ -628,7 +627,7 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 	texture_info_t *ti = texture_info + idx;
 	uint32_t cols, tmap;
 
-	if(idx > MAX_TEXTURES)
+	if(!idx)
 	{
 		// sky
 		tex_type = 0;
@@ -2678,7 +2677,7 @@ static void do_sector(uint8_t idx)
 	projection.fix = 0;
 
 	// floor
-	if(sec->floor.texture == 0xFF)
+	if(!sec->floor.texture)
 		dr_sky(plf_top, plf_bot);
 	else
 	if(projection.z > sec->floor.height)
@@ -2700,7 +2699,7 @@ static void do_sector(uint8_t idx)
 	}
 
 	// ceiling
-	if(sec->ceiling.texture == 0xFF)
+	if(!sec->ceiling.texture)
 		dr_sky(plc_top, plc_bot);
 	else
 	if(projection.z < sec->ceiling.height)
@@ -2755,7 +2754,7 @@ static void do_3D()
 	sector_t *sec;
 	uint32_t pidx;
 
-	for(int32_t i = 0; i < MAX_TEXTURES; i++)
+	for(int32_t i = 1; i <= MAX_TEXTURES; i++)
 		texture_info[i].used = 0;
 
 	for(int32_t i = 0; i < 4; i++)
@@ -2849,7 +2848,7 @@ static void do_3D()
 
 	// info
 	pidx = 0;
-	for(int32_t i = 0; i < MAX_TEXTURES; i++)
+	for(int32_t i = 1; i <= MAX_TEXTURES; i++)
 		if(texture_info[i].used)
 			pidx += texture_info[i].type & 15;
 
@@ -3261,17 +3260,28 @@ static uint32_t load_tables()
 	export_tables_t export_tables;
 	uint8_t *dst;
 
-	if(load_file("DATA/KG3D.TBL", &export_tables, sizeof(export_tables)) != sizeof(export_tables))
-	{
-		printf("Unable to load KG3D.TBL!\n");
-		return 1;
-	}
+	/// invalid texture
+
+	texture_info[MAX_TEXTURES+1].type = 0xFF;
+	texture_info[MAX_TEXTURES+1].tilemap = TEX_BAD_TILEMAP;
+	texture_info[MAX_TEXTURES+1].tiledata = TEX_BAD_TILEDAT;
+	texture_info[MAX_TEXTURES+1].vlink = MAX_TEXTURES+1;
+	texture_info[MAX_TEXTURES+1].vram[0] = 0xFF;
+	memset(texture_info[MAX_TEXTURES+1].lmap, MAX_TEXTURES+1, MAX_LIGHTS);
 
 	/// game file
 
 	if(load_file("DATA/KG3D.GFX", game_gfx, sizeof(game_gfx)) < 64 * 1024)
 	{
 		printf("Unable to load KG3D.GFX!\n");
+		return 1;
+	}
+
+	/// tables
+
+	if(load_file("DATA/KG3D.TBL", &export_tables, sizeof(export_tables)) != sizeof(export_tables))
+	{
+		printf("Unable to load KG3D.TBL!\n");
 		return 1;
 	}
 
@@ -3330,30 +3340,6 @@ static uint32_t load_tables()
 	// X to angle
 	for(uint32_t i = 0; i < 160; i++)
 		x2angle[i] = (export_tables.t0.x2a_h[i] << 8) | export_tables.t0.x2a_l[i];
-
-	// nibble swap
-	// NOT USED
-
-	// Y lookup
-	// NOT USED
-
-	// X lookup
-	// NOT USED
-
-	// pixel jump offsets (vertical)
-	// NOT USED
-
-	// pixel jump offsets (horizontal)
-	// NOT USED
-
-	// pixel jump offsets (sky)
-	// NOT USED
-
-	// pixel loop (horizontal and vertical)
-	// NOT USED
-
-	// pixel loop (sky)
-	// NOT USED
 
 	/// T1
 
@@ -3765,7 +3751,7 @@ static uint32_t load_map()
 	}
 
 	// texture list
-	texload_idx = 0;
+	texload_idx = 1;
 	memset(texture_info, 0, sizeof(texture_info_t) * MAX_TEXTURES);
 	for(uint32_t i = 0; i < map_head.count_textures; i++)
 	{
@@ -3905,13 +3891,6 @@ uint8_t rng_val(uint8_t val)
 
 int main(int argc, void **argv)
 {
-	texture_info[MAX_TEXTURES].type = 0xFF;
-	texture_info[MAX_TEXTURES].tilemap = TEX_BAD_TILEMAP;
-	texture_info[MAX_TEXTURES].tiledata = TEX_BAD_TILEDAT;
-	texture_info[MAX_TEXTURES].vlink = MAX_TEXTURES;
-	texture_info[MAX_TEXTURES].vram[0] = 0xFF;
-	memset(texture_info[MAX_TEXTURES].lmap, MAX_TEXTURES, MAX_LIGHTS);
-
 	if(load_tables())
 		return 1;
 

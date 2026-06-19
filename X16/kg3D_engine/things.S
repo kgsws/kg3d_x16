@@ -804,7 +804,7 @@ thing_explode:
 	stx	MEM_PORTALS_SECTOR
 
 	; poscheck.vis_bit = 1 << (sdx >> 5)
-	lda	TAB_BANK,x
+	lda	TAB_DIV32,x
 	tax
 	lda	TAB_POW2,x
 	sta	EXPLODE_VIS_BIT
@@ -2464,7 +2464,7 @@ thing_check_spawn:
 	asl
 	asl
 	ldy	SECTOR_STRUCT_OBJ_L,x
-	ora	TAB_BANK,y
+	ora	TAB_DIV32,y
 	sta	TMP_PTR_I
 	tya
 	and	#$1F
@@ -4274,7 +4274,7 @@ projectile_death:
 
 	; wsrc->split != -32768
 	lda	WALL_STRUCT_SPLIT_H,y
-	cmp	$80	; lazy check
+	cmp	#$80	; lazy check
 	beq	@handled
 
 	; zz <= wsrc->split
@@ -4346,7 +4346,6 @@ projectile_death:
 
 	; if(texture == 0xFF)
 	lda	PRJDTH_TEXTURE
-	ina
 	bne	:+
 
 	; th->next_state = 0
@@ -5457,7 +5456,7 @@ thing_actdone:
 
 	; next H
 	ldy	THSTATE_STRUCT_FRM_NXT,x
-	lda	TAB_BANK,y
+	lda	TAB_DIV32,y
 	tsb	MATH_VAR_H
 
 	; next L

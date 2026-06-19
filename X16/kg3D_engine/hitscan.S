@@ -410,7 +410,7 @@ cb_attack:
 
 	; if(wall->split != 0x8000)
 	lda	WALL_STRUCT_SPLIT_H,y
-	cmp	$80	; lazy check
+	cmp	#$80	; lazy check
 	beq	@do_wall
 
 	; if(zz < wall->split.height_split)
@@ -692,7 +692,6 @@ cb_attack:
 :
 	; check sky texture
 	lda	HITSCAN_ATK_TEXTURE
-	ina
 	beq	@skip
 
 	; no origin
@@ -2056,7 +2055,7 @@ hitscan_sobj_sort:
 	asl
 	asl
 	ldx	SECTOR_STRUCT_OBJ_L,y
-	ora	TAB_BANK,x
+	ora	TAB_DIV32,x
 	sta	TMP_PTR_I
 	txa
 	and	#$1F

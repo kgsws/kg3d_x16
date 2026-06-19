@@ -11,8 +11,8 @@
 .export file_close
 .export file_read_8_wram
 .export file_read_16_wram
-.export file_read_16_vram
 .export file_restore_handle
+.export file_read_sectors
 
 ;;;
 ; CODE
@@ -89,25 +89,7 @@ file_read_8_wram:
 ; TAB_FILE_DEST is destination pointer, assumend to be in banked area; this value is advanced, with banking support
 ; C is set on error
 
-file_read_16_vram:
-	lda	#<VERA_DATA0
-	sta	TAB_FILE_DEST+0
-	lda	#>VERA_DATA0
-	sta	TAB_FILE_DEST+1
-
-	lda	#$38	; SEC opcode
-	sta	read16_loop
-	lda	#read16_ai-read16_bcc-2
-	sta	read16_bcc+1
-	bra	read16_start
-
 file_read_16_wram:
-	lda	#$18	; CLC opcode
-	sta	read16_loop
-	lda	#read16_bi-read16_bcc-2
-	sta	read16_bcc+1
-
-read16_start:
 	; first block size
 	lda	#FILE_BLOCK_READ
 	sta	FILE_LOAD_RDSIZE
@@ -122,27 +104,26 @@ read16_start:
 	; the loop
 read16_loop:
 	; read
-	clc	; modified opcode
+	clc
 	lda	FILE_LOAD_RDSIZE
 	ldx	TAB_FILE_DEST+0
 	ldy	TAB_FILE_DEST+1
 	jsr	k_MACPTR
-read16_bcc:
-	bcc	read16_bi	; modified offset
+	bcc	:+
 	rts
-read16_bi:
+:
 	; increment address
 	lda	TAB_FILE_DEST+0
 	adc	FILE_LOAD_RDSIZE
 	sta	TAB_FILE_DEST+0
-	bcc	read16_ai
+	bcc	:+
 	inc	TAB_FILE_DEST+1
 	lda	TAB_FILE_DEST+1
 	cmp	#$C0
-	bne	read16_ai
+	bne	:+
 	lda	#$A0
 	sta	TAB_FILE_DEST+1
-read16_ai:
+:
 	; decrement size
 	sec
 	lda	TAB_FILE_BUF_SIZE+0
@@ -162,5 +143,135 @@ read16_ai:
 	bra	read16_loop
 @end:
 	clc
+	rts
+
+;;;
+; SD card read sector
+;;;
+
+file_read_sector:
+	; dummy byte
+	lda	#$FF
+	sta	VERA_SPI_DATA
+
+	; select
+	lda	#$01
+	sta	VERA_SPI_CTRL
+
+	; sector read command
+	lda	#$51
+	sta	VERA_SPI_DATA
+	lda	SD_SEC_U
+	sta	VERA_SPI_DATA
+	lda	SD_SEC_H
+	sta	VERA_SPI_DATA
+	lda	SD_SEC_M
+	sta	VERA_SPI_DATA
+	lda	SD_SEC_L
+	sta	VERA_SPI_DATA
+	nop
+	stz	VERA_SPI_DATA
+
+	; wait for response
+	lda	#$FF
+	sta	VERA_SPI_DATA
+	lda	#$05
+	sta	VERA_SPI_CTRL
+@loop_cmd:
+	lda	VERA_SPI_DATA
+	bmi	@loop_cmd
+@got_cmd:
+	; check
+	beq	:+
+
+	; got error
+@fail:
+	jsr	@stop
+	sec
+	rts
+:
+	; wait for data
+@loop_dw:
+	lda	VERA_SPI_DATA
+	ina
+	beq	@loop_dw
+
+	; check
+	ina
+	bne	@fail
+
+	; read 512 bytes
+	jsr	@read
+	inc	TMP_PTR_H
+	jsr	@read
+
+	; dummy checksum
+	lda	VERA_SPI_DATA
+	inc	TMP_PTR_H
+
+	; increment sector
+	inc	SD_SEC_L
+	bne	:+
+	inc	SD_SEC_M
+	bne	:+
+	inc	SD_SEC_H
+	bne	:+
+	inc	SD_SEC_U
+:
+@stop:
+	; deselect
+	stz	VERA_SPI_CTRL
+
+	; dummy byte
+	lda	#$FF
+	sta	VERA_SPI_DATA
+
+	clc
+	rts
+
+@read:
+	ldy	#0
+@loop_data:
+	lda	VERA_SPI_DATA
+	sta	(TMP_PTR_L),y
+	nop	 ; modified
+	iny
+	bne	@loop_data
+	rts
+
+;;;
+; read data block
+;;;
+; X - sector count
+; A - HI of destination
+
+file_read_sectors:
+	; destination
+	sta	TMP_PTR_H
+	stz	TMP_PTR_L
+
+	; block loop
+@loop:
+	; read
+	jsr	file_read_sector
+	bcc	:+
+
+	; fail
+	rts
+:
+	; bank check
+	lda	TMP_PTR_H
+	cmp	#$C0
+	bne	:+
+
+	; bank change
+	lda	#$A0
+	sta	TMP_PTR_H
+	inc	REG_RAM_BANK
+:
+	; next
+	dex
+	bne	@loop
+
 	rts
 

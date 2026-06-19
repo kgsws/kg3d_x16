@@ -10,11 +10,11 @@
 #include "x16r.h"
 #include "x16t.h"
 
-#define MAP_VERSION	30
+#define MAP_VERSION	31
 #define MAP_MAGIC	0x36315870614D676B
 
 #define MAX_LIGHTS	8	// white light is always present
-#define MAX_TEXTURES	0xFE	// last two slots are reserved
+#define MAX_TEXTURES	0xFF	// slot zero is sky
 
 #define WALL_BANK_COUNT	16
 #define WALL_BANK_SIZE	4096
@@ -282,11 +282,11 @@ static int32_t add_texture(uint32_t idx, uint32_t light)
 
 	if(!idx)
 		// none
-		return 0xFE;
+		return 0xFF;
 
 	if(idx == 1)
 		// sky
-		return 0xFF;
+		return 0x00;
 
 	add.idx = idx;
 	add.bits = 1 << light;
@@ -296,7 +296,7 @@ static int32_t add_texture(uint32_t idx, uint32_t light)
 	light_bitmap |= add.bits;
 
 	// check for reuse
-	for(uint32_t i = 0; i < count_textures; i++)
+	for(uint32_t i = 1; i < count_textures; i++)
 	{
 		if(map_textures[i].idx == idx)
 		{
@@ -309,7 +309,7 @@ static int32_t add_texture(uint32_t idx, uint32_t light)
 	if(count_textures >= MAX_TEXTURES)
 		return -1;
 
-	memset(add.lmap, 0xFE, MAX_LIGHTS);
+	memset(add.lmap, 0xFF, MAX_LIGHTS);
 
 	map_textures[count_textures] = add;
 
@@ -545,7 +545,7 @@ void x16_export_map()
 	light_bitmap = 1;
 
 	count_lights = 0;
-	count_textures = 0;
+	count_textures = 1; // skip sky
 
 	count_starts[0] = 0;
 	count_starts[1] = 0;
@@ -1046,7 +1046,7 @@ void x16_export_map()
 
 	// generate extra textures
 	ex_textures = count_textures;
-	for(uint32_t i = 0; i < count_textures; i++)
+	for(uint32_t i = 1; i < count_textures; i++)
 	{
 		map_texture_t *mt = map_textures + i;
 
@@ -1076,12 +1076,12 @@ void x16_export_map()
 			mn->light = j;
 			mn->origin = -1;
 
-			memset(mn->lmap, 0xFE, MAX_LIGHTS);
+			memset(mn->lmap, 0xFF, MAX_LIGHTS);
 		}
 	}
 
 	// fix texture origins (wall variant data source)
-	for(uint32_t i = 0; i < ex_textures; i++)
+	for(uint32_t i = 1; i < ex_textures; i++)
 	{
 		map_texture_t *mt = map_textures + i;
 		editor_texture_t *et = editor_texture + mt->idx;
@@ -1154,7 +1154,7 @@ void x16_export_map()
 #endif
 	// save map info
 	map_head.count_lights = count_lights;
-	map_head.count_textures = ex_textures; // all colored variants
+	map_head.count_textures = ex_textures - 1; // all colored variants, skip sky
 	map_head.count_starts_normal = count_starts[0];
 	map_head.count_starts_coop = count_starts[1];
 	map_head.count_starts_dm = count_starts[2];
@@ -1206,7 +1206,7 @@ void x16_export_map()
 	}
 
 	// texture list
-	for(uint32_t i = 0; i < ex_textures; i++)
+	for(uint32_t i = 1; i < ex_textures; i++)
 	{
 		map_texture_t *mt = map_textures + i;
 		editor_texture_t *et = editor_texture + mt->idx;
@@ -1302,7 +1302,7 @@ void x16_export_map()
 	close(fd);
 
 	// export OK
-printf("EXPORTED OK; sec %u ln %u th %u wb %u es %u tx %u (%u)\n", edit_list_sector.count, count_walls, count_things, count_wall_banks, count_extra_storage, count_textures, ex_textures);
+printf("EXPORTED OK; sec %u ln %u th %u wb %u es %u tx %u (%u)\n", edit_list_sector.count, count_walls, count_things, count_wall_banks, count_extra_storage, count_textures-1, ex_textures-1);
 printf("head %u sec %u wall %u th %u\n", sizeof(map_head_t), sizeof(sector_t), sizeof(wall_t), sizeof(map_thing_t));
 /*
 	sprintf(edit_info_box_text,	"Sector count: %u\n"

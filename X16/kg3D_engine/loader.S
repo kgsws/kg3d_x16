@@ -81,7 +81,7 @@ start:
 	; get sector
 	clc
 	lda	LDR_GFX_SECTOR+0
-	adc	#TAB_GFX_PALETTE
+	adc	#TAB_GFX_INFO_PAL
 	sta	LDR_TEMP_L
 	lda	LDR_GFX_SECTOR+1
 	adc	#0
@@ -93,21 +93,21 @@ start:
 	adc	#0
 	sta	LDR_TEMP_T
 
-	;; palette
-	lda	#BANK_PALETTE
+	;; GFX info and palette
+	lda	#BAMK_GFX_INFO
 	sta	REG_RAM_BANK
 
 	jsr	read_data
-	.byte	$20
+	.byte	$40
 	.byte	$A0
+
+	;; T0
 
 	; open
 	jsr	file_open
 	bcc	:+
 	jmp	error
 :
-	;; T0
-
 	jsr	file_read
 	.byte	TAB_T0_SIZE / 256
 	.byte	TAB_T0_ADDR / 256
@@ -290,7 +290,15 @@ start:
 	.word	$0700
 	.word	text_starting
 
-; TODO: copy some info values to T0 empty space
+	; copy some info values to T0 empty space
+	lda	LDR_GFX_SECTOR+0
+	sta	TAB_GFX_SECTOR_L
+	lda	LDR_GFX_SECTOR+1
+	sta	TAB_GFX_SECTOR_M
+	lda	LDR_GFX_SECTOR+2
+	sta	TAB_GFX_SECTOR_H
+	lda	LDR_GFX_SECTOR+3
+	sta	TAB_GFX_SECTOR_U
 
 	; disable IRQ
 	sei
@@ -815,7 +823,7 @@ read16_loop:
 	ldx	VAR_FILE_DEST+0
 	ldy	VAR_FILE_DEST+1
 	jsr	k_MACPTR
-	bcc	:+	; modified offset
+	bcc	:+
 	rts
 :
 	; increment address

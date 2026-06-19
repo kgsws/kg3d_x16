@@ -780,7 +780,6 @@ render_sector:
 	; check for sky
 	ldy	SECTOR_PTR_I
 	lda	SECTOR_STRUCT_FLOOR_TEXTURE,y
-	ina
 	bne	:+
 
 	; disable cache write
@@ -850,7 +849,6 @@ render_sector:
 	; check for sky
 	ldy	SECTOR_PTR_I
 	lda	SECTOR_STRUCT_CEILING_TEXTURE,y
-	ina
 	bne	:+
 
 	; disable cache write
@@ -2626,7 +2624,7 @@ v1diff_opcode:
 :
 	; wall->split != -32768
 	lda	WALL_STRUCT_SPLIT_H,x
-	cmp	$80	; lazy check
+	cmp	#$80	; lazy check
 	beq	@do_solid
 
 	; get split height
@@ -4124,7 +4122,7 @@ sprite_loop_col:
 	asl
 	asl
 	ldx	SPRITE_COLS_L
-	ora	TAB_BANK,x
+	ora	TAB_DIV32,x
 	sta	COLUMN_PTR_B
 	txa
 	and	#$1F
@@ -4153,7 +4151,7 @@ sprite_loop_col:
 	asl
 	asl
 	ldx	COLORMAP_H
-	ora	TAB_BANK,x
+	ora	TAB_DIV32,x
 	sta	COLORMAP_B
 	sta	REG_RAM_BANK
 	txa
@@ -4871,7 +4869,7 @@ masked_loop_col:
 	asl
 	asl
 	ldx	COLORMAP_H
-	ora	TAB_BANK,x
+	ora	TAB_DIV32,x
 	sta	COLORMAP_B
 	sta	REG_RAM_BANK
 	txa
@@ -5810,7 +5808,7 @@ set_affine_xw:
 	asl
 	asl
 	ldx	COLORMAP_H
-	ora	TAB_BANK,x
+	ora	TAB_DIV32,x
 	sta	COLORMAP_B
 	txa
 	and	#$1F
@@ -5901,11 +5899,7 @@ loop_texture_map_x:
 ; A is texture ID
 
 texture_set:
-	phy
-	tay
-
 	; sky check
-	ina
 	bne	@not_sky
 
 	; set sky mapping
@@ -5925,10 +5919,12 @@ texture_set:
 	sta	wall_vline_opcode_B+2
 
 	; done
-	ply
 	rts
 
 @not_sky:
+	phy
+	tay
+
 	; dcsel = 3, addrsel = 0
 	lda	#$06
 	sta	VERA_CTRL

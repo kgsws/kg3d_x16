@@ -1,6 +1,5 @@
 
 .import video_init
-.import video_load
 .import video_palette
 .import video_set_scale
 .import video_swap

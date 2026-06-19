@@ -8,7 +8,6 @@
 .include "tables.inc"
 
 .export video_init
-.export video_load
 .export video_palette
 .export video_set_scale
 .export video_swap
@@ -66,97 +65,6 @@ video_init:
 	ora	#%01000000
 	sta	VERA_DC_VIDEO
 
-	rts
-
-;;;
-; load video tables to VRAM
-;;;
-
-video_load:
-	jsr	file_open_rd
-
-	; ADDR0 = 0x003E00, increment = 1
-	stz	VERA_CTRL
-	stz	VERA_ADDRx_L
-	lda	#$3E
-	sta	VERA_ADDRx_M
-	lda	#%00010000
-	sta	VERA_ADDRx_H
-
-	; HUD (1/2)
-	stz	TAB_FILE_BUF_SIZE+0
-	lda	#$02
-	sta	TAB_FILE_BUF_SIZE+1
-	jsr	file_read_16_vram
-	bcs	@error
-
-	; ADDR0 = 0x005E00
-	lda	#$5E
-	sta	VERA_ADDRx_M
-
-	; HUD (2/2)
-	stz	TAB_FILE_BUF_SIZE+0
-	lda	#$02
-	sta	TAB_FILE_BUF_SIZE+1
-	jsr	file_read_16_vram
-	bcs	@error
-
-	; ADDR0 = 0x007E00
-	lda	#$7E
-	sta	VERA_ADDRx_M
-
-	; font (1 / 4)
-	stz	TAB_FILE_BUF_SIZE+0
-	lda	#$02
-	sta	TAB_FILE_BUF_SIZE+1
-	jsr	file_read_16_vram
-	bcs	@error
-
-	; ADDR0 = 0x009E00
-	lda	#$9E
-	sta	VERA_ADDRx_M
-
-	; font (2 / 4)
-	stz	TAB_FILE_BUF_SIZE+0
-	lda	#$02
-	sta	TAB_FILE_BUF_SIZE+1
-	jsr	file_read_16_vram
-	bcs	@error
-
-	; ADDR0 = 0x01D000
-	lda	#$D0
-	sta	VERA_ADDRx_M
-	lda	#%00010001
-	sta	VERA_ADDRx_H
-
-	; tilemaps + font mix
-	stz	TAB_FILE_BUF_SIZE+0
-	lda	#$10
-	sta	TAB_FILE_BUF_SIZE+1
-	jsr	file_read_16_vram
-	bcs	@error
-
-	; ADDR0 = 0x01F000
-	lda	#$F0
-	sta	VERA_ADDRx_M
-
-	; ranges + invalid texture
-	lda	#$C0
-	sta	TAB_FILE_BUF_SIZE+0
-	lda	#$09
-	sta	TAB_FILE_BUF_SIZE+1
-	jsr	file_read_16_vram
-	bcs	@error
-
-	jsr	file_close
-
-	; done
-	clc
-	rts
-
-@error:
-	jsr	file_close
-	sec
 	rts
 
 ;;;
@@ -766,7 +674,7 @@ video_draw_sline:
 	asl
 	asl
 	ldx	COLORMAP_L
-	ora	TAB_BANK,x
+	ora	TAB_DIV32,x
 	sta	COLORMAP_B
 	txa
 	and	#$1F
