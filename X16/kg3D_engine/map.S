@@ -30,9 +30,16 @@ MAP_TEMP_STACK = TAB_TEMP_DATA + 512 + 64 + 32
 
 ; map light in temp storage
 MAP_TEMP_LIGHT = MAP_TEMP_DATA_STRUCT
+MAP_TEMP_LIGHT_IDX = MAP_TEMP_DATA_STRUCT + 4
+MAP_TEMP_LIGHT_DATA = MAP_TEMP_DATA_STRUCT + 256
 
 ; map texture in temp storage
 MAP_TEMP_TEX = MAP_TEMP_DATA_STRUCT
+MAP_TEMP_TEX_FLAGS = MAP_TEMP_TEX + 4
+MAP_TEMP_TEX_VLINK = MAP_TEMP_TEX + 5
+MAP_TEMP_TEX_LMAP = MAP_TEMP_TEX + 6
+MAP_TEMP_TEX_IDX = MAP_TEMP_DATA_STRUCT + 128
+MAP_TEMP_TEX_DATA = MAP_TEMP_DATA_STRUCT + 256
 
 ; map thing in temp storage
 MAP_TEMP_THING = MAP_TEMP_DATA_STRUCT
@@ -167,6 +174,20 @@ ex_map_load:
 	tsx
 	stx	TAB_TEMP_STACK
 
+	; set BAD texture
+	ldy	#31
+	lda	#$FF
+@loop_badtex:
+	sta	$A0FF	; modified address
+	inc	@loop_badtex+2
+	dey
+	bpl	@loop_badtex
+
+	lda	#$F5
+	sta	TEXINFO_STRUCT_TILEMAP+$FF
+	lda	#$F8
+	sta	TEXINFO_STRUCT_TILEDATA+$FF
+
 	; cleanup
 	stz	COLORMAP_L
 	stz	TMP_PTR_L
@@ -277,6 +298,9 @@ ex_map_load:
 	lda	#2
 	jmp	load_error
 :
+	; enable math
+	jsr	math_setup_vera
+
 	;;;;
 	; sky
 
@@ -307,48 +331,8 @@ ex_map_load:
 	cmp	MAP_HEAD_HASH_SKY+3
 	bne	:+
 
-	; source sector
-	clc
-	lda	TAB_GINFO_SKY_SECT_L,y
-	adc	TAB_GFX_SECTOR_L
-	sta	SD_SEC_L
-	lda	TAB_GINFO_SKY_SECT_M,y
-	adc	TAB_GFX_SECTOR_M
-	sta	SD_SEC_M
-	lda	TAB_GINFO_SKY_SECT_H,y
-	adc	TAB_GFX_SECTOR_H
-	sta	SD_SEC_H
-	lda	TAB_GINFO_SKY_SECT_U,y
-	adc	TAB_GFX_SECTOR_U
-	sta	SD_SEC_U
-
-	; WRAM pointer
-	lda	MAP_LOAD_WRAM_L
-	sta	TAB_SKY_BASE+0
-	lda	MAP_LOAD_WRAM_H
-	sta	TAB_SKY_BASE+1
-
-	; WRAM space
-	lda	#0
-	jsr	get_wram
-
-	; get destination pointer
-	lda	TAB_SKY_BASE+1
-	asl
-	asl
-	asl
-	ldx	TAB_SKY_BASE+0
-	ora	TAB_DIV32,x
-	sta	REG_RAM_BANK
-	txa
-	and	#$1F
-	ora	#$A0
-
-	; read data
-	ldx	#$80
-	jsr	file_read_sectors
-
-	; done
+	; load
+	jsr	load_sky
 	bra	@after_sky
 :
 	; next
@@ -361,6 +345,11 @@ ex_map_load:
 
 	;;;;
 	; lights
+
+	; reset
+	stz	TAB_LIGHT_REMAP
+	lda	#1
+	sta	MAP_TEMP_LIGHT_IDX
 
 	; generate white light
 	lda	#0
@@ -382,19 +371,38 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#3
+	lda	#4
 	jmp	load_error
 :
-	; DEBUG
-	lda	MAP_TEMP_LIGHT+0
-;	sta	DBG_BYTE0
-	lda	MAP_TEMP_LIGHT+1
-;	sta	DBG_BYTE0
-	lda	MAP_TEMP_LIGHT+2
-;	sta	DBG_BYTE0
-	lda	MAP_TEMP_LIGHT+3
-;	sta	DBG_BYTE1
+	; GFX info bank
+	lda	#BAMK_GFX_INFO
+	sta	REG_RAM_BANK
 
+	; find light
+	ldx	#31
+@loop_litfind:
+	lda	TAB_GINFO_LIGHT_HASH_L,x
+	cmp	MAP_TEMP_LIGHT+0
+	bne	:+
+	lda	TAB_GINFO_LIGHT_HASH_M,x
+	cmp	MAP_TEMP_LIGHT+1
+	bne	:+
+	lda	TAB_GINFO_LIGHT_HASH_H,x
+	cmp	MAP_TEMP_LIGHT+2
+	bne	:+
+	lda	TAB_GINFO_LIGHT_HASH_U,x
+	cmp	MAP_TEMP_LIGHT+3
+	bne	:+
+
+	; load
+	jsr	load_light
+	bra	@next_light
+:
+	; next
+	dex
+	bpl	@loop_litfind
+
+@next_light:
 	; next
 	dec	MAP_HEAD_COUNT_LIGHTS
 	bne	@loop_lights
@@ -402,6 +410,10 @@ ex_map_load:
 
 	;;;;
 	; textures
+
+	; reset
+	lda	#1
+	sta	MAP_TEMP_TEX_IDX
 
 @loop_textures:
 	; load info
@@ -412,18 +424,11 @@ ex_map_load:
 	bcc	:+
 
 	; error
-	lda	#4
+	lda	#6
 	jmp	load_error
 :
-	; DEBUG
-	lda	MAP_TEMP_TEX+0
-;	sta	DBG_BYTE0
-	lda	MAP_TEMP_TEX+1
-;	sta	DBG_BYTE0
-	lda	MAP_TEMP_TEX+2
-;	sta	DBG_BYTE0
-	lda	MAP_TEMP_TEX+3
-;	sta	DBG_BYTE1
+	; load
+	jsr	load_texture
 
 	; next
 	dec	MAP_HEAD_COUNT_TEXTURES
@@ -584,9 +589,6 @@ ex_map_load:
 :
 	;;;;
 	; things
-
-	; enable math
-	jsr	math_setup_vera
 
 	; reset stuff
 	jsr	tick_clear
@@ -816,6 +818,456 @@ lda #2 ;; TODO remove
 	; enable sound
 	jsr	sound_start
 
+	rts
+
+;;;
+; load sky
+;;;
+
+load_sky:
+	; source sector
+	clc
+	lda	TAB_GINFO_SKY_SECT_L,y
+	adc	TAB_GFX_SECTOR_L
+	sta	SD_SEC_L
+	lda	TAB_GINFO_SKY_SECT_M,y
+	adc	TAB_GFX_SECTOR_M
+	sta	SD_SEC_M
+	lda	TAB_GINFO_SKY_SECT_H,y
+	adc	TAB_GFX_SECTOR_H
+	sta	SD_SEC_H
+	lda	TAB_GINFO_SKY_SECT_U,y
+	adc	TAB_GFX_SECTOR_U
+	sta	SD_SEC_U
+
+	; WRAM pointer
+	lda	MAP_LOAD_WRAM_L
+	sta	TAB_SKY_BASE+0
+	lda	MAP_LOAD_WRAM_H
+	sta	TAB_SKY_BASE+1
+
+	; WRAM space
+	lda	#0
+	jsr	get_wram
+
+	; get destination pointer
+	lda	TAB_SKY_BASE+1
+	asl
+	asl
+	asl
+	ldx	TAB_SKY_BASE+0
+	ora	TAB_DIV32,x
+	sta	REG_RAM_BANK
+	txa
+	and	#$1F
+	ora	#$A0
+
+	; read data
+	ldx	#$80
+	jsr	file_read_sectors
+	bcc	:+
+	lda	#3
+	jmp	load_error
+:
+	rts
+
+;;;
+; load light
+;;;
+
+load_light:
+	; offset
+	txa
+	lsr
+	clc
+	adc	#TAB_GFX_LIGHTS
+	sta	MAP_TEMP_LIGHT
+
+	; source sector
+	clc
+	lda	TAB_GFX_SECTOR_L
+	adc	MAP_TEMP_LIGHT
+	sta	SD_SEC_L
+	lda	TAB_GFX_SECTOR_M
+	adc	#0
+	sta	SD_SEC_M
+	lda	TAB_GFX_SECTOR_H
+	adc	#0
+	sta	SD_SEC_H
+	lda	TAB_GFX_SECTOR_U
+	adc	#0
+	sta	SD_SEC_U
+
+	; load to temp
+	stz	TMP_PTR_L
+	lda	#>MAP_TEMP_LIGHT_DATA
+	sta	TMP_PTR_H
+	jsr	file_read_sector
+	bcc	:+
+	lda	#5
+	jmp	load_error
+:
+	; source
+	clc
+	txa
+	and	#1
+	adc	#>MAP_TEMP_LIGHT_DATA
+	sta	@light_copy+2
+
+	; destination
+	clc
+	lda	MAP_TEMP_LIGHT_IDX
+	adc	#>TAB_LIGHTMAPS
+	sta	@light_copy+5
+
+	; copy
+	ldy	#0
+@light_copy:
+	lda	MAP_TEMP_LIGHT_DATA,y	; modified address
+	sta	TAB_LIGHTMAPS,y	; modified address
+	iny
+	bne	@light_copy
+
+	; add to remap
+	txa
+	ldy	MAP_TEMP_LIGHT_IDX
+	sta	TAB_LIGHT_REMAP,y
+	inc	MAP_TEMP_LIGHT_IDX
+
+	rts
+
+;;;
+; load texture
+;;;
+
+load_texture:
+	; destinations
+	ldx	MAP_TEMP_TEX_IDX
+	stx	@loop_copy+4
+	stx	@loop_clr+1
+	lda	#>TEXINFO_STRUCT_LMAP_7
+	sta	@loop_copy+5
+	lda	#>TEXINFO_STRUCT_VRAM_BASE
+	sta	@loop_clr+2
+
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+	; copy vlink
+	lda	MAP_TEMP_TEX_VLINK
+	sta	TEXINFO_STRUCT_VLINK,x
+
+	; clear vram
+	ldy	#>(TEXINFO_STRUCT_VRAM_LAST-TEXINFO_STRUCT_VRAM_BASE)
+@loop_clr:
+	stz	TEXINFO_STRUCT_VRAM_BASE	; modified address
+	inc	@loop_clr+2
+	dey
+	bpl	@loop_clr
+
+	; copy light map
+	ldy	#>(TEXINFO_STRUCT_LMAP_7-TEXINFO_STRUCT_LMAP_0)
+@loop_copy:
+	lda	MAP_TEMP_TEX_LMAP,y
+	sta	TEXINFO_STRUCT_VRAM_BASE	; modified address
+	dec	@loop_copy+5
+	dey
+	bpl	@loop_copy
+
+	; GFX info bank
+	lda	#BAMK_GFX_INFO
+	sta	REG_RAM_BANK
+
+	; get type
+	lda	MAP_TEMP_TEX_FLAGS
+	bmi	@is_plane
+
+	; find wall
+	ldy	#0
+@loop_find_wall:
+	lda	TAB_GINFO_WALL_HASH_L,y
+	cmp	MAP_TEMP_TEX+0
+	bne	:+
+	lda	TAB_GINFO_WALL_HASH_M,y
+	cmp	MAP_TEMP_TEX+1
+	bne	:+
+	lda	TAB_GINFO_WALL_HASH_H,y
+	cmp	MAP_TEMP_TEX+2
+	bne	:+
+	lda	TAB_GINFO_WALL_HASH_U,y
+	cmp	MAP_TEMP_TEX+3
+	bne	:+
+
+	jsr	load_wall
+	bra	@finish
+:
+	; next
+	iny
+	bne	@loop_find_wall
+
+	; not found
+@not_found:
+	; copy BAD texture
+	stx	@loop_bad+4
+	lda	#$A0
+	sta	@loop_bad+2
+	sta	@loop_bad+5
+	ldy	#31
+@loop_bad:
+	lda	$A0FF
+	sta	$A000	; modified address
+	inc	@loop_bad+2
+	inc	@loop_bad+5
+	dey
+	bpl	@loop_bad
+
+@done:
+	inc	MAP_TEMP_TEX_IDX
+	rts
+
+@is_plane:
+	; find plane
+	ldy	#0
+@loop_find_plane:
+	lda	TAB_GINFO_PLANE_HASH_L,y
+	cmp	MAP_TEMP_TEX+0
+	bne	:+
+	lda	TAB_GINFO_PLANE_HASH_M,y
+	cmp	MAP_TEMP_TEX+1
+	bne	:+
+	lda	TAB_GINFO_PLANE_HASH_H,y
+	cmp	MAP_TEMP_TEX+2
+	bne	:+
+	lda	TAB_GINFO_PLANE_HASH_U,y
+	cmp	MAP_TEMP_TEX+3
+	bne	:+
+
+	jsr	load_plane
+
+@finish:
+	; add light
+	sta	VERA_FX_CACHE_H
+	stz	VERA_FX_CACHE_U
+	lda	MAP_TEMP_TEX_FLAGS
+	and	#7
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result + sector
+	stz	VERA_ADDRx_L
+	clc
+	lda	VERA_DATA0
+	adc	SD_SEC_L
+	sta	TEXINFO_STRUCT_DATA_L,x
+	lda	VERA_DATA0
+	adc	SD_SEC_M
+	sta	TEXINFO_STRUCT_DATA_M,x
+	lda	VERA_DATA0
+	adc	SD_SEC_H
+	sta	TEXINFO_STRUCT_DATA_H,x
+	lda	VERA_DATA0
+	adc	SD_SEC_U
+	sta	TEXINFO_STRUCT_DATA_U,x
+
+	; done
+	bra	@done
+:
+	; next
+	iny
+	bne	@loop_find_plane
+
+	; not found
+	jmp	@not_found
+
+;;;
+; load wall
+;;;
+
+load_wall:
+	; column check
+	bit	MAP_TEMP_TEX_FLAGS
+	bvc	:+
+
+	jsr	load_columns
+:
+	; data sector
+	lda	TAB_GINFO_WALL_SECT_L,y
+	sta	SD_SEC_L
+	lda	TAB_GINFO_WALL_SECT_M,y
+	sta	SD_SEC_M
+	lda	TAB_GINFO_WALL_SECT_H,y
+	sta	SD_SEC_H
+	lda	TAB_GINFO_WALL_SECT_U,y
+	sta	SD_SEC_U
+
+	; type
+	lda	TAB_GINFO_WALL_INFO_0,y
+	pha
+
+	; tilemap
+	lda	TAB_GINFO_WALL_INFO_1,y
+	pha
+
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+	; tilemap
+	pla
+	sta	TEXINFO_STRUCT_TILEMAP,x
+
+	; type
+	pla
+	sta	TEXINFO_STRUCT_TYPE,x
+
+	; return sector count
+	asl
+	asl
+
+	rts
+
+;;;
+; load wall
+;;;
+
+load_plane:
+	; data sector
+	lda	TAB_GINFO_PLANE_SECT_L,y
+	sta	SD_SEC_L
+	lda	TAB_GINFO_PLANE_SECT_M,y
+	sta	SD_SEC_M
+	lda	TAB_GINFO_PLANE_SECT_H,y
+	sta	SD_SEC_H
+	lda	TAB_GINFO_PLANE_SECT_U,y
+	sta	SD_SEC_U
+
+	; tilemap
+	lda	TAB_GINFO_PLANE_INFO,y
+	pha
+
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+	; type
+	lda	#$82
+	sta	TEXINFO_STRUCT_TYPE,x
+
+	; tilemap
+	pla
+	sta	TEXINFO_STRUCT_TILEMAP,x
+
+	; return sector count
+	lda	#8
+
+	rts
+
+;;;
+; load wall columns
+;;;
+
+load_columns:
+	phy
+
+	; WRAM pointer
+	lda	MAP_LOAD_WRAM_L
+	sta	MAP_LOAD_TMP_L
+	lda	MAP_LOAD_WRAM_H
+	sta	MAP_LOAD_TMP_H
+
+	; WRAM space
+	phx
+	lda	#1
+	jsr	get_wram
+	plx
+
+	; offset
+	tya
+	lsr
+	clc
+	adc	#TAB_GFX_COLUMNS
+	sta	MAP_TEMP_TEX
+
+	; source sector
+	clc
+	lda	TAB_GFX_SECTOR_L
+	adc	MAP_TEMP_TEX
+	sta	SD_SEC_L
+	lda	TAB_GFX_SECTOR_M
+	adc	#0
+	sta	SD_SEC_M
+	lda	TAB_GFX_SECTOR_H
+	adc	#0
+	sta	SD_SEC_H
+	lda	TAB_GFX_SECTOR_U
+	adc	#0
+	sta	SD_SEC_U
+
+	; load to temp
+	stz	TMP_PTR_L
+	lda	#>MAP_TEMP_TEX_DATA
+	sta	TMP_PTR_H
+	jsr	file_read_sector
+	bcc	:+
+	lda	#7
+	jmp	load_error
+:
+	; source
+	clc
+	txa
+	and	#1
+	adc	#>MAP_TEMP_TEX_DATA
+	sta	@loop_copy+2
+
+	; destination
+	lda	MAP_LOAD_TMP_H
+	asl
+	asl
+	asl
+	ldy	MAP_LOAD_TMP_L
+	ora	TAB_DIV32,y
+	sta	REG_RAM_BANK
+	pha	; <bank>
+	tya
+	and	#$1F
+	ora	#$A0
+	sta	@loop_copy+5
+	pha	; <HI>
+
+	; copy columns
+	ldy	#0
+@loop_copy:
+	lda	MAP_TEMP_TEX_DATA,y
+	sta	$A000,y	; modified address
+	iny
+	bne	@loop_copy
+
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+	; <HI>
+	pla
+	sta	TEXINFO_STRUCT_COLS_H,x
+
+	; <bank>
+	pla
+	sta	TEXINFO_STRUCT_COLS_B,x
+
+	; GFX info bank
+	lda	#BAMK_GFX_INFO
+	sta	REG_RAM_BANK
+
+	; done
+	ply
 	rts
 
 ;;;

@@ -12,6 +12,7 @@
 .export file_read_8_wram
 .export file_read_16_wram
 .export file_restore_handle
+.export file_read_sector
 .export file_read_sectors
 
 ;;;
@@ -148,6 +149,7 @@ read16_loop:
 ;;;
 ; SD card read sector
 ;;;
+; TMP_PTR_* - destination
 
 file_read_sector:
 	; dummy byte
@@ -234,7 +236,6 @@ file_read_sector:
 @loop_data:
 	lda	VERA_SPI_DATA
 	sta	(TMP_PTR_L),y
-	nop	 ; modified
 	iny
 	bne	@loop_data
 	rts
@@ -273,5 +274,6 @@ file_read_sectors:
 	dex
 	bne	@loop
 
+	clc
 	rts
 

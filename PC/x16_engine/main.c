@@ -652,7 +652,7 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 	tmap = ti->tilemap;
 
 	// cache
-	if(ti->vram[0] != 0xFF)
+	if(!(ti->vram[0] & 0x80))
 	{
 		ti->used = 1;
 #if 0
@@ -3262,12 +3262,10 @@ static uint32_t load_tables()
 
 	/// invalid texture
 
-	texture_info[MAX_TEXTURES+1].type = 0xFF;
+	memset(&texture_info[MAX_TEXTURES+1], 0xFF, sizeof(texture_info_t));
+	memset(texture_info[MAX_TEXTURES+1].lmap, MAX_TEXTURES+1, MAX_LIGHTS);
 	texture_info[MAX_TEXTURES+1].tilemap = TEX_BAD_TILEMAP;
 	texture_info[MAX_TEXTURES+1].tiledata = TEX_BAD_TILEDAT;
-	texture_info[MAX_TEXTURES+1].vlink = MAX_TEXTURES+1;
-	texture_info[MAX_TEXTURES+1].vram[0] = 0xFF;
-	memset(texture_info[MAX_TEXTURES+1].lmap, MAX_TEXTURES+1, MAX_LIGHTS);
 
 	/// game file
 
@@ -3598,7 +3596,9 @@ static void add_texture(uint32_t hash, uint32_t info, uint8_t *lmap)
 	int32_t idx;
 	void *data;
 
+	ti->vlink = info >> 8;
 	memcpy(ti->lmap, lmap, MAX_LIGHTS);
+	memset(ti->vram, 0, sizeof(ti->vram));
 
 	if(info & 0x80)
 	{
@@ -3609,7 +3609,6 @@ static void add_texture(uint32_t hash, uint32_t info, uint8_t *lmap)
 
 		ti->type = 0x82;
 		ti->tilemap = gfx_head->plane.info[0][idx];
-		ti->vlink = info >> 8;
 
 		hash = gfx_head->plane.data[0][idx];
 		hash |= (uint32_t)gfx_head->plane.data[1][idx] << 8;
@@ -3631,7 +3630,6 @@ static void add_texture(uint32_t hash, uint32_t info, uint8_t *lmap)
 
 		ti->type = gfx_head->wall.info[0][idx];
 		ti->tilemap = gfx_head->wall.info[1][idx];
-		ti->vlink = info >> 8;
 
 		hash = gfx_head->wall.data[0][idx];
 		hash |= (uint32_t)gfx_head->wall.data[1][idx] << 8;

@@ -5,6 +5,7 @@
 .import file_read_8_wram
 .import file_read_16_wram
 .import file_restore_handle
+.import file_read_sector
 .import file_read_sectors
 
 ; X is file handle
