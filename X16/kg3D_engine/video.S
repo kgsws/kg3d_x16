@@ -13,7 +13,7 @@
 .export video_swap
 .export video_setup_imgline
 .export video_image_from_file
-.export video_data_from_file
+.export video_load_vram
 .export video_draw_vline
 .export video_draw_wline
 .export video_draw_lline
@@ -370,53 +370,106 @@ video_image_from_file:
 	rts
 
 ;;;
-; transfer data from file to VRAM
+; read from SD to VRAM
 ;;;
-; starting at 0xA000
-; assuming file is open and setup to read VRAM data
-; X is count of 2048 blocks
+; X - destination block
+; SD_SEC_* - source sector
+; assuming addrsel = 0
 
-video_data_from_file:
-	; dcsel = 0, addrsel = 0
-	stz	VERA_CTRL
-
-	; ADDR0 = 0x00A000, increment = 1
+video_load_vram:
+	; ADDR0 = block*2048, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$A0
+	txa
+	asl
+	asl
+	asl
 	sta	VERA_ADDRx_M
-	lda	#%00010000
+	lda	TAB_DIV32,x
+	ora	#%00010000
 	sta	VERA_ADDRx_H
 
-	stx	VIDEO_TMP_0
-@loop_2k:
-	lda	#8
-	sta	VIDEO_TMP_1
-@loop_240:
-	; read from file (8 * 240)
-	sec
-	lda	#240
-	ldx	#<VERA_DATA0
-	ldy	#>VERA_DATA0
-	jsr	k_MACPTR
-	bcc	:+
-	; error
-	rts
-:
-	dec	VIDEO_TMP_1
-	bne	@loop_240
+	; render code bank
+	lda	#BANK_RCODE
+	sta	REG_RAM_BANK
 
-	; read from file (128)
-	sec
-	lda	#128
-	ldx	#<VERA_DATA0
-	ldy	#>VERA_DATA0
-	jsr	k_MACPTR
-	bcc	:+
-	; error
+	; read sectors
+	ldx	#4
+@loop_sector:
+	; dummy byte
+	lda	#$FF
+	sta	VERA_SPI_DATA
+
+	; select
+	lda	#$01
+	sta	VERA_SPI_CTRL
+
+	; sector read command
+	lda	#$51
+	sta	VERA_SPI_DATA
+	lda	SD_SEC_U
+	sta	VERA_SPI_DATA
+	lda	SD_SEC_H
+	sta	VERA_SPI_DATA
+	lda	SD_SEC_M
+	sta	VERA_SPI_DATA
+	lda	SD_SEC_L
+	sta	VERA_SPI_DATA
+	nop
+	stz	VERA_SPI_DATA
+
+	; wait for response
+	lda	#$FF
+	sta	VERA_SPI_DATA
+	lda	#$05
+	sta	VERA_SPI_CTRL
+@loop_cmd:
+	lda	VERA_SPI_DATA
+	bmi	@loop_cmd
+
+	; check
+	beq	:+
+
+	; got error
+@fail:
+	jsr	@stop
+
+	; TODO: error / fail ?
 	rts
 :
-	dec	VIDEO_TMP_0
-	bne	@loop_2k
+	; wait for data
+@loop_dw:
+	lda	VERA_SPI_DATA
+	ina
+	beq	@loop_dw
+
+	; check
+	ina
+	bne	@fail
+
+	; read 512 bytes
+	jsr	TAB_SD_VRAM_RD
+	jsr	@stop
+
+	; increment sector
+	inc	SD_SEC_L
+	bne	:+
+	inc	SD_SEC_M
+	bne	:+
+	inc	SD_SEC_H
+	bne	:+
+	inc	SD_SEC_U
+:
+	; next
+	dex
+	bne	@loop_sector
+
+@stop:
+	; deselect
+	stz	VERA_SPI_CTRL
+
+	; dummy byte
+	lda	#$FF
+	sta	VERA_SPI_DATA
 
 	clc
 	rts

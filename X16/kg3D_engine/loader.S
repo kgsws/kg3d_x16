@@ -348,6 +348,11 @@ start:
 	dex
 	bne	@loop_anim
 
+	; zero
+	stz	PLANE_PTR_TOP_L
+	stz	PLANE_PTR_BOT_L
+	stz	COLUMN_PTR_L
+
 	; RUN
 	jmp	LDR_ENGINE_DEST
 

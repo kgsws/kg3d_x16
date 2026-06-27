@@ -174,6 +174,10 @@ ex_map_load:
 	tsx
 	stx	TAB_TEMP_STACK
 
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
 	; set BAD texture
 	ldy	#31
 	lda	#$FF
@@ -1099,13 +1103,18 @@ load_wall:
 	jsr	load_columns
 :
 	; data sector
+	clc
 	lda	TAB_GINFO_WALL_SECT_L,y
+	adc	TAB_GFX_SECTOR_L
 	sta	SD_SEC_L
 	lda	TAB_GINFO_WALL_SECT_M,y
+	adc	TAB_GFX_SECTOR_M
 	sta	SD_SEC_M
 	lda	TAB_GINFO_WALL_SECT_H,y
+	adc	TAB_GFX_SECTOR_H
 	sta	SD_SEC_H
 	lda	TAB_GINFO_WALL_SECT_U,y
+	adc	TAB_GFX_SECTOR_U
 	sta	SD_SEC_U
 
 	; type
@@ -1140,13 +1149,18 @@ load_wall:
 
 load_plane:
 	; data sector
+	clc
 	lda	TAB_GINFO_PLANE_SECT_L,y
+	adc	TAB_GFX_SECTOR_L
 	sta	SD_SEC_L
 	lda	TAB_GINFO_PLANE_SECT_M,y
+	adc	TAB_GFX_SECTOR_M
 	sta	SD_SEC_M
 	lda	TAB_GINFO_PLANE_SECT_H,y
+	adc	TAB_GFX_SECTOR_H
 	sta	SD_SEC_H
 	lda	TAB_GINFO_PLANE_SECT_U,y
+	adc	TAB_GFX_SECTOR_U
 	sta	SD_SEC_U
 
 	; tilemap
@@ -1215,14 +1229,16 @@ load_columns:
 	stz	TMP_PTR_L
 	lda	#>MAP_TEMP_TEX_DATA
 	sta	TMP_PTR_H
+	phy
 	jsr	file_read_sector
+	ply
 	bcc	:+
 	lda	#7
 	jmp	load_error
 :
 	; source
 	clc
-	txa
+	tya
 	and	#1
 	adc	#>MAP_TEMP_TEX_DATA
 	sta	@loop_copy+2

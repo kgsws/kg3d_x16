@@ -632,7 +632,7 @@ wspr_no_gfx:
 
 render_sector:
 	; fix leaking planes
-	lda	#$F0
+	lda	#120
 	ldx	PROJECTION_X0
 	sta	RENDER_PLC_TOP,x
 	sta	RENDER_PLF_TOP,x
@@ -3900,6 +3900,10 @@ wall_vline_opcode_A:
 	; next column
 	inc	VIDEO_DRAW_X
 
+	; dcsel = 3, addrsel = 0
+	lda	#$06
+	sta	VERA_CTRL
+
 	; set affine Y position
 wall_affine_opcode_D:
 	jsr	set_affine_yhn	; modified address
@@ -4859,9 +4863,9 @@ masked_loop_col:
 
 	; add to data
 	clc
-	adc	TEXTURE_PTR_L
+;	adc	TEXTURE_PTR_L
 	sta	COLORMAP_H
-	lda	TEXTURE_PTR_H
+;	lda	TEXTURE_PTR_H
 	adc	#0
 
 	; get texture pointer
@@ -5623,49 +5627,50 @@ set_affine_xps:
 	rts
 
 set_affine_xw:
-	; texture height
-	lda	WALL_TEXTURE_WX
-	sta	VERA_FX_Y_POS_L
-
-	; X position
+	; texture X
 	ldx	VIDEO_DRAW_X
 	sec
 	lda	RENDER_TEXTURE_X,x
 	sbc	RENDER_TEXTURE_OX
 	eor	WALL_TEXTURE_XOR
-	and	#$7F
-	tay
+	sta	COLUMN_PTR_L
 
-	; get column offset
+	; column X
 	lda	COLUMN_PTR_B
 	sta	REG_RAM_BANK
-	stz	COLUMN_PTR_L
-	lda	(COLUMN_PTR_L),y
-	sta	COLORMAP_L
-	lda	#$80
-	sta	COLUMN_PTR_L
-	lda	(COLUMN_PTR_L),y
+	lda	(COLUMN_PTR_L)
+	sta	set_affine_xw_shi+1
 
-	; add to data
-	clc
-	adc	TEXTURE_PTR_L
-	sta	COLORMAP_H
-	lda	TEXTURE_PTR_H
-	adc	#0
+	; offset
+	and	WALL_TEX_MSK
+	sta	VERA_FX_Y_POS_L
 
-	; get texture pointer
+	; render code bank
+	lda	#BANK_RCODE
+	sta	REG_RAM_BANK
+
+	; apply shift
+set_affine_xw_shi:
+	lda	$AAAA	; modified address
+	sta	set_affine_xw_idx+2
+
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
+	; get tile base
+set_affine_xw_idx:
+	lda	TEXINFO_STRUCT_VRAM_BASE	; modified address
 	asl
 	asl
-	asl
-	ldx	COLORMAP_H
-	ora	TAB_DIV32,x
-	sta	COLORMAP_B
-	txa
-	and	#$1F
-	ora	#$A0
-	sta	COLORMAP_H
+	sta	VERA_FX_TILEBASE
 
 	rts
+
 
 ;;;
 ; generate texture X map
@@ -5775,6 +5780,17 @@ texture_set:
 	phy
 	tay
 
+	lda	REG_RAM_BANK
+	pha
+
+	; set textured drawing
+	lda	#<video_draw_vline
+	sta	wall_vline_opcode_A+1
+	sta	wall_vline_opcode_B+1
+	lda	#>video_draw_vline
+	sta	wall_vline_opcode_A+2
+	sta	wall_vline_opcode_B+2
+
 	; dcsel = 3, addrsel = 0
 	lda	#$06
 	sta	VERA_CTRL
@@ -5793,24 +5809,193 @@ texture_set:
 	stz	VERA_FX_X_POS_S
 	stz	VERA_FX_Y_POS_S
 
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+	; columns
+	lda	TEXINFO_STRUCT_COLS_H,y
+	sta	COLUMN_PTR_H
+	lda	TEXINFO_STRUCT_COLS_B,y
+	sta	COLUMN_PTR_B
+
+	; apply light
+	lda	#>TEXINFO_STRUCT_LMAP_0
+	ora	PROJECTION_LIGHT
+	sta	HI_PTR_H
+	lda	(HI_PTR_L),y
+	tax
+
+	; VRAM link
+	ldy	TEXINFO_STRUCT_VLINK,x
+
+	; if(!(ti->vram[0] & 0x80))
+	lda	TEXINFO_STRUCT_VRAM_BASE,y
+	bpl	:+
+	jmp	@no_cache
+:
 	; dcsel = 2, addrsel = 0
 	lda	#$04
 	sta	VERA_CTRL
 
-	; invalid
-	lda	#$F8
+	; disable cache write
+	stz	VERA_FX_CTRL
+
+	;; TEST CODE
+
+	; tiledata
+	lda	#80
+	sta	TEXINFO_STRUCT_TILEDATA,y
+
+	; sector
+	lda	TEXINFO_STRUCT_DATA_L,y
+	sta	SD_SEC_L
+	lda	TEXINFO_STRUCT_DATA_M,y
+	sta	SD_SEC_M
+	lda	TEXINFO_STRUCT_DATA_H,y
+	sta	SD_SEC_H
+	lda	TEXINFO_STRUCT_DATA_U,y
+	sta	SD_SEC_U
+
+	; count
+	lda	TEXINFO_STRUCT_TYPE,y
+	bpl	:+
+	lda	#2
+:
+	sta	VIDEO_TMP_0
+	lda	#20
+	sta	VIDEO_TMP_1
+	sty	@loop_test+3
+	lda	#>TEXINFO_STRUCT_VRAM_BASE
+	sta	@loop_test+4
+@loop_test:
+	lda	VIDEO_TMP_1
+	sta	TEXINFO_STRUCT_VRAM_BASE
+
+	tax
+	jsr	video_load_vram
+
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+	inc	@loop_test+4
+	inc	VIDEO_TMP_1
+	dec	VIDEO_TMP_0
+	bne	@loop_test
+
+	; enable cache write
+	lda	#%01000000
+	sta	VERA_FX_CTRL
+
+	; dcsel = 6, addrsel = 0
+	lda	#$0C
+	sta	VERA_CTRL
+
+	; ADDR0 = 0x001F00, increment = 1
+	stz	VERA_ADDRx_L
+	lda	#$1F
+	sta	VERA_ADDRx_M
+	lda	#%00010000
+	sta	VERA_ADDRx_H
+
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+@no_cache:
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
+	; ti->tiledata
+	lda	TEXINFO_STRUCT_TILEDATA,y
 	sta	VERA_FX_TILEBASE
-	lda	#$F5
+
+	; ti->tilemap
+	ldx	TEXINFO_STRUCT_TILEMAP,y
+	stx	VERA_FX_MAPBASE
+
+	; if(!(tex_type & 0x80))
+	lda	TEXINFO_STRUCT_TYPE,y
+	bmi	@not_wall
+
+	; ti->tilemap
+	lda	TAB_WALL_MAP,x
 	sta	VERA_FX_MAPBASE
 
-	; set textured drawing
-	lda	#<video_draw_vline
-	sta	wall_vline_opcode_A+1
-	sta	wall_vline_opcode_B+1
-	lda	#>video_draw_vline
-	sta	wall_vline_opcode_A+2
-	sta	wall_vline_opcode_B+2
+	; mask
+	lda	TAB_WALL_MSK,x
+	sta	WALL_TEX_MSK
 
+	; shift
+	lda	TAB_WALL_SHI,x
+	sta	set_affine_xw_shi+2
+
+	; IDX
+	sty	set_affine_xw_idx+1
+
+	; set 'wall' type
+	lda	#<set_affine_xw
+	sta	wall_affine_opcode_A+1
+	sta	wall_affine_opcode_B+1
+	lda	#>set_affine_xw
+	sta	wall_affine_opcode_A+2
+	sta	wall_affine_opcode_B+2
+
+	; set 'XY normal'
+	lda	#<set_affine_yn
+	sta	wall_affine_opcode_C+1
+	lda	#>set_affine_yn
+	sta	wall_affine_opcode_C+2
+	lda	#<set_affine_yhn
+	sta	wall_affine_opcode_D+1
+	lda	#>set_affine_yhn
+	sta	wall_affine_opcode_D+2
+
+	bra	@finish
+
+@not_wall:
+	and	#$40
+	bne	@set_swap
+	lda	WALL_TEXTURE_FLAGS
+	and	#WALL_TFLAG_SWAP_XY
+	bne	@set_swap
+
+	; set 'normal plane' type
+	lda	#<set_affine_xpn
+	sta	wall_affine_opcode_A+1
+	sta	wall_affine_opcode_B+1
+	lda	#>set_affine_xpn
+	sta	wall_affine_opcode_A+2
+	sta	wall_affine_opcode_B+2
+
+	; set 'XY normal'
+	lda	#<set_affine_yn
+	sta	wall_affine_opcode_C+1
+	lda	#>set_affine_yn
+	sta	wall_affine_opcode_C+2
+	lda	#<set_affine_yhn
+	sta	wall_affine_opcode_D+1
+	lda	#>set_affine_yhn
+	sta	wall_affine_opcode_D+2
+
+@finish:
+	; math XOR (mirror)
+	ldy	#$FF
+	lda	WALL_TEXTURE_FLAGS
+	and	#WALL_TFLAG_MIRROR_X
+	beq	:+
+	ldy	#$00
+:
+	sty	WALL_TEXTURE_XOR
+
+	; done
+	pla
+	sta	REG_RAM_BANK
+	ply
+	rts
+
+@set_swap:
 	; set 'swapped plane' type
 	lda	#<set_affine_xps
 	sta	wall_affine_opcode_A+1
@@ -5829,9 +6014,4 @@ texture_set:
 	lda	#>set_affine_yhs
 	sta	wall_affine_opcode_D+2
 
-	; math XOR
-	lda	#$FF
-	sta	WALL_TEXTURE_XOR
-
-	ply
-	rts
+	bra	@finish

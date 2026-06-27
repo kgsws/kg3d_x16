@@ -794,7 +794,7 @@ read_sector:
 @loop_cmd:
 	lda	VERA_SPI_DATA
 	bmi	@loop_cmd
-@got_cmd:
+
 	; check
 	beq	:+
 

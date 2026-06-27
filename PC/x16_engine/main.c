@@ -78,21 +78,22 @@ typedef struct
 		uint8_t idiv_h[256];	// @ 0x0400
 		uint8_t ydepth_h[256];	// @ 0x0500
 		uint8_t x2a_l[160];	// @ 0x0600
-		uint8_t _padA[96];	// used by engine code; 0x0660
+		uint8_t _padA[96];	// used by engine code; 0x06A0
 		uint8_t x2a_h[160];	// @ 0x0700
-		uint8_t _padB[96];	// used by engine code; 0x0760
+		uint8_t _padB[96];	// used by engine code; 0x07A0
 		uint8_t xoffs_h[160];	// @ 0x0800
-		uint8_t _padC[96];
+		uint8_t _padC[96];	// used by engine code; 0x08A0
 		uint8_t yoffs_l[128];	// @ 0x0900
 		uint8_t yoffs_h[128];	// @ 0x0980
 		uint8_t htan_l[128];	// @ 0x0A00
 		uint8_t htan_h[128];	// @ 0x0A80
 		uint8_t sin_l[320];	// @ 0x0B00
 		uint8_t sin_h[320];	// @ 0x0C40
-		uint8_t _padD[120];
+		uint8_t _padD[111];
+		uint8_t wall_tab[3][3];	// @ 0x0DEF
 		uint8_t pow_tab[8];	// @ 0x0DF8
 		uint8_t swap[256];	// @ 0x0E00
-		uint8_t bank[256];	// @ 0x0F00
+		uint8_t div32[256];	// @ 0x0F00
 		uint8_t sign[256];	// @ 0x1000
 		uint8_t jmp_spw_l[128];	// @ 0x1100
 		uint8_t jmp_spw_h[128];	// @ 0x1180
@@ -111,7 +112,8 @@ typedef struct
 		uint8_t jmp_wal_h[128];	// @ 0xA180
 		uint8_t drcode[0x05F8];	// @ 0xA200
 		uint8_t sdcode[0x0C08];	// @ 0xA7F8
-		uint8_t _pad[0x0C00];	// @ 0xB400
+		uint8_t wshift[3][256]; // @ 0xB400
+		uint8_t _pad[0x0900];	// @ 0xB700
 		// bank [idiv]
 		uint8_t idiv_l[8192];	// @ 0xA000
 		// bank [texture scale]
@@ -290,6 +292,8 @@ static int32_t tex_step_x;
 static int32_t tex_step_y;
 static uint8_t tex_type;
 static uint8_t tex_swap;
+
+static uint8_t wall_tab[3][3];
 
 static uint8_t palette_src[256 * 3 * 16];
 static uint8_t *palette;
@@ -621,9 +625,7 @@ static void vera_tex_data(int32_t tile_base, int32_t map_base)
 
 static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t flags)
 {
-	static const uint8_t wall_map_tab[] = {0b11111001, 0b11110110, 0b11111010};
-	static const uint8_t wall_msk_tab[] = {31, 15, 7};
-	static const uint8_t wall_shi_tab[] = {5, 4, 3};
+	static const uint8_t wall_tab_shift[] = {5, 4, 3};
 	texture_info_t *ti = texture_info + idx;
 	uint32_t cols, tmap;
 
@@ -792,10 +794,10 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 	// wall
 	if(!(tex_type & 0x80))
 	{
-		projection.wmsk = wall_msk_tab[tmap];
-		projection.wshi = wall_shi_tab[tmap];
+		projection.wmsk = wall_tab[1][tmap];
+		projection.wshi = wall_tab_shift[tmap];
 		projection.wlup = ti->vram;
-		tmap = wall_map_tab[tmap];
+		tmap = wall_tab[0][tmap];
 	}
 
 	// source
@@ -3376,6 +3378,9 @@ static uint32_t load_tables()
 	// random
 	memcpy(rng_tab, export_tables.t1.random, sizeof(rng_tab));
 	memcpy(rng_mask, export_tables.t1.rng_mask, sizeof(rng_mask));
+
+	// wall stuff
+	memcpy(wall_tab, export_tables.t0.wall_tab, sizeof(wall_tab));
 
 	/// finishing touch
 

@@ -48,10 +48,11 @@ typedef struct
 		uint8_t htan_h[128];	// @ 0x0A80
 		uint8_t sin_l[320];	// @ 0x0B00
 		uint8_t sin_h[320];	// @ 0x0C40
-		uint8_t _padD[120];
+		uint8_t _padD[111];
+		uint8_t wall_tab[3][3];	// @ 0x0DEF
 		uint8_t pow_tab[8];	// @ 0x0DF8
 		uint8_t swap[256];	// @ 0x0E00
-		uint8_t bank[256];	// @ 0x0F00
+		uint8_t div32[256];	// @ 0x0F00
 		uint8_t sign[256];	// @ 0x1000
 		uint8_t jmp_spw_l[128];	// @ 0x1100
 		uint8_t jmp_spw_h[128];	// @ 0x1180
@@ -70,7 +71,8 @@ typedef struct
 		uint8_t jmp_wal_h[128];	// @ 0xA180
 		uint8_t drcode[0x05F8];	// @ 0xA200
 		uint8_t sdcode[0x0C08];	// @ 0xA7F8
-		uint8_t _pad[0x0C00];	// @ 0xB400
+		uint8_t wshift[3][256]; // @ 0xB400
+		uint8_t _pad[0x0900];	// @ 0xB700
 		// bank [idiv]
 		uint8_t idiv_l[8192];	// @ 0xA000
 		// bank [texture scale]
@@ -2271,6 +2273,19 @@ void x16r_generate()
 	for(uint32_t i = 0; i < 8; i++)
 		export_tables.t0.pow_tab[i] = 1 << i;
 
+	// wall stuff
+	export_tables.t0.wall_tab[0][0] = 0b11111001;
+	export_tables.t0.wall_tab[0][1] = 0b11110110;
+	export_tables.t0.wall_tab[0][2] = 0b11111010;
+	export_tables.t0.wall_tab[1][0] = 31;
+	export_tables.t0.wall_tab[1][1] = 15;
+	export_tables.t0.wall_tab[1][2] = 7;
+
+	// these are offsets for 't1.wshift'
+	export_tables.t0.wall_tab[2][0] = 0xB4;
+	export_tables.t0.wall_tab[2][1] = 0xB5;
+	export_tables.t0.wall_tab[2][2] = 0xB6;
+
 	// nibble swap
 	for(uint32_t i = 0; i < 256; i++)
 	{
@@ -2278,11 +2293,14 @@ void x16r_generate()
 		export_tables.t0.swap[i] = val;
 	}
 
-	// 8k bank lookup
+	// divide by X
 	for(uint32_t i = 0; i < 256; i++)
 	{
 		uint8_t val = i / 32;
-		export_tables.t0.bank[i] = val;
+		export_tables.t0.div32[i] = val;
+		export_tables.t1.wshift[0][i] = 0xA0 | val;
+		export_tables.t1.wshift[1][i] = 0xA0 | (i >> 4);
+		export_tables.t1.wshift[2][i] = 0xA0 | (i >> 3);
 	}
 
 	// Y lookup
