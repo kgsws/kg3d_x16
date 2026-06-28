@@ -308,18 +308,14 @@ render_view:
 	lda	#1
 	sta	PROJECTION_PORTAL_WR
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; setup first portal
 	lda	PROJECTION_SECTOR
-	sta	MEM_PORTALS_SECTOR
-	stz	MEM_PORTALS_X0
+	sta	TAB_PORTALS_SECTOR
+	stz	TAB_PORTALS_X0
 	lda	#80
-	sta	MEM_PORTALS_X1
+	sta	TAB_PORTALS_X1
 	lda	#$FF
-	sta	MEM_PORTALS_MASKED
+	sta	TAB_PORTALS_MASKED
 
 	;; render loop
 
@@ -330,18 +326,18 @@ render_view:
 	bcs	@render_done
 
 	; get sector pointer
-	lda	MEM_PORTALS_SECTOR,y
+	lda	TAB_PORTALS_SECTOR,y
 	beq	@skip_render
 	sta	SECTOR_PTR_I
 
 	; get X0
-	lda	MEM_PORTALS_X0,y
+	lda	TAB_PORTALS_X0,y
 	sta	PROJECTION_X0
 	asl
 	sta	PROJECTION_X0D
 
 	; get X1
-	lda	MEM_PORTALS_X1,y
+	lda	TAB_PORTALS_X1,y
 	sta	PROJECTION_X1
 	asl
 	sta	PROJECTION_X1D
@@ -413,7 +409,7 @@ render_view:
 	bmi	@end_sprite
 
 	; idx = portal_rd->first_sprite
-	lda	MEM_PORTALS_SPRITE,y
+	lda	TAB_PORTALS_SPRITE,y
 
 	; if(idx & 0x80)
 	bmi	@skip_sprite
@@ -437,22 +433,14 @@ render_view:
 	; if(!(idx & 0x80))
 	bpl	@next_sprite
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 @skip_sprite:
 	; masked
 	ldy	PROJECTION_PORTAL_RD
-	lda	MEM_PORTALS_MASKED,y
+	lda	TAB_PORTALS_MASKED,y
 	bmi	@loop_sprmsk
 
 	; render
 	jsr	render_masked
-
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
 
 	; next
 	bra	@loop_sprmsk
@@ -1008,14 +996,10 @@ render_sector:
 	bra	@loop_sprites
 
 @end_sprites:
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; save first sprite
 	ldy	PROJECTION_PORTAL_RD
 	lda	PROJECTION_FIRST_SPRITE
-	sta	MEM_PORTALS_SPRITE,y
+	sta	TAB_PORTALS_SPRITE,y
 
 	; done
 	rts
@@ -2758,17 +2742,13 @@ v1diff_opcode:
 	lda	WALL_MASKED_IDX
 	bmi	:+
 
-	; portal bank
-	ldx	#BANK_PORTALS
-	stx	REG_RAM_BANK
-
 	; add dummy portal
 	ldy	PROJECTION_PORTAL_WR
-	sta	MEM_PORTALS_MASKED,y
+	sta	TAB_PORTALS_MASKED,y
 	lda	#0
-	sta	MEM_PORTALS_SECTOR,y
+	sta	TAB_PORTALS_SECTOR,y
 	lda	#$FF
-	sta	MEM_PORTALS_SPRITE,y
+	sta	TAB_PORTALS_SPRITE,y
 
 	; portal_wr++
 	inc	PROJECTION_PORTAL_WR
@@ -3383,22 +3363,18 @@ v1diff_opcode:
 	sbc	SECTOR_STRUCT_CEILING_HEIGHT_H,x
 	bpl	@dummy_portal_jmp
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; portal slot
 	ldy	PROJECTION_PORTAL_WR
 
 	; check for portal merge
 	ldx	PROJECTION_PORTAL_LAST
 	lda	BACKSEC_PTR_I
-	cmp	MEM_PORTALS_SECTOR,x
+	cmp	TAB_PORTALS_SECTOR,x
 	bne	@new_portal
 
 	; update X1
 	lda	WALL_X1
-	sta	MEM_PORTALS_X1,x
+	sta	TAB_PORTALS_X1,x
 
 	; limit check
 	bit	PROJECTION_PORTAL_WR
@@ -3408,30 +3384,26 @@ v1diff_opcode:
 	lda	WALL_MASKED_IDX
 	bmi	:+
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; *portal_wr = *portal_last
 	ldy	PROJECTION_PORTAL_WR
-	lda	MEM_PORTALS_SECTOR,x
-	sta	MEM_PORTALS_SECTOR,y
-	lda	MEM_PORTALS_X0,x
-	sta	MEM_PORTALS_X0,y
+	lda	TAB_PORTALS_SECTOR,x
+	sta	TAB_PORTALS_SECTOR,y
+	lda	TAB_PORTALS_X0,x
+	sta	TAB_PORTALS_X0,y
 	lda	WALL_X1
-	sta	MEM_PORTALS_X1,y
-	lda	MEM_PORTALS_SPRITE,x
-	sta	MEM_PORTALS_SPRITE,y
-	lda	MEM_PORTALS_MASKED,x
-	sta	MEM_PORTALS_MASKED,y
+	sta	TAB_PORTALS_X1,y
+	lda	TAB_PORTALS_SPRITE,x
+	sta	TAB_PORTALS_SPRITE,y
+	lda	TAB_PORTALS_MASKED,x
+	sta	TAB_PORTALS_MASKED,y
 
 	; add dummy portal
 	lda	WALL_MASKED_IDX
-	sta	MEM_PORTALS_MASKED,x
+	sta	TAB_PORTALS_MASKED,x
 	lda	#0
-	sta	MEM_PORTALS_SECTOR,x
+	sta	TAB_PORTALS_SECTOR,x
 	lda	#$FF
-	sta	MEM_PORTALS_SPRITE,x
+	sta	TAB_PORTALS_SPRITE,x
 
 	; portal_last = portal_wr
 	sty	PROJECTION_PORTAL_LAST
@@ -3449,19 +3421,19 @@ v1diff_opcode:
 
 	; save portal sector
 	lda	BACKSEC_PTR_I
-	sta	MEM_PORTALS_SECTOR,y
+	sta	TAB_PORTALS_SECTOR,y
 
 	; save portal X0
 	lda	WALL_X0_TMP
-	sta	MEM_PORTALS_X0,y
+	sta	TAB_PORTALS_X0,y
 
 	; save portal X1
 	lda	WALL_X1
-	sta	MEM_PORTALS_X1,y
+	sta	TAB_PORTALS_X1,y
 
 	; save portal masked
 	lda	WALL_MASKED_IDX
-	sta	MEM_PORTALS_MASKED,y
+	sta	TAB_PORTALS_MASKED,y
 
 	; update last portal
 	sty	PROJECTION_PORTAL_LAST
@@ -3899,10 +3871,6 @@ wall_vline_opcode_A:
 
 	; next column
 	inc	VIDEO_DRAW_X
-
-	; dcsel = 3, addrsel = 0
-	lda	#$06
-	sta	VERA_CTRL
 
 	; set affine Y position
 wall_affine_opcode_D:
@@ -5643,7 +5611,7 @@ set_affine_xw:
 
 	; offset
 	and	WALL_TEX_MSK
-	sta	VERA_FX_Y_POS_L
+	tay
 
 	; render code bank
 	lda	#BANK_RCODE
@@ -5668,6 +5636,13 @@ set_affine_xw_idx:
 	asl
 	asl
 	sta	VERA_FX_TILEBASE
+
+	; dcsel = 4, addrsel = 0
+	lda	#$08
+	sta	VERA_CTRL
+
+	; offset
+	sty	VERA_FX_Y_POS_L
 
 	rts
 
@@ -5809,6 +5784,10 @@ texture_set:
 	stz	VERA_FX_X_POS_S
 	stz	VERA_FX_Y_POS_S
 
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
 	; texture bank
 	lda	#BANK_TEXTURES
 	sta	REG_RAM_BANK
@@ -5834,62 +5813,190 @@ texture_set:
 	bpl	:+
 	jmp	@no_cache
 :
-	; dcsel = 2, addrsel = 0
-	lda	#$04
-	sta	VERA_CTRL
-
 	; disable cache write
 	stz	VERA_FX_CTRL
 
-	;; TEST CODE
+	; count = tex_type & 15
+	ldx	TEXINFO_STRUCT_TYPE,y
+	txa
+	and	#15
+	ora	#>TEXINFO_STRUCT_VRAM_BASE
+	sta	@vblk_skip+3
 
-	; tiledata
-	lda	#80
+	; if(tex_type & 0x80) ;; TODO
+	txa
+	bpl	:+
+
+	; plane TEST
+	lda	TEXINFO_STRUCT_VRAM_BASE,y
+	bne	:+
+	lda	TAB_VCACHE_TOP
+	asl
+	asl
 	sta	TEXINFO_STRUCT_TILEDATA,y
+:
+	; for(uint32_t i = 0; i < count; i++)
+	sty	VIDEO_TMP_0
+	lda	#>TEXINFO_STRUCT_VRAM_BASE
+	sta	VIDEO_TMP_1
+@loop_vblk:
+	; blk = ti->vram[i]
+	lda	(VIDEO_TMP_0)
 
-	; sector
-	lda	TEXINFO_STRUCT_DATA_L,y
+	; if(blk)
+	beq	@cache_miss
+
+	; if(blk != vcache_cur)
+	cmp	TAB_VCACHE_CUR
+	bne	:+
+	jmp	@vblk_skip
+:
+	;; refresh
+	tax
+
+	; next = vcache[blk].next
+	ldy	TAB_VCACHE_NEXT,x
+
+	; prev = vcache[blk].prev
+	lda	TAB_VCACHE_PREV,x
+
+	; vcache[next].prev = prev
+	sta	TAB_VCACHE_PREV,y
+
+	; if(prev)
+	bne	:+
+
+	; vcache_top = next
+	sty	TAB_VCACHE_TOP
+	bra	:++
+:
+	; vcache[prev].next = next
+	tax
+	tya
+	sta	TAB_VCACHE_NEXT,x
+:
+	; blk
+	lda	(VIDEO_TMP_0)
+	tax
+
+	; vcache[blk].next = 0
+	stz	TAB_VCACHE_NEXT,x
+
+	; vcache[blk].prev = vcache_cur
+	lda	TAB_VCACHE_CUR
+	sta	TAB_VCACHE_PREV,x
+
+	; vcache[vcache_cur].next = blk
+	tay
+	txa
+	sta	TAB_VCACHE_NEXT,y
+
+	; vcache_cur = blk
+	stx	TAB_VCACHE_CUR
+
+	bra	@vblk_skip
+
+@cache_miss:
+	;; blk = vcache_get()
+
+	; uint8_t ret = vcache_top
+	; uint8_t now = vcache_top
+	ldx	TAB_VCACHE_TOP
+	phx
+
+	; uint8_t tex = vcache[now].texture
+	ldy	TAB_VCACHE_TEX,x
+
+	; uint8_t slt = vcache[now].texslot
+	lda	TAB_VCACHE_SLT,x
+	sta	HI_PTR_H
+
+	; now = vcache[now].next
+	lda	TAB_VCACHE_NEXT,x
+	tax
+
+	; vcache[now].prev = 0
+	stz	TAB_VCACHE_PREV,x
+
+	; vcache_top = now
+	stx	TAB_VCACHE_TOP
+
+	; if(tex)
+	tya
+	beq	:+
+
+	; texture_info[tex].vram[slt] = 0
+	lda	#0
+	sta	(HI_PTR_L),y
+:
+	; ret
+	plx
+
+	; vcache[vcache_cur].next = ret
+	ldy	TAB_VCACHE_CUR
+	txa
+	sta	TAB_VCACHE_NEXT,y
+
+	; vcache[ret].prev = vcache_cur
+	tya
+	sta	TAB_VCACHE_PREV,x
+
+	; vcache_cur = ret
+	stx	TAB_VCACHE_CUR
+
+	; vcache[ret].next = 0
+	stz	TAB_VCACHE_NEXT,x
+
+	;; assign
+
+	; vcache[blk].texture = idx
+	lda	VIDEO_TMP_0
+	sta	TAB_VCACHE_TEX,x
+	tay
+
+	; vcache[blk].texslot = i
+	lda	VIDEO_TMP_1
+	sta	TAB_VCACHE_SLT,x
+
+	; ti->vram[i] = blk
+	txa
+	sta	(VIDEO_TMP_0)
+
+	; sector + i * 4
+	lda	VIDEO_TMP_1
+	asl
+	asl
+	and	#$7F
+	clc
+	adc	TEXINFO_STRUCT_DATA_L,y
 	sta	SD_SEC_L
 	lda	TEXINFO_STRUCT_DATA_M,y
+	adc	#0
 	sta	SD_SEC_M
 	lda	TEXINFO_STRUCT_DATA_H,y
+	adc	#0
 	sta	SD_SEC_H
 	lda	TEXINFO_STRUCT_DATA_U,y
+	adc	#0
 	sta	SD_SEC_U
 
-	; count
-	lda	TEXINFO_STRUCT_TYPE,y
-	bpl	:+
-	lda	#2
-:
-	sta	VIDEO_TMP_0
-	lda	#20
-	sta	VIDEO_TMP_1
-	sty	@loop_test+3
-	lda	#>TEXINFO_STRUCT_VRAM_BASE
-	sta	@loop_test+4
-@loop_test:
-	lda	VIDEO_TMP_1
-	sta	TEXINFO_STRUCT_VRAM_BASE
-
-	tax
+	; load
 	jsr	video_load_vram
 
+	; texture bank
 	lda	#BANK_TEXTURES
 	sta	REG_RAM_BANK
 
-	inc	@loop_test+4
+@vblk_skip:
 	inc	VIDEO_TMP_1
-	dec	VIDEO_TMP_0
-	bne	@loop_test
-
+	lda	#>TEXINFO_STRUCT_VRAM_BASE	; modified value
+	cmp	VIDEO_TMP_1
+	beq	:+
+	jmp	@loop_vblk
+:
 	; enable cache write
 	lda	#%01000000
 	sta	VERA_FX_CTRL
-
-	; dcsel = 6, addrsel = 0
-	lda	#$0C
-	sta	VERA_CTRL
 
 	; ADDR0 = 0x001F00, increment = 1
 	stz	VERA_ADDRx_L
@@ -5898,15 +6005,10 @@ texture_set:
 	lda	#%00010000
 	sta	VERA_ADDRx_H
 
-	; texture bank
-	lda	#BANK_TEXTURES
-	sta	REG_RAM_BANK
+	; restore
+	ldy	VIDEO_TMP_0
 
 @no_cache:
-	; dcsel = 2, addrsel = 0
-	lda	#$04
-	sta	VERA_CTRL
-
 	; ti->tiledata
 	lda	TEXINFO_STRUCT_TILEDATA,y
 	sta	VERA_FX_TILEBASE

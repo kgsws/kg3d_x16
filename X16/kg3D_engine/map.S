@@ -170,6 +170,42 @@ ex_map_load:
 	; disable sound
 	jsr	sound_start
 
+	; reset vcache
+	; for(uint32_t i = VRAM_FIRST_BLOCK; i < VRAM_STOP_BLOCK; i++)
+	ldx	#TAB_VCACHE_FIRST_BLOCK
+@loop_vclr:
+	; vcache[i].prev = i - 1
+	txa
+	dea
+	sta	TAB_VCACHE_PREV,x
+
+	; vcache[i].next = i + 1
+	txa
+	ina
+	sta	TAB_VCACHE_NEXT,x
+
+	; vcache[i].texture = 0
+	stz	TAB_VCACHE_TEX,x
+
+	; next
+	inx
+	cpx	#TAB_VCACHE_STOP_BLOCK
+	bcc	@loop_vclr
+
+	; vcache[VRAM_FIRST_BLOCK].prev = 0
+	stz	TAB_VCACHE_PREV+TAB_VCACHE_FIRST_BLOCK
+
+	; vcache[VRAM_STOP_BLOCK - 1].next = 0
+	stz	TAB_VCACHE_NEXT+TAB_VCACHE_STOP_BLOCK-1
+
+	; vcache_top = VRAM_FIRST_BLOCK
+	lda	#TAB_VCACHE_FIRST_BLOCK
+	sta	TAB_VCACHE_TOP
+
+	; vcache_cur = VRAM_STOP_BLOCK - 1
+	lda	#TAB_VCACHE_STOP_BLOCK-1
+	sta	TAB_VCACHE_CUR
+
 	; backup stack pointer
 	tsx
 	stx	TAB_TEMP_STACK

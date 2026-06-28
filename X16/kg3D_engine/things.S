@@ -796,12 +796,8 @@ thing_explode:
 	ora	#$A0
 	sta	TMP_PTR_H
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; portals[0].sector = sdx
-	stx	MEM_PORTALS_SECTOR
+	stx	TAB_PORTALS_SECTOR
 
 	; poscheck.vis_bit = 1 << (sdx >> 5)
 	lda	TAB_DIV32,x
@@ -838,15 +834,11 @@ thing_explode:
 	; poscheck.portal_rd = 0
 	stz	THMOVE_PORTAL_RD
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; while(poscheck.portal_rd < poscheck.portal_wr)
 	ldy	#0
 @loop_portal:
 	; sdx = portals[poscheck.portal_rd].sector
-	ldx	MEM_PORTALS_SECTOR,y
+	ldx	TAB_PORTALS_SECTOR,y
 	stx	EXPLODE_SDX
 
 	; sector bank
@@ -913,10 +905,6 @@ thing_explode:
 	cmp	WALL_FIRST
 	bne	@loop_wall
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; next sector
 	inc	THMOVE_PORTAL_RD
 	ldy	THMOVE_PORTAL_RD
@@ -960,12 +948,8 @@ thing_explode:
 @loop_sector:
 	phy
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; sdx = portals[poscheck.portal_rd].sector
-	ldx	MEM_PORTALS_SECTOR,y
+	ldx	TAB_PORTALS_SECTOR,y
 
 	; sector things
 	lda	#$A0
@@ -1653,22 +1637,18 @@ thing_check_spawn:
 	ldy	ARG_THING_SECTOR
 	jsr	prepare_pos_check
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; portals[0].sector = sdx
 	ldx	ARG_THING_SECTOR
-	stx	MEM_PORTALS_SECTOR
+	stx	TAB_PORTALS_SECTOR
 
 	; portals[0].islink = 0
-	stz	MEM_PORTALS_ISLINK
+	stz	TAB_PORTALS_ISLINK
 
 	; portals[0].touch = 0
-	stz	MEM_PORTALS_TOUCH
+	stz	TAB_PORTALS_TOUCH
 
 	; portals[0].midhit = 0
-	stz	MEM_PORTALS_MIDHIT
+	stz	TAB_PORTALS_MIDHIT
 
 	; poscheck.portal_rd = 0
 	stz	THMOVE_PORTAL_RD
@@ -2214,16 +2194,12 @@ thing_check_spawn:
 	cpy	THMOVE_PORTAL_WR
 	bcs	@done
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; get sector
-	lda	MEM_PORTALS_MIDHIT,y
+	lda	TAB_PORTALS_MIDHIT,y
 	sta	THMOVE_MIDHIT
-	lda	MEM_PORTALS_ISLINK,y
+	lda	TAB_PORTALS_ISLINK,y
 	sta	THMOVE_ISLINK
-	ldx	MEM_PORTALS_SECTOR,y
+	ldx	TAB_PORTALS_SECTOR,y
 	stx	ARG_THING_SECTOR
 	jmp	@loop_sec
 
@@ -2241,13 +2217,9 @@ thing_check_spawn:
 	;; check things
 	stz	THMOVE_PORTAL_RD
 @loop_thsec:
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; get sector
 	ldx	THMOVE_PORTAL_RD
-	ldy	MEM_PORTALS_SECTOR,x
+	ldy	TAB_PORTALS_SECTOR,x
 
 	; go trough things
 	lda	THMOVE_BLOCKEDBY
@@ -2775,19 +2747,15 @@ thing_apply_spawn:
 	sta	THMOVE_PTR_H
 	jsr	place_to_sector
 
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; place to detected sectors
 	ldx	#0
 @loop_place:
 	; check touching flag
-	lda	MEM_PORTALS_TOUCH,x
+	lda	TAB_PORTALS_TOUCH,x
 	beq	:+
 
 	; get sector from portal
-	lda	MEM_PORTALS_SECTOR,x
+	lda	TAB_PORTALS_SECTOR,x
 
 	; skip main sector
 	cmp	THMOVE_SECTOR
@@ -2797,7 +2765,7 @@ thing_apply_spawn:
 	sta	ARG_THING_SECTOR
 
 	; mid hit
-	lda	MEM_PORTALS_MIDHIT,x
+	lda	TAB_PORTALS_MIDHIT,x
 	sta	THMOVE_MIDHIT
 
 	; backup
@@ -2808,10 +2776,6 @@ thing_apply_spawn:
 
 	; restore
 	plx
-
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
 :
 	; next
 	inx
@@ -3672,10 +3636,6 @@ addsec_skip_links:
 	rts
 
 add_sector_raw:
-	; portal bank
-	lda	#BANK_PORTALS
-	sta	REG_RAM_BANK
-
 	; check existing portals for duplicates
 	ldy	THMOVE_PORTAL_WR
 @loop:
@@ -3684,18 +3644,18 @@ add_sector_raw:
 
 	; if(portals[i].sector == sdx)
 	txa
-	cmp	MEM_PORTALS_SECTOR,y
+	cmp	TAB_PORTALS_SECTOR,y
 	bne	@loop
 
 	; portals[i].touch |= touch
-	lda	MEM_PORTALS_TOUCH,y
+	lda	TAB_PORTALS_TOUCH,y
 	ora	THMOVE_TOUCH
-	sta	MEM_PORTALS_TOUCH,y
+	sta	TAB_PORTALS_TOUCH,y
 
 	; portals[i].midhit |= poscheck.midhit
-	lda	MEM_PORTALS_MIDHIT,y
+	lda	TAB_PORTALS_MIDHIT,y
 	ora	THMOVE_MIDHIT
-	sta	MEM_PORTALS_MIDHIT,y
+	sta	TAB_PORTALS_MIDHIT,y
 
 	rts
 
@@ -3703,13 +3663,13 @@ add_sector_raw:
 	; portals[portal_wr].sector = sdx
 	ldy	THMOVE_PORTAL_WR
 	txa
-	sta	MEM_PORTALS_SECTOR,y
+	sta	TAB_PORTALS_SECTOR,y
 	lda	THMOVE_ISLINK
-	sta	MEM_PORTALS_ISLINK,y
+	sta	TAB_PORTALS_ISLINK,y
 	lda	THMOVE_TOUCH
-	sta	MEM_PORTALS_TOUCH,y
+	sta	TAB_PORTALS_TOUCH,y
 	lda	THMOVE_MIDHIT
-	sta	MEM_PORTALS_MIDHIT,y
+	sta	TAB_PORTALS_MIDHIT,y
 
 	; portal_wr++
 	inc	THMOVE_PORTAL_WR

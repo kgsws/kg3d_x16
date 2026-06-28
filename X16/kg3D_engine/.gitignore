@@ -1,5 +1,7 @@
 *.o
 *.BIN
 *.PRG
+code
+loader
 card.img
 release/

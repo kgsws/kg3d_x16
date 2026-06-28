@@ -1,25 +1,5 @@
 
 ;;;
-; portals
-;;;
-; in bank 'BANK_PORTALS'
-
-; for rendering and movement checks
-MEM_PORTALS_SECTOR = $BF00
-
-; for rendering
-MEM_PORTALS_X0 = $BF40
-MEM_PORTALS_X1 = $BF80
-MEM_PORTALS_SPRITE = $BFC0
-
-MEM_PORTALS_MASKED = $BEC0
-
-; for movement checks
-MEM_PORTALS_ISLINK = MEM_PORTALS_X0
-MEM_PORTALS_TOUCH = MEM_PORTALS_X1
-MEM_PORTALS_MIDHIT = MEM_PORTALS_SPRITE
-
-;;;
 ; special thing types
 ;;;
 
