@@ -502,28 +502,25 @@ static uint8_t vcache_get()
 	return ret;
 }
 
-static void vcache_carve(uint8_t blk)
-{
-	uint8_t next, prev;
-
-	next = vcache[blk].next;
-	prev = vcache[blk].prev;
-
-	printf("vcache_carve: %u; p %u n %u\n", blk, prev, next);
-
-	vcache[prev].next = next;
-
-	if(next)
-		vcache[next].prev = prev;
-	else
-		vcache_cur = prev;
-}
-
 static void vcache_demote(uint8_t blk)
 {
 	if(blk != vcache_top)
 	{
-		vcache_carve(blk);
+		uint8_t next, prev;
+
+		next = vcache[blk].next;
+		prev = vcache[blk].prev;
+
+		printf("vcache_carve: %u; p %u n %u\n", blk, prev, next);
+
+		vcache[prev].next = next;
+
+		if(next)
+			vcache[next].prev = prev;
+		else
+			vcache_cur = prev;
+
+		//
 
 		vcache[vcache_top].prev = blk;
 
@@ -682,62 +679,35 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 		{
 			if(!(ti->vram[0] | ti->vram[1]))
 			{
-				uint8_t blk;
-				uint8_t next, prev;
+				uint8_t blk = vcache_top;
 
-				if(vcache_top >= VRAM_STOP_BLOCK - 1)
-				{
-					blk = vcache[vcache_top].next;
-					next = vcache[blk].next;
+				if(blk >= VRAM_STOP_BLOCK-1)
+					blk = vcache[blk].next;
 
-					vcache[next].prev = vcache_top;
+				blk |= 0x01;
+				vcache_demote(blk);
 
-					vcache[vcache_top].next = next;
-					vcache[vcache_top].prev = blk;
+				blk &= 0xFE;
+				vcache_demote(blk);
 
-					vcache[blk].next = vcache_top;
-					vcache[blk].prev = 0;
-
-					vcache_top = blk;
-
-					vcache_verify("PlnS");
-				}
-
-				blk = vcache_top & 0xFE;
 				ti->tiledata = blk << 2;
-
-				//
-
-				vcache_carve(vcache_top ^ 1);
-
-				//
-
-				next = vcache[vcache_top].next;
-
-				vcache_top = blk;
-
-				vcache[next].prev = blk + 1;
-
-				vcache[blk].next = blk + 1;
-				vcache[blk].prev = 0;
-
-				blk++;
-				vcache[blk].next = next;
-				vcache[blk].prev = blk - 1;
 
 				vcache_verify("PlnC");
 			} else
-			if(!ti->vram[0] && ti->vram[1])
+			if(ti->vram[0])
 			{
-				uint8_t blk = ti->vram[1] & 0xFE;
-				vcache_demote(blk);
-				ti->tiledata = blk << 2;
-				vcache_verify("PlnA");
+				if(!ti->vram[1])
+				{
+					vcache_demote(ti->vram[0] | 0x01);
+					vcache_verify("PlnB");
+				}
 			} else
-			if(!ti->vram[1] && ti->vram[0])
 			{
-				vcache_demote(ti->vram[0] | 0x01);
-				vcache_verify("PlnB");
+				if(ti->vram[1])
+				{
+					vcache_demote(ti->vram[1] & 0xFE);
+					vcache_verify("PlnA");
+				}
 			}
 		}
 

@@ -5825,16 +5825,71 @@ texture_set:
 
 	; if(tex_type & 0x80) ;; TODO
 	txa
-	bpl	:+
+	bpl	@skip_plane
 
-	; plane TEST
-	lda	TEXINFO_STRUCT_VRAM_BASE,y
-	bne	:+
+	; if(!(ti->vram[0] | ti->vram[1]))
+	lda	TEXINFO_STRUCT_VRAM_PLN0,y
+	ora	TEXINFO_STRUCT_VRAM_PLN1,y
+	bne	@half_plane
+
+	; blk = vcache_top;
 	lda	TAB_VCACHE_TOP
+
+	; if(blk >= VRAM_STOP_BLOCK-1)
+	cmp	#TAB_VCACHE_STOP_BLOCK-1
+	bcc	:+
+
+	; blk = vcache[blk].next
+	tax
+	lda	TAB_VCACHE_NEXT,x
+:
+	; blk |= 0x01
+	ora	#$01
+
+	; vcache_demote(blk)
+	cmp	TAB_VCACHE_TOP
+	beq	:+
+	jsr	@vcache_demote
+:
+	; blk &= 0xFE
+	and	#$FE
+
+	; vcache_demote(blk)
+	cmp	TAB_VCACHE_TOP
+	beq	:+
+	jsr	@vcache_demote
+:
+	; ti->tiledata = blk << 2
 	asl
 	asl
 	sta	TEXINFO_STRUCT_TILEDATA,y
-:
+
+	bra	@skip_plane
+
+@half_plane:
+	; if(ti->vram[0])
+	lda	TEXINFO_STRUCT_VRAM_PLN0,y
+	beq	@other_half
+
+	; if(!ti->vram[1])
+	ldx	TEXINFO_STRUCT_VRAM_PLN1,y
+	bne	@skip_plane
+
+	; vcache_demote(ti->vram[0] | 0x01)
+	ora	#$01
+	jsr	@vcache_demote
+	bra	@skip_plane
+
+@other_half:
+	; if(ti->vram[1])
+	lda	TEXINFO_STRUCT_VRAM_PLN1,y
+	beq	@skip_plane
+
+	; vcache_demote(ti->vram[1] & 0xFE)
+	and	#$FE
+	jsr	@vcache_demote
+
+@skip_plane:
 	; for(uint32_t i = 0; i < count; i++)
 	sty	VIDEO_TMP_0
 	lda	#>TEXINFO_STRUCT_VRAM_BASE
@@ -5981,6 +6036,7 @@ texture_set:
 	sta	SD_SEC_U
 
 	; load
+stx DBG_BYTE0
 	jsr	video_load_vram
 
 	; texture bank
@@ -6117,3 +6173,49 @@ texture_set:
 	sta	wall_affine_opcode_D+2
 
 	bra	@finish
+
+@vcache_demote:
+	phy
+	sta	VIDEO_TMP_0
+	tax
+
+	; prev = vcache[blk].prev
+	ldy	TAB_VCACHE_PREV,x
+
+	; next = vcache[blk].next
+	lda	TAB_VCACHE_NEXT,x
+	tax
+
+	; vcache[prev].next = next
+	sta	TAB_VCACHE_NEXT,y
+
+	; if(next)
+	bne	:+
+
+	; vcache_cur = prev
+	sty	TAB_VCACHE_CUR
+	bra	:++
+:
+	; vcache[next].prev = prev
+	tya
+	sta	TAB_VCACHE_PREV,x
+:
+	; vcache[vcache_top].prev = blk
+	ldy	TAB_VCACHE_TOP
+	lda	VIDEO_TMP_0
+	sta	TAB_VCACHE_PREV,y
+	tax
+
+	; vcache[blk].next = vcache_top
+	tya
+	sta	TAB_VCACHE_NEXT,x
+
+	; vcache[blk].prev = 0
+	stz	TAB_VCACHE_PREV,x
+
+	; vcache_top = blk
+	stx	TAB_VCACHE_TOP
+
+	lda	VIDEO_TMP_0
+	ply
+	rts
