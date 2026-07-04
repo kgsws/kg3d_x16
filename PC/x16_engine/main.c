@@ -479,7 +479,7 @@ static uint8_t vcache_get()
 	uint8_t tex = vcache[now].texture;
 	uint8_t slt = vcache[now].texslot;
 
-	printf("vcache_get: old top %u\n", now);
+//	printf("vcache_get: old top %u\n", now);
 
 	now = vcache[now].next;
 	vcache[now].prev = 0;
@@ -487,7 +487,7 @@ static uint8_t vcache_get()
 
 	if(tex)
 	{
-		printf("vcache_get: free %u:%u\n", tex, slt);
+//		printf("vcache_get: free %u:%u\n", tex, slt);
 		texture_info[tex].vram[slt] = 0;
 	}
 
@@ -497,7 +497,7 @@ static uint8_t vcache_get()
 	vcache_cur = ret;
 	vcache[ret].next = 0;
 
-	printf("vcache_get: new top %u new cur %u\n", vcache_top, vcache_cur);
+//	printf("vcache_get: new top %u new cur %u\n", vcache_top, vcache_cur);
 
 	return ret;
 }
@@ -511,7 +511,7 @@ static void vcache_demote(uint8_t blk)
 		next = vcache[blk].next;
 		prev = vcache[blk].prev;
 
-		printf("vcache_carve: %u; p %u n %u\n", blk, prev, next);
+//		printf("vcache_carve: %u; p %u n %u\n", blk, prev, next);
 
 		vcache[prev].next = next;
 
@@ -740,7 +740,7 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 					vcache[vcache_cur].next = blk;
 					vcache_cur = blk;
 
-//						printf("TEX: refresh %u:%u @ %u\n", idx, i, blk);
+//					printf("TEX: refresh %u:%u @ %u\n", idx, i, blk);
 				}
 			} else
 			{

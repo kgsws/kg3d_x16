@@ -137,7 +137,7 @@ typedef struct
 {
 	uint8_t clip_top[80];
 	uint8_t clip_bot[80];
-	uint8_t *data;
+	uint16_t *data;
 	uint32_t *offs;
 	uint8_t x0, x1;
 	uint8_t next;
@@ -517,7 +517,7 @@ static uint32_t tex_read()
 {
 	uint32_t tx, ty;
 	int16_t tile;
-	uint8_t sample;
+	uint16_t sample;
 
 	tx = tex_offs_x >> 9;
 	ty = tex_offs_y >> 9;
@@ -539,15 +539,18 @@ static uint32_t tex_read()
 
 	if(tex_offs)
 	{
-		const uint8_t *data = tex_data;
+		const uint16_t *data = tex_data;
 		data += tex_offs[tx];
-		sample = tex_light[data[ty]];
+		sample = data[ty];
 	} else
 	{
-		const uint8_t *data = tex_data;
+		const uint16_t *data = tex_data;
 		sample = data[tx + ty * tex_width];
 	}
 
+	if(sample & 0xFF00)
+		sample &= 0x00FF;
+	else
 	if(!(x16_palette_bright[sample >> 4] & (1 << (sample & 15))))
 		sample = tex_light[sample];
 
@@ -1365,7 +1368,7 @@ static void dr_sprite(uint32_t idx)
 		uint8_t y0, y1;
 		int16_t top;
 		int16_t bot;
-		uint8_t *src;
+		uint16_t *src;
 		uint8_t len, offs;
 
 		src = spr->data + spr->offs[tex_now >> 8];
@@ -2155,6 +2158,8 @@ void x16r_render(kge_thing_t *camera, float x, float y, float scale)
 	}
 
 //	printf("portals: %u\n", portal_rd - portals);
+
+	tex_swap_xy = 0;
 
 	while(1)
 	{

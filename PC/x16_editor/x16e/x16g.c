@@ -320,7 +320,7 @@ typedef struct
 		};
 	};
 	variant_info_t variant[MAX_X16_VARIANTS];
-	uint8_t data[STEX_PIXEL_LIMIT];
+	uint16_t data[STEX_PIXEL_LIMIT];
 } variant_list_t;
 
 typedef struct
@@ -540,8 +540,8 @@ static nums_char_t nums_char[NUMS_CHAR_COUNT];
 
 static hud_cfg_t hud_cfg;
 
-static uint8_t stex_source[STEX_PIXEL_LIMIT * 2];
-static uint8_t stex_data[STEX_PIXEL_LIMIT];
+static uint16_t stex_source[STEX_PIXEL_LIMIT * 2];
+static uint16_t stex_data[STEX_PIXEL_LIMIT];
 static uint16_t stex_space[STEX_PIXEL_LIMIT / 256];
 static uint32_t stex_size;
 static uint32_t stex_total;
@@ -554,7 +554,7 @@ static uint_fast8_t effect_idx;
 
 uint32_t x16g_state_res[3];
 int32_t x16g_state_offs[2];
-uint8_t *x16g_state_data_ptr;
+uint16_t *x16g_state_data_ptr;
 uint32_t *x16g_state_offs_ptr;
 
 static uint8_t gfx_path[EDIT_MAX_FILE_PATH];
@@ -866,7 +866,7 @@ static gltex_info_t gltex_info[NUM_X16G_GLTEX] =
 	},
 	[X16G_GLTEX_SHOW_TEXTURE] =
 	{
-		.format = GL_RED,
+		.format = GL_RG,
 	},
 	[X16G_GLTEX_BRIGHT_COLORS] =
 	{
@@ -1069,7 +1069,7 @@ static edit_cbor_obj_t cbor_plane[] =
 		.name = "data",
 		.nlen = 4,
 		.type = EDIT_CBOR_TYPE_BINARY,
-		.extra = 64 * 64
+		.extra = 64 * 64 * sizeof(uint16_t)
 	},
 	// terminator
 	[NUM_CBOR_PLANE] = {}
@@ -1801,7 +1801,7 @@ static int32_t cbor_gfx_wall(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgcb
 		cbor_load_object = wa;
 
 		cbor_stex[CBOR_STEX_DATA].ptr = wa->data;
-		cbor_stex[CBOR_STEX_DATA].extra = STEX_PIXEL_LIMIT;
+		cbor_stex[CBOR_STEX_DATA].extra = STEX_PIXEL_LIMIT * 2;
 		cbor_main_index++;
 
 		cbor_stex_is_sprite = 0;
@@ -1980,10 +1980,10 @@ static int32_t cbor_gfx_wpn_group(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type,
 				// out of pixels; fatal error
 				return -1;
 
-			memcpy(cbor_load_object->data + cbor_load_object->stex_used, stex_data, load_ndata);
+			memcpy((uint8_t*)cbor_load_object->data + cbor_load_object->stex_used, stex_data, load_ndata);
 			cbor_load_object->stex_used += load_ndata;
 
-			memcpy(cbor_load_object->data + cbor_load_object->stex_used, (uint8_t*)stex_data + SWPN_MAX_DATA, load_bdata);
+			memcpy((uint8_t*)cbor_load_object->data + cbor_load_object->stex_used, (uint8_t*)stex_data + SWPN_MAX_DATA, load_bdata);
 			cbor_load_object->stex_used += load_bdata;
 
 			for(uint32_t i = base; i < cbor_entry_index; i++)
@@ -2526,13 +2526,17 @@ static void make_light_data(uint32_t idx)
 	}
 }
 
-static void memcpy_light(uint8_t *dst, uint8_t *src, uint32_t size, uint32_t idx)
+static void memcpy_light(uint8_t *dst, uint16_t *src, uint32_t size, uint32_t idx)
 {
 	uint8_t *lightmap = x16_light_data + idx * 256;
 
 	do
 	{
-		*dst++ = lightmap[*src++];
+		uint16_t in = *src++;
+		if(in & 0xFF00)
+			*dst++ = in;
+		else
+			*dst++ = lightmap[in];
 	} while(--size);
 }
 
@@ -2650,22 +2654,22 @@ static void recalc_lights()
 //
 // tile export
 
-static void place_wall_tile(uint8_t *dst, uint8_t *src, uint32_t tx)
+static void place_wall_tile(uint16_t *dst, uint16_t *src, uint32_t tx)
 {
 	for(uint32_t y = 0; y < 8; y++)
 	{
-		uint8_t *ss = src;
+		uint16_t *ss = src;
 		for(uint32_t x = 0; x < 8; x++)
 			*dst++ = *ss++;
 		src += tx;
 	}
 }
 
-static void make_wall_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
+static void make_wall_tiles(uint16_t *dst, uint16_t *src, uint32_t tx, uint32_t ty)
 {
 	for(uint32_t y = 0; y < ty; y += 8)
 	{
-		uint8_t *ss = src;
+		uint16_t *ss = src;
 		for(uint32_t x = 0; x < tx; x += 8)
 		{
 			place_wall_tile(dst, ss, tx);
@@ -2676,11 +2680,11 @@ static void make_wall_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty
 	}
 }
 
-static void place_plane_tile(uint8_t *dst, uint8_t *src, uint32_t ty)
+static void place_plane_tile(uint16_t *dst, uint16_t *src, uint32_t ty)
 {
 	for(uint32_t y = 0; y < 8; y++)
 	{
-		uint8_t *ss = src;
+		uint16_t *ss = src;
 		for(uint32_t x = 0; x < 8; x++)
 		{
 			*dst++ = *ss;
@@ -2690,11 +2694,11 @@ static void place_plane_tile(uint8_t *dst, uint8_t *src, uint32_t ty)
 	}
 }
 
-static void make_plane_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t ty)
+static void make_plane_tiles(uint16_t *dst, uint16_t *src, uint32_t tx, uint32_t ty)
 {
 	for(uint32_t y = 0; y < ty; y += 8)
 	{
-		uint8_t *ss = src;
+		uint16_t *ss = src;
 		for(uint32_t x = 0; x < tx; x += 8)
 		{
 			place_plane_tile(dst, ss, ty);
@@ -2705,7 +2709,7 @@ static void make_plane_tiles(uint8_t *dst, uint8_t *src, uint32_t tx, uint32_t t
 	}
 }
 
-static void fix_hax_tiles(uint8_t *dst, uint8_t *src, uint32_t count)
+static void fix_hax_tiles(uint8_t *dst, uint16_t *src, uint32_t count)
 {
 	for(uint32_t i = 0; i < count; i++)
 	{
@@ -2852,13 +2856,13 @@ static void set_gfx_mode(uint32_t mode)
 //
 // striped texture management
 
-static void stex_reset(uint8_t *source, uint32_t count)
+static void stex_reset(uint16_t *source, uint32_t count)
 {
 	stex_fullbright = 0;
 	stex_size = 0;
 	stex_total = 0;
 
-	memcpy(stex_source, source, count);
+	memcpy(stex_source, source, count * sizeof(uint16_t));
 
 	for(uint32_t i = 0; i < STEX_PIXEL_LIMIT / 256; i++)
 		stex_space[i] = 256;
@@ -2866,10 +2870,10 @@ static void stex_reset(uint8_t *source, uint32_t count)
 	memset(stex_data, 0, sizeof(stex_data));
 }
 
-static int32_t stex_insert(uint8_t *data, uint32_t len)
+static int32_t stex_insert(uint16_t *data, uint32_t len)
 {
-	uint8_t *ptr = stex_data;
-	uint8_t *fitp = NULL;
+	uint16_t *ptr = stex_data;
+	uint16_t *fitp = NULL;
 	uint16_t *fits = NULL;
 	uint32_t offs, used;
 
@@ -2880,7 +2884,7 @@ static int32_t stex_insert(uint8_t *data, uint32_t len)
 	{
 		int32_t used = 256 - (int32_t)stex_space[i];
 		int32_t check = used - len;
-		uint8_t *src = ptr;
+		uint16_t *src = ptr;
 
 		if(!fitp && stex_space[i] >= len)
 		{
@@ -2893,7 +2897,7 @@ static int32_t stex_insert(uint8_t *data, uint32_t len)
 
 		for(uint32_t j = 0; j <= check; j++)
 		{
-			if(!memcmp(src, data, len))
+			if(!memcmp(src, data, len * sizeof(uint16_t)))
 			{
 				// found matching data
 				return src - stex_data;
@@ -2910,7 +2914,7 @@ static int32_t stex_insert(uint8_t *data, uint32_t len)
 	*fits -= len;
 
 	// copy new data
-	memcpy(fitp, data, len);
+	memcpy(fitp, data, len * sizeof(uint16_t));
 
 	// done
 	offs = fitp - stex_data;
@@ -3010,7 +3014,7 @@ static uint32_t stex_remake_columns(variant_list_t *vl, uint32_t is_sprite)
 	}
 
 	// apply new data
-	memcpy(vl->data, stex_data, stex_size);
+	memcpy(vl->data, stex_data, stex_size * sizeof(uint16_t));
 	vl->stex_used = stex_size;
 	vl->stex_total = stex_total;
 
@@ -3025,7 +3029,7 @@ static uint32_t stex_remake_columns(variant_list_t *vl, uint32_t is_sprite)
 	return 0;
 }
 
-static uint8_t stex_read_color(uint32_t **src, uint32_t width)
+static uint16_t stex_read_color(uint32_t **src, uint32_t width)
 {
 	uint16_t color;
 	uint32_t in;
@@ -3036,7 +3040,7 @@ static uint8_t stex_read_color(uint32_t **src, uint32_t width)
 	if(!(in & 0xFF000000))
 		return 0x00;
 
-	return x16g_palette_match(in, 1);
+	return x16g_palette_match(in, 1) | ((~in >> 16) & 0xFF00);
 }
 
 static uint32_t stex_wall_texture_32(image_t *img, variant_list_t *wl)
@@ -3044,7 +3048,7 @@ static uint32_t stex_wall_texture_32(image_t *img, variant_list_t *wl)
 	variant_info_t *vi = wl->variant + wl->now;
 	uint32_t offset = wl->stex_used;
 	uint32_t *src = (uint32_t*)img->data;
-	uint8_t *dst = stex_source + offset;
+	uint16_t *dst = stex_source + offset;
 
 	vi->sw.width = img->width;
 	vi->sw.stride = (img->width + 3) & ~3;
@@ -3058,7 +3062,7 @@ static uint32_t stex_wall_texture_32(image_t *img, variant_list_t *wl)
 		uint32_t *ss = src++;
 
 		for(uint32_t y = 0; y < img->height; y++)
-			*dst++ = stex_read_color(&ss, img->width);
+			*dst++ = stex_read_color(&ss, img->width) | 0xFF00;
 
 		vi->sw.offset[x] = offset;
 		vi->sw.length[x] = img->height;
@@ -3074,7 +3078,7 @@ static uint32_t stex_wall_texture_8(image_t *img, variant_list_t *wl)
 	variant_info_t *vi = wl->variant + wl->now;
 	uint32_t offset = wl->stex_used;
 	uint8_t *src = img->data;
-	uint8_t *dst = stex_source + offset;
+	uint16_t *dst = stex_source + offset;
 
 	vi->sw.width = img->width;
 	vi->sw.stride = (img->width + 3) & ~3;
@@ -3107,10 +3111,10 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 	variant_info_t *vi = sp->variant + sp->now;
 	uint32_t offset = sp->stex_used;
 	void *src = img->data;
-	uint8_t *dst = stex_source + offset;
+	uint16_t *dst = stex_source + offset;
 	uint32_t last_used = 0;
 	uint32_t xx = 0;
-	uint8_t data[256];
+	uint16_t data[256];
 
 	// save info
 	vi->sw.width = img->width;
@@ -3123,15 +3127,15 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 	// go trough columns
 	for(uint32_t x = 0; x < img->width; x++)
 	{
-		uint8_t *special = NULL;
-		uint8_t *px = data;
-		uint8_t *last, *head, *top;
+		uint16_t *special = NULL;
+		uint16_t *px = data;
+		uint16_t *last, *head, *top;
 		uint32_t len;
 
 		// generate full column
 		if(stex_import_pal)
 		{
-			uint8_t *ss = src;
+			uint16_t *ss = src;
 			src++;
 			for(uint32_t y = 0; y < img->height; y++)
 			{
@@ -3143,7 +3147,7 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 			uint32_t *ss = src;
 			src += sizeof(uint32_t);
 			for(uint32_t y = 0; y < img->height; y++)
-				data[y] = stex_read_color(&ss, img->width);
+				data[y] = stex_read_color(&ss, img->width) & 0x00FF;
 		}
 
 		px = data;
@@ -3245,7 +3249,7 @@ static void stex_parse_columns(variant_list_t *vl, variant_info_t *vi)
 {
 	for(uint32_t x = 0; x < vi->sw.width; x++)
 	{
-		uint8_t *ptr = vl->data + vi->sw.offset[x];
+		uint16_t *ptr = vl->data + vi->sw.offset[x];
 		uint8_t len, offs;
 
 		if(ptr >= vl->data + STEX_PIXEL_LIMIT)
@@ -3298,8 +3302,21 @@ static uint32_t stex_export_cbor(kgcbor_gen_t *gen, variant_list_t *vl, uint32_t
 		if(kgcbor_put_string(gen, vl->name, -1))
 			return 1;
 
-		cbor_stex[CBOR_STEX_DATA].ptr = vl->data;
-		cbor_stex[CBOR_STEX_DATA].extra = vl->stex_used;
+		if(is_sprite)
+		{
+			uint16_t *src = vl->data;
+			uint8_t *dst = (uint8_t*)stex_data;
+
+			for(uint32_t i = 0; i < vl->stex_used; i++)
+				*dst++ = *src++;
+
+			cbor_stex[CBOR_STEX_DATA].ptr = stex_data;
+			cbor_stex[CBOR_STEX_DATA].extra = vl->stex_used;
+		} else
+		{
+			cbor_stex[CBOR_STEX_DATA].ptr = vl->data;
+			cbor_stex[CBOR_STEX_DATA].extra = vl->stex_used * 2;
+		}
 
 		if(edit_cbor_export(cbor_stex, NUM_CBOR_STEX, gen))
 			return 1;
@@ -3354,12 +3371,12 @@ static uint32_t stex_export_cbor(kgcbor_gen_t *gen, variant_list_t *vl, uint32_t
 	return 0;
 }
 
-static void stex_generate_wall(variant_list_t *wa, variant_info_t *va, uint8_t *data)
+static void stex_generate_wall(variant_list_t *wa, variant_info_t *va, uint16_t *data)
 {
 	for(uint32_t x = 0; x < va->sw.width; x++)
 	{
-		uint8_t *dst = data++;
-		uint8_t *src = wa->data + va->sw.offset[x];
+		uint16_t *dst = data++;
+		uint16_t *src = wa->data + va->sw.offset[x];
 
 		for(uint32_t y = 0; y < va->sw.height; y++)
 		{
@@ -3369,12 +3386,12 @@ static void stex_generate_wall(variant_list_t *wa, variant_info_t *va, uint8_t *
 	}
 }
 
-static void stex_generate_sprite(variant_list_t *wa, variant_info_t *va, uint8_t *data)
+static void stex_generate_sprite(variant_list_t *wa, variant_info_t *va, uint16_t *data)
 {
 	for(uint32_t x = 0; x < va->sw.width; x++)
 	{
-		uint8_t *src = wa->data + va->sw.offset[x];
-		uint8_t *dst;
+		uint16_t *src = wa->data + va->sw.offset[x];
+		uint16_t *dst;
 		uint8_t offs, len;
 
 		len = *src++;
@@ -3404,7 +3421,7 @@ static void stex_x16_export_sprite(uint8_t *buffer, uint8_t *txt)
 	for(uint32_t i = 0; i < count; i++, vl++)
 	{
 		uint8_t *ptr = buffer;
-		uint16_t *src = (uint16_t*)vl->data;
+		uint16_t *src = vl->data;
 		uint16_t tmp;
 		uint16_t stopoffs = 0;
 
@@ -4047,6 +4064,12 @@ static void gfx_load(const uint8_t *file)
 		for(uint32_t i = 0; i < gfx_idx[GFX_MODE_SPRITES].max; i++)
 		{
 			variant_list_t *vl = x16_sprite + i;
+			uint8_t *src = (uint8_t*)vl->data;
+			uint16_t *dst = vl->data;
+
+			// expand data
+			for(int32_t i = STEX_PIXEL_LIMIT-1; i >= 0; i--)
+				dst[i] = src[i];
 
 			// check columns and calculate lengths
 			for(uint32_t j = 0; j < vl->max; j++)
@@ -4088,8 +4111,9 @@ do_fail:
 
 static const uint8_t *update_gfx_palette(ui_idx_t *idx)
 {
+	static uint8_t data[48 * 48];
 	uint8_t text[32];
-	uint8_t *data, *ptr;
+	uint8_t *ptr;
 	uint32_t pidx;
 	gltex_info_t *gi;
 
@@ -4125,10 +4149,6 @@ static const uint8_t *update_gfx_palette(ui_idx_t *idx)
 	sprintf(text, "Blue: %u%%", palette_options.dmg.b);
 	glui_set_text(&ui_gfx_palette_dmg_b, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
-	data = malloc(48 * 48);
-	if(!data)
-		return NULL;
-
 	ptr = data;
 	pidx = 0;
 	for(uint32_t y = 0; y < 16; y++)
@@ -4156,8 +4176,6 @@ static const uint8_t *update_gfx_palette(ui_idx_t *idx)
 	gi->height = 16 * 3;
 	gi->data = data;
 	x16g_update_texture(X16G_GLTEX_BRIGHT_COLORS);
-
-	free(data);
 
 	return x16g_palette_name[idx->now];
 }
@@ -4196,10 +4214,11 @@ static const uint8_t *update_gfx_lights(ui_idx_t *idx)
 
 static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 {
-	uint8_t *src;
+	uint8_t *ttr;
+	uint16_t *src;
 	variant_list_t *pl;
 	gltex_info_t *gi;
-	uint8_t *data, *ptr;
+	uint16_t *data, *ptr;
 	uint8_t *effect = NULL;
 	uint8_t text[32];
 
@@ -4214,9 +4233,8 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 		return NULL;
 	}
 
-	data = calloc(256, 256);
-	if(!data)
-		return NULL;
+	data = stex_source;
+	memset(stex_source, 0, sizeof(stex_source));
 
 	if(plane_display)
 		memset(x16_light_data, 0, 256);
@@ -4238,8 +4256,10 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 		ptr = data;
 		for(uint32_t i = 0; i < pl->width * pl->height; i++)
 		{
-			uint8_t in = *src++;
-			if(x16_palette_bright[in >> 4] & (1 << (in & 15)))
+			uint16_t in = *src++;
+			if(	in & 0xFF00 ||
+				x16_palette_bright[in >> 4] & (1 << (in & 15))
+			)
 				*ptr++ = in;
 			else
 				*ptr++ = 0;
@@ -4258,7 +4278,7 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 		gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 		gi->width = pl->width;
 		gi->height = pl->height;
-		gi->format = GL_RED;
+		gi->format = GL_RG;
 		x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
 
 		scale = pl->height > 128 ? 2 : 3;
@@ -4268,8 +4288,6 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 		ui_gfx_plane_texture.base.height = (uint32_t)pl->height * scale;
 	} else
 		ui_gfx_plane_texture.base.disabled = 1;
-
-	free(data);
 
 	if(effect)
 	{
@@ -4298,15 +4316,15 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 		switch(effect[0] & X16G_MASK_PL_EFFECT)
 		{
 			case X16G_PL_EFFECT_RANDOM:
-				ptr = text;
-				ptr += sprintf(text, "Mode: ");
+				ttr = text;
+				ttr += sprintf(text, "Mode: ");
 				if(!(effect[2] & 0x80))
-					*ptr++ = 'X';
+					*ttr++ = 'X';
 				if(!(effect[2] & 0x40))
-					*ptr++ = 'Y';
+					*ttr++ = 'Y';
 				if(!(effect[2] & 0x01))
-					*ptr++ = 'A';
-				*ptr = 0;
+					*ttr++ = 'A';
+				*ttr = 0;
 				glui_set_text((void*)ui_gfx_plane_effect.elements[2], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 				ui_gfx_plane_effect.elements[3]->base.disabled = 1;
 			break;
@@ -4369,79 +4387,72 @@ static const uint8_t *update_gfx_walls(ui_idx_t *idx)
 
 	if(wa->max)
 	{
-		uint8_t *data;
+		void *data = stex_source;
+		gltex_info_t *gi;
+		uint32_t scale, bsize, bused;
+		uint8_t *ptr;
+		uint8_t pi = 0;
 
-		data = malloc(256 * 256 * 2);
-		if(data)
+		if(wall_display)
 		{
-			gltex_info_t *gi;
-			uint32_t scale, bsize, bused;
-			uint8_t *ptr;
-			uint8_t pi = 0;
-
-			if(wall_display)
-			{
-				memset(x16_light_data, 0, 256);
-				x16g_update_texture(X16G_GLTEX_LIGHTS);
-			}
-
-			va = wa->variant + wa->now;
-
-			ui_gfx_wall_resolution.base.disabled = 0;
-			sprintf(text, "%u x %u\nvariant: %u / %u", va->sw.width, va->sw.height, wa->now + 1, wa->max);
-			glui_set_text(&ui_gfx_wall_resolution, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-
-			stex_generate_wall(wa, va, data);
-
-			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
-			gi->width = va->sw.width;
-			gi->height = va->sw.height;
-			gi->format = GL_RED;
-			gi->data = data;
-			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
-
-			scale = va->sw.height > 128 ? 1 : 3;
-
-			ui_gfx_wall_texture.base.disabled = 0;
-			ui_gfx_wall_texture.base.width = (uint32_t)va->sw.width * scale;
-			ui_gfx_wall_texture.base.height = (uint32_t)va->sw.height * scale;
-			ui_gfx_wall_texture.shader = wall_display ? SHADER_FRAGMENT_PALETTE_LIGHT : SHADER_FRAGMENT_PALETTE;
-
-			scale = wa->swal_colt - wa->swal_colr;
-			bsize = scale * va->sw.height;
-			bused = (bsize + 2047) / 2048;
-			sprintf(data, "VERA blocks: %u\nColumns used: %u\nColumns free: %u", bused, scale, ((bused * 2048) - bsize) / va->sw.height);
-
-			ui_gfx_wall_variant_info.base.disabled = 0;
-			glui_set_text(&ui_gfx_wall_variant_info, data, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
-
-			ui_gfx_wall_variant_name.base.disabled = 0;
-			glui_set_text(&ui_gfx_wall_variant_name, va->name, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
-
-			free(data);
-
-			ui_gfx_wall_animation.base.disabled = 0;
-
-			if(va->sw.anim[0])
-			{
-				sprintf(text, "Delay: %.3f", 1 << va->sw.anim[1]);
-				glui_set_text((void*)ui_gfx_wall_animation.elements[1], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-				ui_gfx_wall_animation.elements[1]->base.disabled = 0;
-
-				sprintf(text, "Start: %u", va->sw.anim[2]);
-				glui_set_text((void*)ui_gfx_wall_animation.elements[2], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-				ui_gfx_wall_animation.elements[2]->base.disabled = 0;
-
-				sprintf(text, "Animation: %u", va->sw.anim[0] + 1);
-			} else
-			{
-				ui_gfx_wall_animation.elements[1]->base.disabled = 1;
-				ui_gfx_wall_animation.elements[2]->base.disabled = 1;
-				sprintf(text, "Animation: \t");
-			}
-
-			glui_set_text((void*)ui_gfx_wall_animation.elements[0], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+			memset(x16_light_data, 0, 256);
+			x16g_update_texture(X16G_GLTEX_LIGHTS);
 		}
+
+		va = wa->variant + wa->now;
+
+		ui_gfx_wall_resolution.base.disabled = 0;
+		sprintf(text, "%u x %u\nvariant: %u / %u", va->sw.width, va->sw.height, wa->now + 1, wa->max);
+		glui_set_text(&ui_gfx_wall_resolution, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+
+		stex_generate_wall(wa, va, data);
+
+		gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
+		gi->width = va->sw.width;
+		gi->height = va->sw.height;
+		gi->format = GL_RG;
+		gi->data = data;
+		x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
+
+		scale = va->sw.height > 128 ? 1 : 3;
+
+		ui_gfx_wall_texture.base.disabled = 0;
+		ui_gfx_wall_texture.base.width = (uint32_t)va->sw.width * scale;
+		ui_gfx_wall_texture.base.height = (uint32_t)va->sw.height * scale;
+		ui_gfx_wall_texture.shader = wall_display ? SHADER_FRAGMENT_PALETTE_LIGHT : SHADER_FRAGMENT_PALETTE;
+
+		scale = wa->swal_colt - wa->swal_colr;
+		bsize = scale * va->sw.height;
+		bused = (bsize + 2047) / 2048;
+		sprintf(data, "VERA blocks: %u\nColumns used: %u\nColumns free: %u", bused, scale, ((bused * 2048) - bsize) / va->sw.height);
+
+		ui_gfx_wall_variant_info.base.disabled = 0;
+		glui_set_text(&ui_gfx_wall_variant_info, data, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
+
+		ui_gfx_wall_variant_name.base.disabled = 0;
+		glui_set_text(&ui_gfx_wall_variant_name, va->name, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
+
+		ui_gfx_wall_animation.base.disabled = 0;
+
+		if(va->sw.anim[0])
+		{
+			sprintf(text, "Delay: %.3f", 1 << va->sw.anim[1]);
+			glui_set_text((void*)ui_gfx_wall_animation.elements[1], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+			ui_gfx_wall_animation.elements[1]->base.disabled = 0;
+
+			sprintf(text, "Start: %u", va->sw.anim[2]);
+			glui_set_text((void*)ui_gfx_wall_animation.elements[2], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+			ui_gfx_wall_animation.elements[2]->base.disabled = 0;
+
+			sprintf(text, "Animation: %u", va->sw.anim[0] + 1);
+		} else
+		{
+			ui_gfx_wall_animation.elements[1]->base.disabled = 1;
+			ui_gfx_wall_animation.elements[2]->base.disabled = 1;
+			sprintf(text, "Animation: \t");
+		}
+
+		glui_set_text((void*)ui_gfx_wall_animation.elements[0], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 	}
 
 	return wa->name;
@@ -4489,103 +4500,98 @@ static const uint8_t *update_gfx_sprites(ui_idx_t *idx)
 
 	if(sp->max)
 	{
-		uint8_t *data;
+		void *data = stex_source;
+		gltex_info_t *gi;
+		uint32_t scale;
+		uint8_t *ptr;
+		uint8_t pi = 0;
 
-		data = calloc(256 * 256, 2);
-		if(data)
+		memset(stex_source, 0, sizeof(stex_source));
+
+		if(sprite_display)
 		{
-			gltex_info_t *gi;
-			uint32_t scale;
-			uint8_t *ptr;
-			uint8_t pi = 0;
-
-			if(sprite_display)
-			{
-				memset(x16_light_data, 0, 256);
-				x16g_update_texture(X16G_GLTEX_LIGHTS);
-			}
-
-			va = sp->variant + sp->now;
-
-			sprintf(text, "<        %d        >", va->sw.ox);
-			ui_gfx_sprite_offs_x.base.disabled = 0;
-			glui_set_text(&ui_gfx_sprite_offs_x, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-
-			sprintf(text, "<        %d        >", va->sw.oy);
-			ui_gfx_sprite_offs_y.base.disabled = 0;
-			glui_set_text(&ui_gfx_sprite_offs_y, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-
-			ui_gfx_sprite_resolution.base.disabled = 0;
-			sprintf(text, "%u x %u", va->sw.width, va->sw.height);
-			glui_set_text(&ui_gfx_sprite_resolution, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-
-			stex_generate_sprite(sp, va, data);
-
-			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
-			gi->width = va->sw.stride;
-			gi->height = va->sw.height;
-			gi->format = GL_RED;
-			gi->data = data;
-			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
-
-			if(va->sw.height > 193)
-				scale = 1;
-			else
-			if(va->sw.height > 129)
-				scale = 2;
-			else
-				scale = 3;
-
-			ui_gfx_sprite_texture.base.disabled = 0;
-			ui_gfx_sprite_texture.base.width = (uint32_t)va->sw.width * scale;
-			ui_gfx_sprite_texture.base.height = (uint32_t)va->sw.height * scale;
-			ui_gfx_sprite_texture.shader = sprite_display ? SHADER_FRAGMENT_PALETTE_LIGHT : SHADER_FRAGMENT_PALETTE;
-			ui_gfx_sprite_texture.coord.s[1] = (float)va->sw.width / (float)va->sw.stride;
-
-			if(sprite_origin < 2)
-			{
-				ui_gfx_sprite_texture.base.x = 512;
-				ui_gfx_sprite_texture.base.y = 448;
-				ui_gfx_sprite_texture.base.align = GLUI_ALIGN_CENTER_CENTER;
-
-				ui_gfx_sprite_origin.base.disabled = !sprite_origin;
-				ui_gfx_sprite_origin.base.x = ui_gfx_sprite_texture.base.x + va->sw.ox * scale;
-				ui_gfx_sprite_origin.base.y = ui_gfx_sprite_texture.base.y + (ui_gfx_sprite_texture.base.height - 1) / 2 + va->sw.oy * scale;
-
-				if(scale == 3)
-				{
-					if(!(va->sw.width & 1))
-						ui_gfx_sprite_origin.base.x++;
-					ui_gfx_sprite_origin.base.y--;
-				}
-			} else
-			{
-				ui_gfx_sprite_texture.base.x = 512 - va->sw.ox * scale;
-				ui_gfx_sprite_texture.base.y = 608 - va->sw.oy * scale;
-				ui_gfx_sprite_texture.base.align = GLUI_ALIGN_CENTER_BOT;
-
-				ui_gfx_sprite_origin.base.disabled = 0;
-				ui_gfx_sprite_origin.base.x = 512;
-				ui_gfx_sprite_origin.base.y = 608;
-
-				if(scale == 3)
-				{
-					if(!(va->sw.width & 1))
-						ui_gfx_sprite_texture.base.x--;
-					ui_gfx_sprite_texture.base.y += 2;
-				} else
-					ui_gfx_sprite_texture.base.y++;
-			}
-
-			ui_gfx_sprite_variant_info.base.disabled = 0;
-			sprintf(data, "Bytes used: %u\nBytes total: %u\nBytes saved: %d", sp->stex_used, sp->stex_total, sp->stex_total - sp->stex_used);
-			glui_set_text(&ui_gfx_sprite_variant_info, data, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
-
-			ui_gfx_sprite_variant_name.base.disabled = 0;
-			glui_set_text(&ui_gfx_sprite_variant_name, va->name, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
-
-			free(data);
+			memset(x16_light_data, 0, 256);
+			x16g_update_texture(X16G_GLTEX_LIGHTS);
 		}
+
+		va = sp->variant + sp->now;
+
+		sprintf(text, "<        %d        >", va->sw.ox);
+		ui_gfx_sprite_offs_x.base.disabled = 0;
+		glui_set_text(&ui_gfx_sprite_offs_x, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+
+		sprintf(text, "<        %d        >", va->sw.oy);
+		ui_gfx_sprite_offs_y.base.disabled = 0;
+		glui_set_text(&ui_gfx_sprite_offs_y, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+
+		ui_gfx_sprite_resolution.base.disabled = 0;
+		sprintf(text, "%u x %u", va->sw.width, va->sw.height);
+		glui_set_text(&ui_gfx_sprite_resolution, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+
+		stex_generate_sprite(sp, va, data);
+
+		gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
+		gi->width = va->sw.stride;
+		gi->height = va->sw.height;
+		gi->format = GL_RG;
+		gi->data = data;
+		x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
+
+		if(va->sw.height > 193)
+			scale = 1;
+		else
+		if(va->sw.height > 129)
+			scale = 2;
+		else
+			scale = 3;
+
+		ui_gfx_sprite_texture.base.disabled = 0;
+		ui_gfx_sprite_texture.base.width = (uint32_t)va->sw.width * scale;
+		ui_gfx_sprite_texture.base.height = (uint32_t)va->sw.height * scale;
+		ui_gfx_sprite_texture.shader = sprite_display ? SHADER_FRAGMENT_PALETTE_LIGHT : SHADER_FRAGMENT_PALETTE;
+		ui_gfx_sprite_texture.coord.s[1] = (float)va->sw.width / (float)va->sw.stride;
+
+		if(sprite_origin < 2)
+		{
+			ui_gfx_sprite_texture.base.x = 512;
+			ui_gfx_sprite_texture.base.y = 448;
+			ui_gfx_sprite_texture.base.align = GLUI_ALIGN_CENTER_CENTER;
+
+			ui_gfx_sprite_origin.base.disabled = !sprite_origin;
+			ui_gfx_sprite_origin.base.x = ui_gfx_sprite_texture.base.x + va->sw.ox * scale;
+			ui_gfx_sprite_origin.base.y = ui_gfx_sprite_texture.base.y + (ui_gfx_sprite_texture.base.height - 1) / 2 + va->sw.oy * scale;
+
+			if(scale == 3)
+			{
+				if(!(va->sw.width & 1))
+					ui_gfx_sprite_origin.base.x++;
+				ui_gfx_sprite_origin.base.y--;
+			}
+		} else
+		{
+			ui_gfx_sprite_texture.base.x = 512 - va->sw.ox * scale;
+			ui_gfx_sprite_texture.base.y = 608 - va->sw.oy * scale;
+			ui_gfx_sprite_texture.base.align = GLUI_ALIGN_CENTER_BOT;
+
+			ui_gfx_sprite_origin.base.disabled = 0;
+			ui_gfx_sprite_origin.base.x = 512;
+			ui_gfx_sprite_origin.base.y = 608;
+
+			if(scale == 3)
+			{
+				if(!(va->sw.width & 1))
+					ui_gfx_sprite_texture.base.x--;
+				ui_gfx_sprite_texture.base.y += 2;
+			} else
+				ui_gfx_sprite_texture.base.y++;
+		}
+
+		ui_gfx_sprite_variant_info.base.disabled = 0;
+		sprintf(data, "Bytes used: %u\nBytes total: %u\nBytes saved: %d", sp->stex_used, sp->stex_total, sp->stex_total - sp->stex_used);
+		glui_set_text(&ui_gfx_sprite_variant_info, data, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
+
+		ui_gfx_sprite_variant_name.base.disabled = 0;
+		glui_set_text(&ui_gfx_sprite_variant_name, va->name, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
 	}
 
 	return sp->name;
@@ -4839,7 +4845,7 @@ static const uint8_t *update_gfx_weapons(ui_idx_t *idx)
 				ui_gfx_wpn_info.color[1] = 0xFF44EE44;
 				glui_set_text(&ui_gfx_wpn_info, "EDIT MODE", glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
-				data = generate_wpn_preview(va, ws->data, NULL);
+				data = generate_wpn_preview(va, (uint8_t*)ws->data, NULL);
 				if(data)
 				{
 					wpnspr_part_t *part = va->ws.part + va->ws.now;
@@ -4923,9 +4929,7 @@ static void *hud_texgen_font(const hud_element_t *elm)
 	uint8_t *dst;
 	uint32_t idx;
 
-	data = malloc(elm->width * elm->height);
-	if(!data)
-		return NULL;
+	data = (uint8_t*)stex_source;
 
 	dst = data;
 	idx = 0;
@@ -5087,9 +5091,8 @@ static void *hud_pregen_font(const hud_element_t *elm)
 	uint8_t *data;
 	int32_t y, xl, xr;
 
-	data = calloc(160, 120);
-	if(!data)
-		return NULL;
+	data = (uint8_t*)stex_source;
+	memset(stex_source, 0, 160 * 120);
 
 	ui_gfx_hud_demo.base.click = uin_gfx_hud_demo;
 
@@ -5176,9 +5179,7 @@ static void *hud_texgen_nums(const hud_element_t *elm)
 	uint8_t *dst;
 	uint32_t idx;
 
-	data = malloc(elm->width * elm->height);
-	if(!data)
-		return NULL;
+	data = (uint8_t*)stex_source;
 
 	dst = data;
 	idx = 0;
@@ -5313,9 +5314,8 @@ static void *hud_pregen_nums(const hud_element_t *elm)
 	uint8_t *data;
 	uint8_t text[32];
 
-	data = calloc(160, 120);
-	if(!data)
-		return NULL;
+	data = (uint8_t*)stex_source;
+	memset(stex_source, 0, 160 * 120);
 
 	ui_gfx_hud_demo.base.click = NULL;
 
@@ -8258,7 +8258,6 @@ void x16g_generate()
 {
 	uint32_t gi = 2;
 	uint32_t ci = 0;
-	uint8_t data[256 * 256 * 2];
 
 	edit_busy_window("Generating editor graphics ...");
 
@@ -8273,8 +8272,8 @@ void x16g_generate()
 	{
 		variant_list_t *pl = x16_plane + i;
 		editor_texture_t *et = editor_texture + editor_texture_count;
-		uint8_t *dst = data;
-		uint8_t *src;
+		uint16_t *dst = stex_source;
+		uint16_t *src;
 
 		if(gi >= MAX_EDITOR_TEXTURES)
 			break;
@@ -8285,7 +8284,6 @@ void x16g_generate()
 		if(!pl->height)
 			continue;
 
-		// 8bpp
 		src = pl->data;
 
 		for(uint32_t i = 0; i < pl->width * pl->height; i++)
@@ -8299,7 +8297,7 @@ void x16g_generate()
 		}
 
 		glBindTexture(GL_TEXTURE_2D, x16_editor_gt[gi]);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, pl->width, pl->height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, pl->width, pl->height, 0, GL_RG, GL_UNSIGNED_BYTE, stex_source);
 
 		strcpy(et->name, pl->name);
 		et->nhash = pl->hash;
@@ -8345,10 +8343,10 @@ void x16g_generate()
 			et->effect = NULL;
 			et->animate = wv->sw.anim;
 
-			stex_generate_wall(wa, wv, data);
+			stex_generate_wall(wa, wv, stex_source);
 
 			glBindTexture(GL_TEXTURE_2D, x16_editor_gt[gi]);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, wv->sw.width, wv->sw.height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, wv->sw.width, wv->sw.height, 0, GL_RG, GL_UNSIGNED_BYTE, stex_source);
 
 			gi++;
 			if(gi >= MAX_EDITOR_TEXTURES)
@@ -8454,9 +8452,8 @@ void x16g_export()
 	uint32_t num_pl = 0;
 	uint32_t num_wa = 0;
 	uint32_t num_li = gfx_idx[GFX_MODE_LIGHTS].max;
-	uint8_t pxtmp[4096];
-	uint8_t *rtex = pxtmp;
-	uint8_t *ttex = pxtmp + 2048;
+	uint16_t *rtex = stex_data;
+	uint16_t *ttex = stex_data + 2048;
 	hud_export_t *hud = edit_cbor_buffer + offsetof(export_head_t, hudinfo);
 
 	edit_busy_window("Exporting graphics ...");
@@ -8597,7 +8594,6 @@ void x16g_export()
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_PLANES].max; i++)
 	{
 		variant_list_t *pl = x16_plane + i;
-		void *bptr = ptr;
 		uint32_t w, h;
 		uint32_t base, tmap, hash;
 
@@ -8617,12 +8613,11 @@ void x16g_export()
 			continue;
 		}
 
-		make_plane_tiles(ptr, pl->data, pl->height, w);
-		ptr += 4096;
+		make_plane_tiles(stex_source, pl->data, pl->height, w);
 
-		for(uint32_t i = 1; i < num_li; i++)
+		for(uint32_t i = 0; i < num_li; i++)
 		{
-			memcpy_light(ptr, bptr, 4096, i);
+			memcpy_light(ptr, stex_source, 4096, i);
 			ptr += 4096;
 		}
 
@@ -8653,7 +8648,6 @@ void x16g_export()
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_WALLS].max; i++)
 	{
 		variant_list_t *vl = x16_wall + i;
-		void *bptr = ptr;
 		uint32_t cols, bsize, bused;
 		uint32_t base, type, hash;
 
@@ -8693,12 +8687,11 @@ void x16g_export()
 
 		// make tiles
 
-		make_wall_tiles(ptr, vl->data, vl->swal_height, cols);
-		ptr += bsize;
+		make_wall_tiles(stex_source, vl->data, vl->swal_height, cols);
 
-		for(uint32_t i = 1; i < num_li; i++)
+		for(uint32_t i = 0; i < num_li; i++)
 		{
-			memcpy_light(ptr, bptr, bsize, i);
+			memcpy_light(ptr, stex_source, bsize, i);
 			ptr += bsize;
 		}
 
@@ -8900,7 +8893,7 @@ uint32_t x16g_generate_state_texture(uint32_t idx, uint32_t frm, uint32_t rot)
 	variant_info_t *match_bad_frm = NULL;
 	uint32_t exact = rot & 0x80000000; // frame and rotation must match (with exception for non-rotated sprites)
 	uint32_t exfrm = rot & 0x40000000; // only frame must match
-	uint8_t *data;
+	uint16_t *data;
 
 	if(idx >= gfx_idx[GFX_MODE_SPRITES].max)
 		return 1;
@@ -8956,29 +8949,24 @@ uint32_t x16g_generate_state_texture(uint32_t idx, uint32_t frm, uint32_t rot)
 	if(!match_perfect)
 		return 1;
 
-	data = calloc(256 * 256, 2);
-	if(data)
-	{
-		x16g_state_res[0] = match_perfect->sw.width;
-		x16g_state_res[1] = match_perfect->sw.height;
-		x16g_state_res[2] = match_perfect->sw.stride;
+	data = stex_source;
+	memset(stex_source, 0, sizeof(stex_source));
 
-		x16g_state_offs[0] = match_perfect->sw.ox;
-		x16g_state_offs[1] = match_perfect->sw.oy;
+	x16g_state_res[0] = match_perfect->sw.width;
+	x16g_state_res[1] = match_perfect->sw.height;
+	x16g_state_res[2] = match_perfect->sw.stride;
 
-		stex_generate_sprite(sp, match_perfect, data);
+	x16g_state_offs[0] = match_perfect->sw.ox;
+	x16g_state_offs[1] = match_perfect->sw.oy;
 
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, match_perfect->sw.stride, match_perfect->sw.height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+	stex_generate_sprite(sp, match_perfect, data);
 
-		free(data);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, match_perfect->sw.stride, match_perfect->sw.height, 0, GL_RG, GL_UNSIGNED_BYTE, data);
 
-		x16g_state_data_ptr = sp->data;
-		x16g_state_offs_ptr = match_perfect->sw.offset;
+	x16g_state_data_ptr = sp->data;
+	x16g_state_offs_ptr = match_perfect->sw.offset;
 
-		return 0;
-	}
-
-	return 1;
+	return 0;
 }
 
 uint32_t x16g_generate_weapon_texture(uint32_t idx, uint32_t frm, int32_t *box)
@@ -9016,7 +9004,7 @@ uint32_t x16g_generate_weapon_texture(uint32_t idx, uint32_t frm, int32_t *box)
 	if(pick < 0)
 		return 1;
 
-	data = generate_wpn_preview(ws->variant + pick, ws->data, box);
+	data = generate_wpn_preview(ws->variant + pick, (uint8_t*)ws->data, box);
 	if(!data)
 		return 1;
 
@@ -9206,10 +9194,10 @@ const uint8_t *x16g_save(const uint8_t *file)
 
 			kgcbor_put_string(&gen, &ftxt, 1);
 
-			cbor_wpn_vgrp[CBOR_WPN_VGRP_NDATA].ptr = vl->data + vi->ws.dstart;
+			cbor_wpn_vgrp[CBOR_WPN_VGRP_NDATA].ptr = (uint8_t*)vl->data + vi->ws.dstart;
 			cbor_wpn_vgrp[CBOR_WPN_VGRP_NDATA].extra = vi->ws.dbright;
 
-			cbor_wpn_vgrp[CBOR_WPN_VGRP_BDATA].ptr = vl->data + vi->ws.dstart + vi->ws.dbright;
+			cbor_wpn_vgrp[CBOR_WPN_VGRP_BDATA].ptr = (uint8_t*)vl->data + vi->ws.dstart + vi->ws.dbright;
 			cbor_wpn_vgrp[CBOR_WPN_VGRP_BDATA].extra = vi->ws.dsize - vi->ws.dbright;
 
 			edit_cbor_export(cbor_wpn_vgrp, NUM_CBOR_WPN_VGRP, &gen);

@@ -227,7 +227,7 @@ typedef struct
 	int32_t ox, oy;
 	float ws, scale;
 	uint32_t shader;
-	uint8_t *data;
+	uint16_t *data;
 	uint32_t *offs;
 } kge_sprite_t;
 

@@ -49,9 +49,12 @@ void main()
 			pixelColor = texture2D(palette, vec2(pidx, 0.0f));
 		break;
 		case 2: // texture palette with light
-			temp = texture2D(texture, tex_coord.st).ra;
+			temp = texture2D(texture, tex_coord.st).rg;
 			pidx = temp.r * (255.0f / 256.0f) + (1.0f / 1024.0f);
-			lidx = texture2D(light, vec2(pidx, lmap)).r * (255.0f / 256.0f) + (1.0f / 1024.0f);
+			if(temp.g == 0.0f)
+				lidx = texture2D(light, vec2(pidx, lmap)).r * (255.0f / 256.0f) + (1.0f / 1024.0f);
+			else
+				lidx = pidx;
 			pixelColor = texture2D(palette, vec2(lidx, 0.0f));
 		break;
 		case 3: // plain color

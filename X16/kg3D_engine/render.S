@@ -6036,7 +6036,6 @@ texture_set:
 	sta	SD_SEC_U
 
 	; load
-stx DBG_BYTE0
 	jsr	video_load_vram
 
 	; texture bank

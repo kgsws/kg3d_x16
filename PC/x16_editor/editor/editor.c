@@ -4721,7 +4721,7 @@ void *edit_cbor_branch(const edit_cbor_obj_t *cbor_obj, uint32_t type, const uin
 					if(val_len >= cbor_obj->extra)
 						val_len = cbor_obj->extra - 1;
 					memcpy(cbor_obj->ptr, value->ptr, val_len);
-					cbor_obj->ptr[val_len] = 0;
+					*(uint8_t*)(cbor_obj->ptr + val_len) = 0;
 				return NULL;
 				case EDIT_CBOR_TYPE_BINARY:
 					if(val_len <= cbor_obj->extra)

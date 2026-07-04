@@ -166,7 +166,7 @@ typedef struct
 	union
 	{
 		void *handler;
-		uint8_t *ptr;
+		void *ptr;
 		uint8_t *u8;
 		int8_t *s8;
 		uint16_t *u16;

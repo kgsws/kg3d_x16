@@ -143,7 +143,7 @@ extern editor_sky_t editor_sky[MAX_X16_SKIES];
 
 extern uint32_t x16g_state_res[3];
 extern int32_t x16g_state_offs[2];
-extern uint8_t *x16g_state_data_ptr;
+extern uint16_t *x16g_state_data_ptr;
 extern uint32_t *x16g_state_offs_ptr;
 
 extern uint8_t x16_sky_name[LEN_X16_SKY_NAME];
