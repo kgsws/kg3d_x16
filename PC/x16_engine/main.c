@@ -626,7 +626,7 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 {
 	static const uint8_t wall_tab_shift[] = {5, 4, 3};
 	texture_info_t *ti = texture_info + idx;
-	uint32_t cols, tmap;
+	uint32_t cols, tmap, tdat;
 
 	if(!idx)
 	{
@@ -651,31 +651,17 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 	tex_swap = ti->type & 0x40; // 'bad texture'
 
 	tmap = ti->tilemap;
+	tdat = ti->tiledata;
 
 	// cache
 	if(!(ti->vram[0] & 0x80))
 	{
-		ti->used = 1;
-#if 0
-		// TEST: copy to VRAM
-		uint32_t count = (tex_type & 0x80) ? 2 : tex_type;
-		uint32_t size = count * 2048;
-		uint32_t tmp;
-		void *dst;
-
-		tmp = (VRAM_FIRST_BLOCK * 2048) >> 9;
-		dst = vram + VRAM_FIRST_BLOCK * 2048;
-
-		memcpy(dst, game_gfx + ti->datptr, size);
-		ti->tiledata = tmp; // only planes
-
-		for(uint32_t i = 0; i < count; i++)
-			ti->vram[i] = VRAM_FIRST_BLOCK + i;
-#else
 		uint32_t count = tex_type & 15;
 		void *src;
 
-		if(tex_type & 0x80)
+		ti->used = 1;
+
+		if(tex_type == 0x82)
 		{
 			if(!(ti->vram[0] | ti->vram[1]))
 			{
@@ -689,8 +675,6 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 
 				blk &= 0xFE;
 				vcache_demote(blk);
-
-				ti->tiledata = blk << 2;
 
 				vcache_verify("PlnC");
 			} else
@@ -757,7 +741,13 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 		}
 
 		vcache_verify("TexSet");
-#endif
+
+		if(tex_type & 0x80)
+		{
+			tdat = ti->vram[0] << 2;
+			if(tex_type & 1)
+				tmap |= tdat;
+		}
 	}
 
 	// wall
@@ -771,7 +761,7 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 
 	// source
 
-	vera_tex_data(ti->tiledata, tmap);
+	vera_tex_data(tdat, tmap);
 
 	// flags
 
@@ -3581,8 +3571,8 @@ static void add_texture(uint32_t hash, uint32_t info, uint8_t *lmap)
 		if(idx < 0)
 			goto fail;
 
-		ti->type = 0x82;
 		ti->tilemap = gfx_head->plane.info[0][idx];
+		ti->type = (ti->tilemap & 0x80) ? 0x82 : 0x81;
 
 		hash = gfx_head->plane.data[0][idx];
 		hash |= (uint32_t)gfx_head->plane.data[1][idx] << 8;

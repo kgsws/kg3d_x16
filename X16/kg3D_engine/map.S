@@ -1215,6 +1215,12 @@ load_plane:
 	pla
 	sta	TEXINFO_STRUCT_TILEMAP,x
 
+	; ti->tilemap & 0x80
+	bmi	:+
+
+	; type
+	dec	TEXINFO_STRUCT_TYPE,x
+:
 	; return sector count
 	lda	#8
 

@@ -547,6 +547,13 @@
 						"elements":
 						[
 							{
+								"name": "ui_gfx_plane_variant_info",
+								"x": 512,
+								"y": 660,
+								"text": true,
+								"color": "bright"
+							},
+							{
 								"name": "ui_gfx_plane_import_raw",
 								"click": "uin_gfx_plane_import_raw",
 								"x": 200,

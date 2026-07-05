@@ -21,7 +21,7 @@
 
 #include "x16tex.h"
 
-#define STEX_PIXEL_LIMIT	0x10000	// 0x10000 is engine limit
+#define STEX_PIXEL_LIMIT	0x10000	// do not change
 #define FONT_FIRST_CHAR	' '
 #define FONT_CHAR_COUNT	96
 #define NUMS_CHAR_COUNT	16
@@ -307,6 +307,7 @@ typedef struct
 		{
 			// planes
 			uint32_t width, height;
+			uint32_t tilecount;
 		};
 		struct
 		{
@@ -321,6 +322,7 @@ typedef struct
 	};
 	variant_info_t variant[MAX_X16_VARIANTS];
 	uint16_t data[STEX_PIXEL_LIMIT];
+	uint16_t tata[2048];
 } variant_list_t;
 
 typedef struct
@@ -793,6 +795,8 @@ static const uint16_t swpn_data_size[] =
 	0
 };
 
+static uint32_t try_tile_plane(variant_list_t *pl);
+
 static void hud_import_font(uint8_t*);
 static void *hud_texgen_font(const hud_element_t*);
 static void *hud_pregen_font(const hud_element_t*);
@@ -1069,7 +1073,6 @@ static edit_cbor_obj_t cbor_plane[] =
 		.name = "data",
 		.nlen = 4,
 		.type = EDIT_CBOR_TYPE_BINARY,
-		.extra = 64 * 64 * sizeof(uint16_t)
 	},
 	// terminator
 	[NUM_CBOR_PLANE] = {}
@@ -1399,10 +1402,31 @@ static edit_cbor_obj_t cbor_hud[] =
 //
 // checks
 
-static uint32_t check_plane_resolution(uint32_t width, uint32_t height)
+static uint32_t check_plane_resolution(uint32_t width, uint32_t height, uint32_t mode)
 {
-	return	!(width == 64 && height == 64) &&
-		!(width == 32 && height == 128);
+	if(!mode)
+	{
+		return	!(width == 64 && height == 64) &&
+			!(width == 32 && height == 128);
+	} else
+	{
+		return	(
+				width != 8 &&
+				width != 16 &&
+				width != 32 &&
+				width != 64 &&
+				width != 128 &&
+				width != 256
+			) ||
+			(
+				height != 8 &&
+				height != 16 &&
+				height != 32 &&
+				height != 64 &&
+				height != 128 &&
+				height != 256
+			);
+	}
 }
 
 static uint32_t check_wall_resolution(uint32_t width, uint32_t height)
@@ -1581,14 +1605,18 @@ static int32_t cbor_gfx_plane(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 			// empty plane
 			gfx_idx[GFX_MODE_PLANES].max = cbor_main_index;
 		} else
-		if(check_plane_resolution(cbor_load_object->width, cbor_load_object->height))
 		{
-			// invalid resolution; skip
-			memset(cbor_load_object, 0, sizeof(variant_list_t));
-			cbor_main_index--;
-		} else
-			// save amount
-			gfx_idx[GFX_MODE_PLANES].max = cbor_main_index;
+			uint32_t tiled = !try_tile_plane(cbor_load_object);
+
+			if(check_plane_resolution(cbor_load_object->width, cbor_load_object->height, tiled))
+			{
+				// invalid resolution; skip
+				memset(cbor_load_object, 0, sizeof(variant_list_t));
+				cbor_main_index--;
+			} else
+				// save amount
+				gfx_idx[GFX_MODE_PLANES].max = cbor_main_index;
+		}
 
 		cbor_load_object = NULL;
 
@@ -1618,6 +1646,7 @@ static int32_t cbor_gfx_plane(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 		cbor_plane[CBOR_PLANE_WIDTH].u32 = &pl->width;
 		cbor_plane[CBOR_PLANE_HEIGHT].u32 = &pl->height;
 		cbor_plane[CBOR_PLANE_DATA].ptr = pl->data;
+		cbor_plane[CBOR_PLANE_DATA].extra = 256 * 256 * sizeof(uint16_t);
 		cbor_main_index++;
 
 		ctx->entry_cb = cbor_gfx_plane_entry;
@@ -2723,6 +2752,125 @@ static void fix_hax_tiles(uint8_t *dst, uint16_t *src, uint32_t count)
 	}
 }
 
+static uint32_t try_tile_plane(variant_list_t *pl)
+{
+	uint32_t count = 0;
+	uint32_t plmax;
+	uint16_t *src;
+	uint32_t xmsk, ymsk, ysft;
+	uint8_t tilemap[32][32];
+
+	pl->tilecount = 0;
+
+	switch(pl->height)
+	{
+		case 32:
+			xmsk = 3;
+			ysft = 2;
+		break;
+		case 64:
+			xmsk = 7;
+			ysft = 3;
+		break;
+		case 128:
+			xmsk = 15;
+			ysft = 4;
+		break;
+		case 256:
+			xmsk = 31;
+			ysft = 5;
+		break;
+		default:
+			return 1;
+	}
+
+	switch(pl->width)
+	{
+		case 32:
+			ymsk = 3;
+		break;
+		case 64:
+			ymsk = 7;
+		break;
+		case 128:
+			ymsk = 15;
+		break;
+		case 256:
+			ymsk = 31;
+		break;
+		default:
+			return 1;
+	}
+
+	make_plane_tiles(stex_source, pl->data, pl->height, pl->width);
+
+	plmax = pl->width * pl->height / 64;
+	src = stex_source;
+
+	for(uint32_t i = 0; i < plmax; i++)
+	{
+		uint16_t *cmp = stex_data;
+		uint32_t j;
+
+		for(j = 0; j < count; j++)
+		{
+			if(!memcmp(src, cmp, 64 * sizeof(uint16_t)))
+				break;
+			cmp += 64;
+		}
+
+		tilemap[i >> ysft][i & xmsk] = j;
+
+		if(j >= count)
+		{
+			memcpy(cmp, src, 64 * sizeof(uint16_t));
+			count++;
+		}
+
+		src += 64;
+	}
+
+	if(input_shift)
+		edit_status_printf("Unique tiles: %u", count);
+
+	if(	pl->width <= 64 &&
+		pl->height <= 64
+	){
+		if(count <= 31)
+		{
+			uint16_t *dst = pl->tata;
+
+			pl->tilecount = count;
+
+			for(uint32_t y = 0; y < 8; y++)
+				for(uint32_t x = 0; x < 8; x++)
+					*dst++ = (tilemap[y & ymsk][x & xmsk] + 1) | 0xFF00;
+
+			memcpy(dst, stex_data, count * 64 * sizeof(uint16_t));
+
+			return 0;
+		}
+	} else
+	{
+		if(count <= 16)
+		{
+			uint16_t *dst = pl->tata;
+
+			pl->tilecount = count;
+
+			for(uint32_t y = 0; y < 32; y++)
+				for(uint32_t x = 0; x < 32; x++)
+					*dst++ = (tilemap[y & ymsk][x & xmsk] + 16) | 0xFF00;
+
+			memcpy(dst, stex_data, count * 64 * sizeof(uint16_t));
+
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
 //
 // data export
 
@@ -2851,6 +2999,41 @@ static void set_gfx_mode(uint32_t mode)
 	ui_set[mode].text->color[0] = 0xFF0077FF;
 
 	update_gfx_mode(0);
+}
+
+//
+// planes
+
+static void gfx_generate_plane(variant_list_t *pl)
+{
+	uint32_t d;
+
+	if(!pl->tilecount)
+		return;
+
+	if(	pl->width <= 64 &&
+		pl->height <= 64
+	)
+		d = 8;
+	else
+		d = 32;
+
+	for(uint32_t y = 0; y < pl->height / 8; y++)
+	{
+		for(uint32_t x = 0; x < pl->width / 8; x++)
+		{
+			uint8_t tile = pl->tata[x * d + y];
+			uint16_t *src = pl->tata + tile * 64;
+			uint16_t *dst = pl->data + y * pl->width * 8 + x * 8;
+
+			for(uint32_t i = 0; i < 8; i++)
+			{
+				for(uint32_t j = 0; j < 8; j++)
+					dst[j * pl->width] = *src++;
+				dst++;
+			}
+		}
+	}
 }
 
 //
@@ -4220,7 +4403,7 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 	gltex_info_t *gi;
 	uint16_t *data, *ptr;
 	uint8_t *effect = NULL;
-	uint8_t text[32];
+	uint8_t text[64];
 
 	glui_set_text(&ui_gfx_plane_display, plane_display ? "Show: only fullbright" : "Show: everything", glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
@@ -4250,30 +4433,18 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 //		ui_gfx_plane_texture.base.x = 512;
 	ui_gfx_plane_texture.shader = SHADER_FRAGMENT_PALETTE;
 
-	if(plane_display)
-	{
-		src = pl->data;
-		ptr = data;
-		for(uint32_t i = 0; i < pl->width * pl->height; i++)
-		{
-			uint16_t in = *src++;
-			if(	in & 0xFF00 ||
-				x16_palette_bright[in >> 4] & (1 << (in & 15))
-			)
-				*ptr++ = in;
-			else
-				*ptr++ = 0;
-		}
-
-		gltex_info[X16G_GLTEX_SHOW_TEXTURE].data = data;
-	}
-
-	if(plane_display)
-		x16g_update_texture(X16G_GLTEX_LIGHTS);
-
 	if(pl->width && pl->height)
 	{
 		uint32_t scale;
+
+		gfx_generate_plane(pl);
+		gltex_info[X16G_GLTEX_SHOW_TEXTURE].data = pl->data;
+
+		if(plane_display)
+		{
+			memset(x16_light_data, 0, 256);
+			x16g_update_texture(X16G_GLTEX_LIGHTS);
+		}
 
 		gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
 		gi->width = pl->width;
@@ -4286,8 +4457,20 @@ static const uint8_t *update_gfx_planes(ui_idx_t *idx)
 		ui_gfx_plane_texture.base.disabled = 0;
 		ui_gfx_plane_texture.base.width = (uint32_t)pl->width * scale;
 		ui_gfx_plane_texture.base.height = (uint32_t)pl->height * scale;
+		ui_gfx_plane_texture.shader = plane_display ? SHADER_FRAGMENT_PALETTE_LIGHT : SHADER_FRAGMENT_PALETTE;
+
+		if(pl->tilecount)
+			sprintf(text, "Tiled plane\n%u tile%s\n1 VERA block", pl->tilecount, pl->tilecount != 1 ? "s" : "");
+		else
+			sprintf(text, "Normal plane\n2 VERA blocks");
+
+		ui_gfx_plane_variant_info.base.disabled = 0;
+		glui_set_text(&ui_gfx_plane_variant_info, text, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
 	} else
+	{
 		ui_gfx_plane_texture.base.disabled = 1;
+		ui_gfx_plane_variant_info.base.disabled = 1;
+	}
 
 	if(effect)
 	{
@@ -6011,6 +6194,7 @@ static void fs_plane(uint8_t *file)
 	image_t *img;
 	uint32_t *src;
 	uint32_t size;
+	uint32_t tiled = 0;
 	variant_list_t *pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
 
 	img = img_png_load(file, 0);
@@ -6020,11 +6204,15 @@ static void fs_plane(uint8_t *file)
 		return;
 	}
 
-	if(check_plane_resolution(img->width, img->height))
+	if(check_plane_resolution(img->width, img->height, 0))
 	{
-		free(img);
-		edit_status_printf("Invalid image resolution!");
-		return;
+		if(check_plane_resolution(img->width, img->height, 1))
+		{
+			free(img);
+			edit_status_printf("Invalid image resolution!");
+			return;
+		}
+		tiled = 1;
 	}
 
 	size = img->width * img->height;
@@ -6038,14 +6226,22 @@ static void fs_plane(uint8_t *file)
 
 	free(img);
 
+	if(	try_tile_plane(pl) &&
+		tiled
+	){
+		edit_status_printf("Image is not tilable!");
+		return;
+	}
+
 	update_gfx_mode(0);
 }
 
 static void fs_plane_raw(uint8_t *file)
 {
 	image_t *img;
-	uint32_t *src;
+	uint8_t *src;
 	uint32_t size;
+	uint32_t tiled = 0;
 	variant_list_t *pl = x16_plane + gfx_idx[GFX_MODE_PLANES].now;
 
 	img = img_png_load(file, 1);
@@ -6055,19 +6251,34 @@ static void fs_plane_raw(uint8_t *file)
 		return;
 	}
 
-	if(check_plane_resolution(img->width, img->height))
+	if(check_plane_resolution(img->width, img->height, 0))
 	{
-		free(img);
-		edit_status_printf("Invalid image resolution!");
-		return;
+		if(check_plane_resolution(img->width, img->height, 1))
+		{
+			free(img);
+			edit_status_printf("Invalid image resolution!");
+			return;
+		}
+		tiled = 1;
 	}
 
-	memcpy(pl->data, img->data, img->width * img->height);
+	size = img->width * img->height;
+	src = (uint8_t*)img->data;
+
+	for(uint32_t i = 0; i < size; i++)
+		pl->data[i] = src[i];
 
 	pl->width = img->width;
 	pl->height = img->height;
 
 	free(img);
+
+	if(	try_tile_plane(pl) &&
+		tiled
+	){
+		edit_status_printf("Image is not tilable!");
+		return;
+	}
 
 	update_gfx_mode(0);
 }
@@ -8284,20 +8495,10 @@ void x16g_generate()
 		if(!pl->height)
 			continue;
 
-		src = pl->data;
-
-		for(uint32_t i = 0; i < pl->width * pl->height; i++)
-		{
-			uint16_t color = *src++;
-
-			if(x16_palette_bright[color >> 4] & (1 << (color & 15)))
-				color |= 0xFF00;
-
-			*dst++ = color;
-		}
+		gfx_generate_plane(pl);
 
 		glBindTexture(GL_TEXTURE_2D, x16_editor_gt[gi]);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, pl->width, pl->height, 0, GL_RG, GL_UNSIGNED_BYTE, stex_source);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, pl->width, pl->height, 0, GL_RG, GL_UNSIGNED_BYTE, pl->data);
 
 		strcpy(et->name, pl->name);
 		et->nhash = pl->hash;
@@ -8594,30 +8795,39 @@ void x16g_export()
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_PLANES].max; i++)
 	{
 		variant_list_t *pl = x16_plane + i;
-		uint32_t w, h;
 		uint32_t base, tmap, hash;
+		uint16_t *src;
 
 		base = (ptr - edit_cbor_buffer) / 512;
 
-		switch(pl->height)
+		if(!pl->tilecount)
 		{
-			case 128:
-				tmap = 0b11110110;
-				w = 32;
-			break;
-			case 64:
-				tmap = 0b11111001;
-				w = 64;
-			break;
-			default:
-			continue;
-		}
+			switch(pl->height)
+			{
+				case 128:
+					tmap = 0b11110110;
+				break;
+				case 64:
+					tmap = 0b11111001;
+				break;
+				default:
+				continue;
+			}
 
-		make_plane_tiles(stex_source, pl->data, pl->height, w);
+			make_plane_tiles(stex_source, pl->data, pl->height, pl->width);
+
+			src = stex_source;
+			hash = 4096;
+		} else
+		{
+			tmap = (pl->width > 64 || pl->height > 64) ? 2 : 1;
+			src = pl->tata;
+			hash = 2048;
+		}
 
 		for(uint32_t i = 0; i < num_li; i++)
 		{
-			memcpy_light(ptr, stex_source, 4096, i);
+			memcpy_light(ptr, src, hash, i);
 			ptr += 4096;
 		}
 
@@ -9147,10 +9357,12 @@ const uint8_t *x16g_save(const uint8_t *file)
 
 		kgcbor_put_string(&gen, pl->name, -1);
 
-		// 8bpp
+		gfx_generate_plane(pl);
+
 		cbor_plane[CBOR_PLANE_WIDTH].u32 = &pl->width;
 		cbor_plane[CBOR_PLANE_HEIGHT].u32 = &pl->height;
 		cbor_plane[CBOR_PLANE_DATA].ptr = pl->data;
+		cbor_plane[CBOR_PLANE_DATA].extra = pl->width * pl->height * sizeof(uint64_t);
 
 		edit_cbor_export(cbor_plane, NUM_CBOR_PLANE, &gen);
 	}

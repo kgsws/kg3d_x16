@@ -5823,9 +5823,9 @@ texture_set:
 	ora	#>TEXINFO_STRUCT_VRAM_BASE
 	sta	@vblk_skip+3
 
-	; if(tex_type & 0x80) ;; TODO
-	txa
-	bpl	@skip_plane
+	; if(tex_type == 0x82)
+	cpx	#$82
+	bne	@skip_plane
 
 	; if(!(ti->vram[0] | ti->vram[1]))
 	lda	TEXINFO_STRUCT_VRAM_PLN0,y
@@ -6063,15 +6063,41 @@ texture_set:
 	; restore
 	ldy	VIDEO_TMP_0
 
+	; if(tex_type & 0x80)
+	lda	TEXINFO_STRUCT_TYPE,y
+	bpl	@tb_skip
+	tax
+
+	; tdat = ti->vram[0] << 2
+	lda	TEXINFO_STRUCT_VRAM_BASE,y
+	asl
+	asl
+	sta	VERA_FX_TILEBASE
+	sta	VIDEO_TMP_0
+
+	; if(tex_type & 1)
+	txa
+	lsr
+	bcc	@tb_skip
+
+	; tmap |= tdat
+	lda	TEXINFO_STRUCT_TILEMAP,y
+	ora	VIDEO_TMP_0
+	sta	VERA_FX_MAPBASE
+
+	bra	@tm_skip
+
 @no_cache:
 	; ti->tiledata
 	lda	TEXINFO_STRUCT_TILEDATA,y
 	sta	VERA_FX_TILEBASE
 
+@tb_skip:
 	; ti->tilemap
 	ldx	TEXINFO_STRUCT_TILEMAP,y
 	stx	VERA_FX_MAPBASE
 
+@tm_skip:
 	; if(!(tex_type & 0x80))
 	lda	TEXINFO_STRUCT_TYPE,y
 	bmi	@not_wall
