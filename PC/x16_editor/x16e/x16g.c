@@ -22,6 +22,7 @@
 #include "x16tex.h"
 
 #define STEX_PIXEL_LIMIT	0x10000	// do not change
+#define STEX_PIXEL_LIMIT_TEX	(13 * 2048)
 #define FONT_FIRST_CHAR	' '
 #define FONT_CHAR_COUNT	96
 #define NUMS_CHAR_COUNT	16
@@ -110,6 +111,7 @@ enum
 {
 	CBOR_PLANE_WIDTH,
 	CBOR_PLANE_HEIGHT,
+	CBOR_PLANE_EFFECT,
 	CBOR_PLANE_DATA,
 	//
 	NUM_CBOR_PLANE
@@ -1068,6 +1070,13 @@ static edit_cbor_obj_t cbor_plane[] =
 		.nlen = 6,
 		.type = EDIT_CBOR_TYPE_U32,
 	},
+	[CBOR_PLANE_EFFECT] =
+	{
+		.name = "effect",
+		.nlen = 6,
+		.type = EDIT_CBOR_TYPE_BINARY,
+		.extra = 4
+	},
 	[CBOR_PLANE_DATA] =
 	{
 		.name = "data",
@@ -1645,6 +1654,7 @@ static int32_t cbor_gfx_plane(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type, kgc
 
 		cbor_plane[CBOR_PLANE_WIDTH].u32 = &pl->width;
 		cbor_plane[CBOR_PLANE_HEIGHT].u32 = &pl->height;
+		cbor_plane[CBOR_PLANE_EFFECT].ptr = pl->variant[0].pl.effect;
 		cbor_plane[CBOR_PLANE_DATA].ptr = pl->data;
 		cbor_plane[CBOR_PLANE_DATA].extra = 256 * 256 * sizeof(uint16_t);
 		cbor_main_index++;
@@ -3053,17 +3063,20 @@ static void stex_reset(uint16_t *source, uint32_t count)
 	memset(stex_data, 0, sizeof(stex_data));
 }
 
-static int32_t stex_insert(uint16_t *data, uint32_t len)
+static int32_t stex_insert(uint16_t *data, uint32_t len, uint32_t is_sprite)
 {
 	uint16_t *ptr = stex_data;
 	uint16_t *fitp = NULL;
 	uint16_t *fits = NULL;
 	uint32_t offs, used;
+	uint32_t limit = is_sprite ? STEX_PIXEL_LIMIT : STEX_PIXEL_LIMIT_TEX;
+
+	limit /= 256;
 
 	stex_total += len;
 
 	// go trough existing data
-	for(uint32_t i = 0; i < STEX_PIXEL_LIMIT / 256; i++, ptr += 256)
+	for(uint32_t i = 0; i < limit; i++, ptr += 256)
 	{
 		int32_t used = 256 - (int32_t)stex_space[i];
 		int32_t check = used - len;
@@ -3147,7 +3160,7 @@ static uint32_t stex_remake_columns(variant_list_t *vl, uint32_t is_sprite)
 					if(len != l)
 						continue;
 
-					ret = stex_insert(stex_source + offs, len);
+					ret = stex_insert(stex_source + offs, len, 1);
 					if(ret < 0)
 						return 1;
 
@@ -3170,7 +3183,7 @@ static uint32_t stex_remake_columns(variant_list_t *vl, uint32_t is_sprite)
 				uint32_t offs = vi->sw.offset[j];
 				int32_t ret;
 
-				ret = stex_insert(stex_source + offs, vl->variant[0].sw.height);
+				ret = stex_insert(stex_source + offs, vl->variant[0].sw.height, 0);
 				if(ret < 0)
 					return 1;
 
@@ -3245,7 +3258,7 @@ static uint32_t stex_wall_texture_32(image_t *img, variant_list_t *wl)
 		uint32_t *ss = src++;
 
 		for(uint32_t y = 0; y < img->height; y++)
-			*dst++ = stex_read_color(&ss, img->width) | 0xFF00;
+			*dst++ = stex_read_color(&ss, img->width);
 
 		vi->sw.offset[x] = offset;
 		vi->sw.length[x] = img->height;
@@ -4584,58 +4597,61 @@ static const uint8_t *update_gfx_walls(ui_idx_t *idx)
 
 		va = wa->variant + wa->now;
 
-		ui_gfx_wall_resolution.base.disabled = 0;
-		sprintf(text, "%u x %u\nvariant: %u / %u", va->sw.width, va->sw.height, wa->now + 1, wa->max);
-		glui_set_text(&ui_gfx_wall_resolution, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-
-		stex_generate_wall(wa, va, data);
-
-		gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
-		gi->width = va->sw.width;
-		gi->height = va->sw.height;
-		gi->format = GL_RG;
-		gi->data = data;
-		x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
-
-		scale = va->sw.height > 128 ? 1 : 3;
-
-		ui_gfx_wall_texture.base.disabled = 0;
-		ui_gfx_wall_texture.base.width = (uint32_t)va->sw.width * scale;
-		ui_gfx_wall_texture.base.height = (uint32_t)va->sw.height * scale;
-		ui_gfx_wall_texture.shader = wall_display ? SHADER_FRAGMENT_PALETTE_LIGHT : SHADER_FRAGMENT_PALETTE;
-
-		scale = wa->swal_colt - wa->swal_colr;
-		bsize = scale * va->sw.height;
-		bused = (bsize + 2047) / 2048;
-		sprintf(data, "VERA blocks: %u\nColumns used: %u\nColumns free: %u", bused, scale, ((bused * 2048) - bsize) / va->sw.height);
-
-		ui_gfx_wall_variant_info.base.disabled = 0;
-		glui_set_text(&ui_gfx_wall_variant_info, data, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
-
-		ui_gfx_wall_variant_name.base.disabled = 0;
-		glui_set_text(&ui_gfx_wall_variant_name, va->name, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
-
-		ui_gfx_wall_animation.base.disabled = 0;
-
-		if(va->sw.anim[0])
+		if(va->sw.width && va->sw.height)
 		{
-			sprintf(text, "Delay: %.3f", 1 << va->sw.anim[1]);
-			glui_set_text((void*)ui_gfx_wall_animation.elements[1], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-			ui_gfx_wall_animation.elements[1]->base.disabled = 0;
+			ui_gfx_wall_resolution.base.disabled = 0;
+			sprintf(text, "%u x %u\nvariant: %u / %u", va->sw.width, va->sw.height, wa->now + 1, wa->max);
+			glui_set_text(&ui_gfx_wall_resolution, text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 
-			sprintf(text, "Start: %u", va->sw.anim[2]);
-			glui_set_text((void*)ui_gfx_wall_animation.elements[2], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
-			ui_gfx_wall_animation.elements[2]->base.disabled = 0;
+			stex_generate_wall(wa, va, data);
 
-			sprintf(text, "Animation: %u", va->sw.anim[0] + 1);
-		} else
-		{
-			ui_gfx_wall_animation.elements[1]->base.disabled = 1;
-			ui_gfx_wall_animation.elements[2]->base.disabled = 1;
-			sprintf(text, "Animation: \t");
+			gi = gltex_info + X16G_GLTEX_SHOW_TEXTURE;
+			gi->width = va->sw.width;
+			gi->height = va->sw.height;
+			gi->format = GL_RG;
+			gi->data = data;
+			x16g_update_texture(X16G_GLTEX_SHOW_TEXTURE);
+
+			scale = va->sw.height > 128 ? 1 : 3;
+
+			ui_gfx_wall_texture.base.disabled = 0;
+			ui_gfx_wall_texture.base.width = (uint32_t)va->sw.width * scale;
+			ui_gfx_wall_texture.base.height = (uint32_t)va->sw.height * scale;
+			ui_gfx_wall_texture.shader = wall_display ? SHADER_FRAGMENT_PALETTE_LIGHT : SHADER_FRAGMENT_PALETTE;
+
+			scale = wa->swal_colt - wa->swal_colr;
+			bsize = scale * va->sw.height;
+			bused = (bsize + 2047) / 2048;
+			sprintf(data, "VERA blocks: %u\nColumns used: %u\nColumns free: %u", bused, scale, ((bused * 2048) - bsize) / va->sw.height);
+
+			ui_gfx_wall_variant_info.base.disabled = 0;
+			glui_set_text(&ui_gfx_wall_variant_info, data, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
+
+			ui_gfx_wall_variant_name.base.disabled = 0;
+			glui_set_text(&ui_gfx_wall_variant_name, va->name, glui_font_medium_kfn, GLUI_ALIGN_TOP_CENTER);
+
+			ui_gfx_wall_animation.base.disabled = 0;
+
+			if(va->sw.anim[0])
+			{
+				sprintf(text, "Delay: %u", 1 << va->sw.anim[1]);
+				glui_set_text((void*)ui_gfx_wall_animation.elements[1], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+				ui_gfx_wall_animation.elements[1]->base.disabled = 0;
+
+				sprintf(text, "Start: %u", va->sw.anim[2]);
+				glui_set_text((void*)ui_gfx_wall_animation.elements[2], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
+				ui_gfx_wall_animation.elements[2]->base.disabled = 0;
+
+				sprintf(text, "Animation: %u", va->sw.anim[0] + 1);
+			} else
+			{
+				ui_gfx_wall_animation.elements[1]->base.disabled = 1;
+				ui_gfx_wall_animation.elements[2]->base.disabled = 1;
+				sprintf(text, "Animation: \t");
+			}
+
+			glui_set_text((void*)ui_gfx_wall_animation.elements[0], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 		}
-
-		glui_set_text((void*)ui_gfx_wall_animation.elements[0], text, glui_font_medium_kfn, GLUI_ALIGN_CENTER_CENTER);
 	}
 
 	return wa->name;
@@ -5606,8 +5622,6 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 		ui_gfx_hud_texture.base.disabled = 0;
 		ui_gfx_hud_texture.shader = SHADER_FRAGMENT_PALETTE_LIGHT;
 
-		free(data);
-
 		// update font color
 		cmap = x16_light_data;
 		*cmap++ = 0;
@@ -5634,8 +5648,6 @@ static const uint8_t *update_gfx_hud(ui_idx_t *idx)
 			ui_gfx_hud_demo.base.height = gi->height * elm->scale;
 			ui_gfx_hud_demo.base.disabled = 0;
 			ui_gfx_hud_demo.shader = SHADER_FRAGMENT_PALETTE;
-
-			free(data);
 		}
 	}
 
@@ -6677,9 +6689,10 @@ int32_t uin_gfx_wall_animation_btn(glui_element_t *elm, int32_t x, int32_t y)
 			if(anim[0])
 			{
 				temp = (anim[0] + 1) * 2;
-				if(temp > MAX_X16_VARIANTS)
-					temp = 2;
-				anim[0] = temp - 1;
+				if(temp < MAX_X16_VARIANTS)
+					anim[0] = temp - 1;
+				else
+					anim[0] = 0;
 			} else
 				anim[0] = 1;
 		break;
@@ -9361,6 +9374,7 @@ const uint8_t *x16g_save(const uint8_t *file)
 
 		cbor_plane[CBOR_PLANE_WIDTH].u32 = &pl->width;
 		cbor_plane[CBOR_PLANE_HEIGHT].u32 = &pl->height;
+		cbor_plane[CBOR_PLANE_EFFECT].ptr = pl->variant[0].pl.effect;
 		cbor_plane[CBOR_PLANE_DATA].ptr = pl->data;
 		cbor_plane[CBOR_PLANE_DATA].extra = pl->width * pl->height * sizeof(uint64_t);
 

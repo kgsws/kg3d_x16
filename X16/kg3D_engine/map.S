@@ -1176,6 +1176,10 @@ load_wall:
 	lda	#BANK_TEXTURES
 	sta	REG_RAM_BANK
 
+	; origin
+	tya
+	sta	TEXINFO_STRUCT_ORIGIN,x
+
 	; tilemap
 	pla
 	sta	TEXINFO_STRUCT_TILEMAP,x
@@ -1217,6 +1221,10 @@ load_plane:
 	; texture bank
 	lda	#BANK_TEXTURES
 	sta	REG_RAM_BANK
+
+	; origin
+	tya
+	sta	TEXINFO_STRUCT_ORIGIN,x
 
 	; type
 	lda	#$82

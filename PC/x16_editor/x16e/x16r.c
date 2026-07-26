@@ -1551,7 +1551,7 @@ static uint8_t apply_plane_effect(editor_texture_t *et, uint8_t ang)
 	level_tick = gametick / 8;
 
 	if(effect[1] & 0x80)
-		etime = level_tick << (~effect[1] + 1);
+		etime = level_tick << ((effect[1] ^ 0xFF) + 1);
 	else
 		etime = level_tick >> effect[1];
 

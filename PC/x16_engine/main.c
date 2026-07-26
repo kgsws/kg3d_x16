@@ -244,12 +244,13 @@ typedef struct
 {
 	uint32_t datptr; // sector (4B)
 	uint32_t colptr; // WRAM (2B)
+	uint8_t origin;
 	uint8_t type;
 	uint8_t tilemap;
 	uint8_t tiledata;
 	uint8_t vlink;
 	uint8_t lmap[MAX_LIGHTS];
-	uint8_t vram[14]; // 14 * 2048 = 28k
+	uint8_t vram[13];
 	uint8_t used; // not on X16
 } texture_info_t;
 
@@ -420,6 +421,7 @@ uint8_t *const font_info = game_gfx;
 // texture stuff
 static uint32_t texload_idx;
 static texture_info_t texture_info[256];
+static texture_info_t *set_tex;
 
 uint8_t vram[128 * 1024];
 static uint8_t vcache_top, vcache_cur;
@@ -627,6 +629,8 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 	static const uint8_t wall_tab_shift[] = {5, 4, 3};
 	texture_info_t *ti = texture_info + idx;
 	uint32_t cols, tmap, tdat;
+
+	set_tex = ti;
 
 	if(!idx)
 	{
@@ -2555,17 +2559,20 @@ static int16_t fix_effect_value(uint8_t val, uint8_t flip)
 
 static uint8_t handle_plane_effect(uint8_t ang)
 {
-/*	uint8_t *effect;
+	uint8_t effect[4];
 	uint8_t etime;
 	int16_t temp;
 
-	if(!ti)
+	if(!set_tex)
 		return ang;
 
-	effect = ti->effect;
-
+	effect[0] = gfx_head->plane.anim[0][set_tex->origin];
 	if(!effect[0])
 		return ang;
+
+	effect[1] = gfx_head->plane.anim[1][set_tex->origin];
+	effect[2] = gfx_head->plane.anim[2][set_tex->origin];
+	effect[3] = gfx_head->plane.anim[3][set_tex->origin];
 
 	etime = anim_tick[effect[1]];
 
@@ -2592,7 +2599,7 @@ static uint8_t handle_plane_effect(uint8_t ang)
 
 		break;
 	}
-*/
+
 	return ang;
 }
 
@@ -3571,6 +3578,7 @@ static void add_texture(uint32_t hash, uint32_t info, uint8_t *lmap)
 		if(idx < 0)
 			goto fail;
 
+		ti->origin = idx;
 		ti->tilemap = gfx_head->plane.info[0][idx];
 		ti->type = (ti->tilemap & 0x80) ? 0x82 : 0x81;
 
@@ -3592,8 +3600,9 @@ static void add_texture(uint32_t hash, uint32_t info, uint8_t *lmap)
 		if(idx < 0)
 			goto fail;
 
-		ti->type = gfx_head->wall.info[0][idx];
+		ti->origin = idx;
 		ti->tilemap = gfx_head->wall.info[1][idx];
+		ti->type = gfx_head->wall.info[0][idx];
 
 		hash = gfx_head->wall.data[0][idx];
 		hash |= (uint32_t)gfx_head->wall.data[1][idx] << 8;

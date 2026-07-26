@@ -5136,6 +5136,159 @@ masked_loop_col:
 ;;;
 
 plane_apply_effect:
+	ldy	RENDER_TEXTURE_IDX
+
+	; texture bank
+	lda	#BANK_TEXTURES
+	sta	REG_RAM_BANK
+
+	; get origin
+	lda	TEXINFO_STRUCT_ORIGIN,y
+	tay
+
+	; GFX info bank
+	lda	#BAMK_GFX_INFO
+	sta	REG_RAM_BANK
+
+	; check effect
+	lda	TAB_GINFO_PLANE_ANIM_0,y
+	and	#3
+	bne	:+
+	rts
+:
+	pha	; <type>
+
+	; get ticks
+	ldx	TAB_GINFO_PLANE_ANIM_1,y
+	lda	TAB_ANIM_TICK,x
+	sta	MATH_VAR_L
+
+	; pick effect
+	pla	; <type>
+	cmp	#1
+	bne	@sincos
+
+	;; random
+
+	phy
+	lda	TAB_GINFO_PLANE_ANIM_2,y
+	sta	MATH_VAR_U
+
+	; random bank
+	lda	#BANK_RANDOM
+	sta	REG_RAM_BANK
+
+	; X
+	lda	#>TAB_RANDOM
+	sta	MATH_VAR_H
+	bit	MATH_VAR_U
+	bmi	:+
+	clc
+	lda	(MATH_VAR_L)
+	adc	RENDER_TEXTURE_OX
+	sta	RENDER_TEXTURE_OX
+:
+	; Y
+	inc	MATH_VAR_H
+	bit	MATH_VAR_U
+	bvs	:+
+	clc
+	ldy	#4
+	lda	(MATH_VAR_L),y
+	adc	RENDER_TEXTURE_OY
+	sta	RENDER_TEXTURE_OY
+:
+	; A
+	inc	MATH_VAR_H
+	lda	MATH_VAR_U
+	lsr
+	bcs	:+
+	clc
+	ldy	#8
+	lda	(MATH_VAR_L),y
+	adc	RENDER_TEXTURE_ANGLE
+	sta	RENDER_TEXTURE_ANGLE
+:
+	ply
+	rts
+
+@sincos:
+	;; 'O' or '8'
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; load Y scale
+	lda	TAB_GINFO_PLANE_ANIM_3,y
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+	lda	TAB_GINFO_PLANE_ANIM_0,y
+	asl
+	bpl	:+
+
+	; negative
+	lda	TAB_GINFO_PLANE_ANIM_3,y
+	eor	#$FF
+	ina
+	sta	VERA_FX_CACHE_L
+	lda	#$FF
+	sta	VERA_FX_CACHE_M
+:
+	; load cos
+	ldx	MATH_VAR_L
+	math_read_cos	VERA_FX_CACHE_H, VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; add (result >> 8) to Y offset
+	clc
+	lda	VERA_DATA0
+	adc	RENDER_TEXTURE_OY
+	sta	RENDER_TEXTURE_OY
+
+	; check for '8'
+	lda	TAB_GINFO_PLANE_ANIM_0,y
+	and	#3
+	cmp	#3
+	bne	:+
+
+	; double ticks
+	asl	MATH_VAR_L
+:
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; load X scale
+	lda	TAB_GINFO_PLANE_ANIM_2,y
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+	lda	TAB_GINFO_PLANE_ANIM_0,y
+	bpl	:+
+
+	; negative
+	lda	TAB_GINFO_PLANE_ANIM_2,y
+	eor	#$FF
+	ina
+	sta	VERA_FX_CACHE_L
+	lda	#$FF
+	sta	VERA_FX_CACHE_M
+:
+	; load sin
+	ldx	MATH_VAR_L
+	math_read_sin	VERA_FX_CACHE_H, VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; add (result >> 8) to X offset
+	clc
+	lda	VERA_DATA0
+	adc	RENDER_TEXTURE_OX
+	sta	RENDER_TEXTURE_OX
+
 	rts
 
 ;;;
@@ -5729,6 +5882,8 @@ loop_texture_map_x:
 ; A is texture ID
 
 texture_set:
+	sta	RENDER_TEXTURE_IDX
+
 	; sky check
 	bne	@not_sky
 
