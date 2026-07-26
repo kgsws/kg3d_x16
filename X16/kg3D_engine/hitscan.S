@@ -1145,7 +1145,7 @@ hs_sector_loop:
 	sta	REG_RAM_BANK
 
 	; if(sec->sobj_hi)
-	lda	SECTOR_STRUCT_OBJ_H,x
+	lda	SECTOR_STRUCT_OBJ_B,x
 	beq	hs_skip_sobj
 
 	jmp	hs_check_sobj
@@ -1451,7 +1451,7 @@ hitscan_sight_ex:
 	sta	REG_RAM_BANK
 
 	; map_sectors[hitscan.tsec].sobj_hi
-	lda	SECTOR_STRUCT_OBJ_H,x
+	lda	SECTOR_STRUCT_OBJ_B,x
 	bne	@do_check
 
 	; hitscan.tsec == thingsec[tdx][0]
@@ -2050,18 +2050,10 @@ hitscan_thing_dt:
 
 hitscan_sobj_sort:
 	; get pointer
-	and	#$7F
-	asl
-	asl
-	asl
-	ldx	SECTOR_STRUCT_OBJ_L,y
-	ora	TAB_DIV32,x
 	sta	TMP_PTR_I
-	txa
-	and	#$1F
-	ora	#$A0
+	lda	SECTOR_STRUCT_OBJ_H,y
 	sta	TMP_PTR_H
-	lda	SECTOR_STRUCT_OBJ_S,y
+	lda	SECTOR_STRUCT_OBJ_L,y
 	sta	TMP_PTR_L
 
 	; data bank

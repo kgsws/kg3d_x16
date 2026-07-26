@@ -590,16 +590,27 @@ ex_map_load:
 	; go trough sectors
 	ldx	#1
 @loop_sobj_fix:
-	lda	SECTOR_STRUCT_OBJ_H,x
+	lda	SECTOR_STRUCT_OBJ_B,x
 	beq	:+
 
-	; fix pointer
+	; fix address
 	clc
 	lda	MAP_LOAD_TMP_L
-	adc	SECTOR_STRUCT_OBJ_L,x
-	sta	SECTOR_STRUCT_OBJ_L,x
+	adc	SECTOR_STRUCT_OBJ_H,x
+	sta	SECTOR_STRUCT_OBJ_H,x
 	lda	MAP_LOAD_TMP_H
-	adc	#$80
+	adc	#0
+
+	; get pointer
+	asl
+	asl
+	asl
+	ldy	SECTOR_STRUCT_OBJ_H,x
+	ora	TAB_DIV32,y
+	sta	SECTOR_STRUCT_OBJ_B,x
+	tya
+	and	#$1F
+	ora	#$A0
 	sta	SECTOR_STRUCT_OBJ_H,x
 :
 	; next

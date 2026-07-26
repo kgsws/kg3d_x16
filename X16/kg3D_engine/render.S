@@ -686,7 +686,7 @@ render_sector:
 
 	;; OBJECTS
 
-	ldx	SECTOR_STRUCT_OBJ_H,y
+	ldx	SECTOR_STRUCT_OBJ_B,y
 	bne	:+
 	jmp	@skip_objects
 :

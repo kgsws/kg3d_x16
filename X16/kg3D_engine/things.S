@@ -1702,7 +1702,7 @@ thing_check_spawn:
 	bne	@skip_sobj
 
 	; sec->sobj_hi
-	lda	SECTOR_STRUCT_OBJ_H,x
+	lda	SECTOR_STRUCT_OBJ_B,x
 	beq	@skip_sobj
 
 	jmp	@check_sobj
@@ -2431,18 +2431,10 @@ thing_check_spawn:
 
 @check_sobj:
 	; get pointer
-	and	#$7F
-	asl
-	asl
-	asl
-	ldy	SECTOR_STRUCT_OBJ_L,x
-	ora	TAB_DIV32,y
 	sta	TMP_PTR_I
-	tya
-	and	#$1F
-	ora	#$A0
+	lda	SECTOR_STRUCT_OBJ_H,x
 	sta	TMP_PTR_H
-	lda	SECTOR_STRUCT_OBJ_S,x
+	lda	SECTOR_STRUCT_OBJ_L,x
 	sta	TMP_PTR_L
 
 	; data bank
