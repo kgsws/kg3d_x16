@@ -229,7 +229,8 @@ typedef struct
 				uint8_t anim[3][256];
 				uint8_t info[2][256];
 			} wall;
-			uint8_t extra_data[4][256]; // light names, sky names, sky data
+			uint8_t extra_data[4][256]; // light names, sky names, sky data, sprite names
+			uint8_t sprite_offs[4][128];
 		};
 		uint8_t bank_textures[8192];
 	};
@@ -253,6 +254,16 @@ typedef struct
 	uint8_t vram[13];
 	uint8_t used; // not on X16
 } texture_info_t;
+
+typedef struct
+{
+	uint16_t cols;
+	uint16_t data;
+	uint8_t width;
+	uint8_t height;
+	int8_t ox;
+	int8_t oy;
+} sprite_info_t;
 
 typedef struct
 {
@@ -412,11 +423,20 @@ wall_t map_walls[WALL_BANK_COUNT][256];
 
 // graphics
 
+uint32_t game_gfx_size;
 uint8_t game_gfx[64 * 1024 * 1024];
 gfx_head_t *const gfx_head = (gfx_head_t*)game_gfx;
 
 // font stuff
 uint8_t *const font_info = game_gfx;
+
+// sprite stuff
+static uint8_t sprite_remap_pre[sizeof(sprite_remap)];
+static sprite_info_t sprite_info[8][256];
+static uint32_t num_sprites;
+static uint32_t num_wframes;
+static uint32_t num_sprites_pre;
+static uint32_t num_wframes_pre;
 
 // texture stuff
 static uint32_t texload_idx;
@@ -431,6 +451,7 @@ static uint8_t light_remap[MAX_LIGHTS];
 
 static uint8_t *const lightmaps = game_gfx + offsetof(gfx_head_t, lightmap);
 static uint8_t *lightmap;
+static uint8_t *colormap;
 
 static uint32_t wram_used;
 static uint32_t wram_used_pc;
@@ -628,7 +649,7 @@ static void tex_set(uint8_t idx, uint8_t ox, uint8_t oy, uint8_t light, uint32_t
 {
 	static const uint8_t wall_tab_shift[] = {5, 4, 3};
 	texture_info_t *ti = texture_info + idx;
-	uint32_t cols, tmap, tdat;
+	uint32_t tmap, tdat;
 
 	set_tex = ti;
 
@@ -1439,7 +1460,7 @@ static void dr_vline(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tno
 
 static void dr_vspr(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tnow, int32_t step)
 {
-/*	uint8_t *dst;
+	uint8_t *dst;
 
 	if(render_flags & 4)
 		return;
@@ -1447,7 +1468,7 @@ static void dr_vspr(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tnow
 	tex_y_start = 0;
 	tex_x_start = 0;
 
-	tex_offs_y = projection.wx << 9;
+	tex_offs_y = 0; // TODO
 
 	tex_offs_x = tnow << 1;
 	tex_step_y = 0;
@@ -1458,11 +1479,11 @@ static void dr_vspr(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tnow
 
 	for( ; y1 > y0; y1--)
 	{
-		uint8_t col = lightmap[tex_read()];
+		uint8_t col = lightmap[colormap[tex_read()]];
 		dst -= 160;
 		if(col)
 			*dst = col;
-	}*/
+	}
 }
 
 static void dr_textured_strip(uint8_t x0, uint8_t x1, int32_t top_now, int32_t top_step, int32_t bot_now, int32_t bot_step, uint32_t flags)
@@ -1921,7 +1942,7 @@ do_solid_bot:
 
 static void dr_sprite(uint32_t idx)
 {
-/*	proj_spr_t *spr = proj_spr + idx;
+	proj_spr_t *spr = proj_spr + idx;
 	uint8_t x0, x1;
 	int16_t tex_step, tex_now;
 
@@ -1931,8 +1952,7 @@ static void dr_sprite(uint32_t idx)
 	tex_now = spr->tex_now;
 	tex_step = spr->tex_step;
 
-	vera_tex_data(0xF8, 0xFE);
-	projection.wx = 0; // 256px
+	vera_tex_data(0xF8, 0xF6);
 
 	lightmap = lightmaps + spr->light * LIGHTMAP_SIZE;
 
@@ -1996,7 +2016,7 @@ static void dr_sprite(uint32_t idx)
 			y1 = bot;
 
 		dr_vspr(x0, y0, y1, tex_now >> 8, tnow, spr->tex_scale / -4);
-	}*/
+	}
 }
 
 static void dr_masked(uint32_t idx)
@@ -2309,7 +2329,7 @@ do_next:
 
 static void prepare_sprite(uint8_t tdx, sector_t *sec)
 {
-/*	thing_t *th = thing_ptr(tdx);
+	thing_t *th = thing_ptr(tdx);
 	uint8_t light = SECTOR_LIGHT(sec);
 	proj_spr_t *spr;
 	vertex_t d0;
@@ -2319,15 +2339,14 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	int32_t top, bot;
 	int32_t y0, y1;
 	int16_t tex_now, tex_step;
-	sprite_info_t *si = sprite_info + th->sprite;
-	sprite_frame_t *frm;
+	sprite_info_t *si;
 	int32_t spr_width;
 	int32_t spr_height;
 	int32_t spr_xoffs;
 	int32_t spr_yoffs;
 	int32_t spr_scale;
 
-	if(th->sprite & 0x80)
+	if(!th->sprite)
 		return;
 
 	// limit
@@ -2351,30 +2370,29 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	a0 = point_to_angle();
 	draw_aline(a0, 1);
 
+	// base sprite
+	si = sprite_info[0] + th->sprite;
+
 	// rotation
-	if(si->rotate)
+	if(si->cols & 0x8000)
 	{
 		uint8_t ang;
 		ang = th->angle;
 		ang -= a0 >> 4;
 		ang += 0x90;
 		ang >>= 5;
-		frm = sprite_frame + si->rot[ang];
-	} else
-		frm = sprite_frame + si->rot[0];
-
-	if(!frm->offs_data)
-		return;
+		si = sprite_info[ang] + th->sprite;
+	}
 
 	a0 -= projection.a;
 	a0 += H_FOV;
 	a0 &= 0x07FF;
 
 	// texture
-	spr_width = frm->width;
-	spr_height = frm->height * 2;
-	spr_xoffs = frm->ox * 2;
-	spr_yoffs = frm->oy * 2;
+	spr_width = si->width;
+	spr_height = si->height * 2;
+	spr_xoffs = si->ox * 2;
+	spr_yoffs = si->oy * 2;
 	spr_scale = th->scale * 2 + 64;
 
 	// center X
@@ -2486,8 +2504,8 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	spr->next = 0xFF;
 
 	// texture
-	spr->data = wram + frm->offs_data;
-	spr->cols = (uint16_t*)(wram + frm->offs_cols);
+	spr->data = wram + si->data * 256;
+	spr->cols = (uint16_t*)(wram + (si->cols & 0x7FFF) * 256);
 
 	// clipping copy & depth check
 	for(uint8_t xx = x0 / 2; xx < (x1+1) / 2; xx++)
@@ -2531,7 +2549,7 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 			proj_spr_first = proj_spr_idx;
 	}
 
-	proj_spr_idx++;*/
+	proj_spr_idx++;
 }
 
 static void finish_sprite(uint8_t idx)
@@ -2820,7 +2838,7 @@ static void do_3D()
 		if(texture_info[i].used)
 			pidx += texture_info[i].type & 15;
 
-	printf("VCACHE: %u\n", pidx);
+//	printf("VCACHE: %u\n", pidx);
 }
 
 static void do_2D()
@@ -3237,7 +3255,8 @@ static uint32_t load_tables()
 
 	/// game file
 
-	if(load_file("DATA/KG3D.GFX", game_gfx, sizeof(game_gfx)) < 64 * 1024)
+	game_gfx_size = load_file("DATA/KG3D.GFX", game_gfx, sizeof(game_gfx));
+	if(game_gfx_size < 64 * 1024)
 	{
 		printf("Unable to load KG3D.GFX!\n");
 		return 1;
@@ -3392,19 +3411,160 @@ static void *get_wram(uint32_t size)
 	return ret;
 }
 
-static uint32_t load_tspr(uint8_t *path)
+static uint32_t find_sprite(uint32_t hash)
 {
+	for(uint32_t i = 0; i < 128; i++)
+	{
+		uint32_t h;
+		uint32_t ii = i + 128;
+
+		h = gfx_head->extra_data[0][ii];
+		h |= (uint32_t)gfx_head->extra_data[1][ii] << 8;
+		h |= (uint32_t)gfx_head->extra_data[2][ii] << 16;
+		h |= (uint32_t)gfx_head->extra_data[3][ii] << 24;
+
+		if(hash == h)
+		{
+			h = gfx_head->sprite_offs[0][i];
+			h |= (uint32_t)gfx_head->sprite_offs[1][i] << 8;
+			h |= (uint32_t)gfx_head->sprite_offs[2][i] << 16;
+			h |= (uint32_t)gfx_head->sprite_offs[3][i] << 24;
+			return h;
+		}
+	}
+
+	return -1;
+}
+
+static uint32_t load_tspr(uint32_t hash)
+{
+	struct
+	{
+		uint8_t last;
+		uint8_t frame;
+		uint8_t rotation;
+		uint8_t width;
+		uint8_t height;
+		int8_t ox;
+		int8_t oy;
+		uint8_t _pad0[128 - 7];
+		uint32_t data;
+		uint8_t size;
+		uint8_t _pad1[128 - 5];
+		uint8_t coll[128];
+		uint8_t colh[128];
+	} *sprh;
+	struct
+	{
+		uint8_t frm;
+		uint8_t rot;
+	} spdb[256];
+	int32_t idx;
+	uint8_t *data;
+	uint32_t dpos, dsiz, ii;
+	uint32_t frame = 0;
+
+	idx = find_sprite(hash);
+	if(idx < 0)
+		return 1;
+
+	// load variants
+
+	sprh = (void*)(game_gfx + idx * 512);
+
+	ii = 0;
+	while(1)
+	{
+		uint32_t frmidx;
+		sprite_info_t *si;
+		uint8_t *cols;
+
+		if(sprh->rotation > 7)
+			return 1;
+
+		if(sprh->frame > 26)
+			return 1;
+
+		if(frame < sprh->frame)
+			frame = sprh->frame;
+
+		frmidx = num_sprites + sprh->frame;
+		if(frmidx >= 256)
+			return 1;
+
+		spdb[ii].frm = frmidx;
+		spdb[ii].rot = sprh->rotation;
+		ii++;
+
+		if(sprh->rotation)
+			sprite_info[0][frmidx].cols |= 0x8000;
+
+		si = sprite_info[sprh->rotation] + frmidx;
+
+		if(si->cols & 0x7FFF)
+			return 1;
+
+		si->cols |= wram_used / 256;
+		cols = get_wram(256);
+		if(!cols)
+			return 1;
+
+		for(uint32_t i = 0; i < 128; i++)
+		{
+			cols[i * 2] = sprh->coll[i];
+			cols[i * 2 + 1] = sprh->colh[i];
+		}
+
+		si->width = sprh->width;
+		si->height = sprh->height;
+		si->ox = sprh->ox;
+		si->oy = sprh->oy;
+
+		if(sprh->last)
+			break;
+
+		sprh++;
+
+		if(ii >= 256)
+			return 1;
+	}
+
+	// load data
+
+	sprh = (void*)(game_gfx + idx * 512);
+
+	dpos = wram_used / 256;
+	dsiz = sprh->size * 512;
+	data = get_wram(dsiz);
+	if(!data)
+		return 1;
+
+	if(sprh->data * 512 + dsiz > game_gfx_size)
+		return 1;
+
+	memcpy(data, game_gfx + sprh->data * 512, dsiz);
+
+	// fill data offset in each variant
+
+	for(uint32_t i = 0; i < ii; i++)
+		sprite_info[spdb[i].rot][spdb[i].frm].data = dpos;
+
+	//
+
+	num_sprites += frame + 1;
+
 	return 0;
 }
 
-static uint32_t load_wspr(uint8_t *path)
+static uint32_t load_wspr(uint32_t hash)
 {
+	printf("TODO: wspr 0x%08X\n", hash);
 	return 0;
 }
 
 static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 {
-/*	thing_type_t *info = thing_type + type;
+	thing_type_t *info = thing_type + type;
 	uint8_t text[64];
 
 	for(int32_t j = NUM_THING_ANIMS-1; j >= 0; j--)
@@ -3423,14 +3583,12 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 			if(st->sprite >= thing_state->num_sprlnk)
 			{
 				sprite_remap[st->sprite] = num_wframes;
-				sprintf(text, "DATA/%08X.WPS", sprite_hash[st->sprite]);
-				if(load_wspr(text))
+				if(load_wspr(sprite_hash[st->sprite]))
 					return 1;
 			} else
 			{
 				sprite_remap[st->sprite] = num_sprites;
-				sprintf(text, "DATA/%08X.THS", sprite_hash[st->sprite]);
-				if(load_tspr(text))
+				if(load_tspr(sprite_hash[st->sprite]))
 					return 1;
 			}
 		}
@@ -3445,7 +3603,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 		if(tt < MAX_X16_THING_TYPES && load_thing_sprites(tt, recursion + 1))
 			return 1;
 	}
-*/
+
 	return 0;
 }
 
@@ -3512,7 +3670,7 @@ static int32_t find_sky(uint32_t hash)
 
 		if(hash == h)
 		{
-			ii = i + 64;
+			ii = i + 48;
 			h = gfx_head->extra_data[0][ii];
 			h |= (uint32_t)gfx_head->extra_data[1][ii] << 8;
 			h |= (uint32_t)gfx_head->extra_data[2][ii] << 16;
@@ -3639,7 +3797,11 @@ static uint32_t load_map()
 	uint32_t temp;
 	uint32_t esbase;
 
-	wram_used = 64 * 8192; // TODO
+	// TODO: precache
+	wram_used = 64 * 8192;
+	num_sprites = num_sprites_pre;
+	num_wframes = num_wframes_pre;
+	memcpy(sprite_remap, sprite_remap_pre, sizeof(sprite_remap));
 
 	fd = open("DATA/DEFAULT.MAP", O_RDONLY);
 	if(fd < 0)
@@ -3832,6 +3994,9 @@ error:
 
 static uint32_t precache()
 {
+	num_sprites_pre = 1;
+	memset(sprite_remap_pre, 0xFF, sizeof(sprite_remap_pre));
+
 	return 0;
 }
 

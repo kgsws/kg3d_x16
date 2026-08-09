@@ -322,7 +322,7 @@ typedef struct
 			uint32_t swal_colr;
 		};
 	};
-	variant_info_t variant[MAX_X16_VARIANTS];
+	variant_info_t variant[MAX_X16_VARIANTS * 8]; // extra for sprite rotations
 	uint16_t data[STEX_PIXEL_LIMIT];
 	uint16_t tata[2048];
 } variant_list_t;
@@ -476,7 +476,8 @@ typedef struct
 				uint8_t anim[3][256];
 				uint8_t info[2][256];
 			} wall;
-			uint8_t extra_data[4][256]; // light names, sky names, sky data
+			uint8_t extra_data[4][256]; // light names, sky names, sky data, sprite names
+			uint8_t sprite_offs[4][128];
 		};
 		uint8_t bank_textures[8192];
 	};
@@ -1745,8 +1746,9 @@ is_invalid:
 	if(type == KGCBOR_TYPE_OBJECT)
 	{
 		variant_info_t *vi = cbor_load_object->variant + cbor_entry_index;
+		uint32_t the_max = cbor_stex_is_sprite ? MAX_X16_VARIANTS * 8 : MAX_X16_VARIANTS;
 
-		if(cbor_entry_index >= MAX_X16_VARIANTS)
+		if(cbor_entry_index >= the_max)
 			return 1;
 
 		if(ctx->key_len >= LEN_X16_VARIANT_NAME)
@@ -3966,7 +3968,7 @@ static void vlist_new(uint32_t type, uint8_t *name, variant_list_t *vl, ui_idx_t
 	ret->max = 0;
 	ret->now = 0;
 
-	memset(ret->variant, 0, sizeof(variant_info_t) * MAX_X16_VARIANTS);
+	memset(ret->variant, 0, sizeof(variant_info_t) * MAX_X16_VARIANTS * 8);
 
 	update_gfx_mode(0);
 }
@@ -6893,7 +6895,7 @@ int32_t uin_gfx_sprite_variant(glui_element_t *elm, int32_t x, int32_t y)
 
 	sp = x16_sprite + gfx_idx[GFX_MODE_SPRITES].now;
 
-	if(sp->max >= MAX_X16_VARIANTS)
+	if(sp->max >= MAX_X16_VARIANTS * 8) // also rotations
 	{
 		edit_status_printf("Too many variants!");
 		return 1;
@@ -7089,7 +7091,7 @@ int32_t uin_gfx_sprite_angles(glui_element_t *elm, int32_t x, int32_t y)
 		if(!(mask & (1 << va->spr.rot)))
 			continue;
 
-		if(sp->max >= MAX_X16_VARIANTS)
+		if(sp->max >= MAX_X16_VARIANTS * 8)
 		{
 			edit_status_printf("Too many variants!");
 			return 1;
@@ -8661,10 +8663,12 @@ void x16g_export()
 	uint32_t i;
 	int32_t fd;
 	void *ptr;
+	void *export_ptr;
 	export_head_t *head;
 	uint32_t *pal = x16_palette_data;
 	uint32_t num_pl = 0;
 	uint32_t num_wa = 0;
+	uint32_t num_sp = 0;
 	uint32_t num_li = gfx_idx[GFX_MODE_LIGHTS].max;
 	uint16_t *rtex = stex_data;
 	uint16_t *ttex = stex_data + 2048;
@@ -8672,8 +8676,10 @@ void x16g_export()
 
 	edit_busy_window("Exporting graphics ...");
 
-	/// header
-	head = edit_cbor_buffer;
+	/// export buffer; aligned to sector size
+	export_ptr = edit_cbor_buffer + 512;
+	export_ptr = (void*)((uintptr_t)export_ptr & ~511);
+	head = export_ptr;
 
 	memset(head, 0, sizeof(export_head_t));
 
@@ -8811,7 +8817,7 @@ void x16g_export()
 		uint32_t base, tmap, hash;
 		uint16_t *src;
 
-		base = (ptr - edit_cbor_buffer) / 512;
+		base = (ptr - export_ptr) / 512;
 
 		if(!pl->tilecount)
 		{
@@ -8883,7 +8889,7 @@ void x16g_export()
 		if(!vl->swal_height)
 			continue;
 
-		base = (ptr - edit_cbor_buffer) / 512;
+		base = (ptr - export_ptr) / 512;
 
 		// calculate 2k chunks
 		cols = vl->swal_colt - vl->swal_colr;
@@ -8960,14 +8966,144 @@ void x16g_export()
 
 	// sprites
 
+	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_SPRITES].max; i++)
+	{
+		variant_list_t *vl = x16_sprite + i;
+		uint32_t base;
+		uint32_t ii;
+		void *dtr;
+		uint32_t stopcol = 0;
+		struct
+		{
+			uint8_t last;
+			uint8_t frame;
+			uint8_t rotation;
+			uint8_t width;
+			uint8_t height;
+			int8_t ox;
+			int8_t oy;
+			uint8_t _pad0[128 - 7];
+			uint32_t data;
+			uint8_t size;
+			uint8_t _pad1[128 - 5];
+			uint8_t coll[128];
+			uint8_t colh[128];
+		} *sprh; // one entry per sector
+
+		if(!vl->max)
+			continue;
+
+		if(!vl->stex_used)
+			continue;
+
+		// find empty column
+
+		for(uint32_t i = 0; i < vl->stex_used; i++)
+		{
+			if(!vl->data[i])
+			{
+				stopcol = i;
+				break;
+			}
+		}
+
+		// padding
+
+		ptr += 511;
+		ptr = (void*)((uintptr_t)ptr & ~511);
+		dtr = ptr;
+
+		// info
+
+		base = (ptr - export_ptr) / 512;
+
+		ii = num_sp | 128;
+		head->extra_data[0][ii] = vl->hash;
+		head->extra_data[1][ii] = vl->hash >> 8;
+		head->extra_data[2][ii] = vl->hash >> 16;
+		head->extra_data[3][ii] = vl->hash >> 24;
+
+		head->sprite_offs[0][num_sp] = base;
+		head->sprite_offs[1][num_sp] = base >> 8;
+		head->sprite_offs[2][num_sp] = base >> 16;
+		head->sprite_offs[3][num_sp] = base >> 24;
+
+		// save variants
+
+		for(uint32_t i = 0; i < vl->max; i++)
+		{
+			variant_info_t *vi = vl->variant + i;
+
+			if(!vi->sw.width)
+				continue;
+
+			if(!vi->sw.height)
+				continue;
+
+			sprh = ptr;
+			sprh->last = 0; // is_last
+			sprh->frame = vi->spr.frm;
+			sprh->rotation = vi->spr.rot;
+			sprh->width = vi->sw.width * 2 + 1; // 'half pixel' width
+			sprh->height = vi->sw.height * 2; // 'half pixel' height
+			sprh->ox = vi->sw.width / 2 + vi->sw.ox;
+			sprh->oy = vi->sw.oy;
+
+			for(uint32_t x = 0; x < vi->sw.width; x++)
+			{
+				uint16_t offset = vi->sw.offset[x];
+				sprh->coll[x] = offset;
+				sprh->colh[x] = offset >> 8;
+			}
+
+			for(uint32_t x = vi->sw.width; x < 128; x++)
+			{
+				sprh->coll[x] = stopcol;
+				sprh->colh[x] = stopcol >> 8;
+			}
+
+			ptr += sizeof(*sprh);
+		}
+
+		if(!sprh)
+		{
+			edit_status_printf("Epic Fail.");
+			return;
+		}
+
+		sprh->last = 0xFF;
+
+		// data info in first variant
+
+		base = (ptr - export_ptr) / 512;
+
+		sprh = dtr;
+		sprh->data = base;
+		sprh->size = (vl->stex_used + 511) / 512;
+
+		ii = (uint32_t)sprh->size * 512;
+
+		// the data, after variants
+
+		for(uint32_t i = 0; i < ii; i++)
+			*(uint8_t*)ptr++ = vl->data[i];
+
+		//
+
+		num_sp++;
+	}
+
 	// weapons
 
 	// skies
 
+	ptr += 511;
+	ptr = (void*)((uintptr_t)ptr & ~511);
+
 	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_SKIES].max; i++)
 	{
 		editor_sky_t *sky = editor_sky + i;
-		uint32_t base = (ptr - edit_cbor_buffer) / 512;
+		uint32_t base = (ptr - export_ptr) / 512;
 		uint32_t ii;
 
 		ii = i | 32;
@@ -8976,7 +9112,7 @@ void x16g_export()
 		head->extra_data[2][ii] = sky->hash >> 16;
 		head->extra_data[3][ii] = sky->hash >> 24;
 
-		ii = i | 64;
+		ii = i | 48;
 		head->extra_data[0][ii] = base;
 		head->extra_data[1][ii] = base >> 8;
 		head->extra_data[2][ii] = base >> 16;
@@ -9009,7 +9145,7 @@ void x16g_export()
 	fd = open(X16_PATH_EXPORT PATH_SPLIT_STR "KG3D.GFX", O_WRONLY | O_TRUNC | O_CREAT, 0644);
 	if(fd >= 0)
 	{
-		write(fd, edit_cbor_buffer, ptr - edit_cbor_buffer);
+		write(fd, export_ptr, ptr - export_ptr);
 		close(fd);
 	}
 

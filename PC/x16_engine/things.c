@@ -897,7 +897,7 @@ void thing_clear()
 	th->iflags = 0;
 
 	if(st->sprite & 0x80)
-		th->sprite = 0xFF; // 'NONE'
+		th->sprite = 0; // 'NONE'
 	else
 		th->sprite = sprite_remap[st->sprite] + (st->frm_nxt & 0x1F);
 
@@ -971,7 +971,7 @@ uint8_t thing_spawn(int32_t x, int32_t y, int32_t z, uint8_t sector, uint8_t typ
 	th->ticks = 1;
 
 	if(st->sprite & 0x80)
-		th->sprite = 0xFF; // 'NONE'
+		th->sprite = 0; // 'NONE'
 	else
 		th->sprite = sprite_remap[st->sprite] + (st->frm_nxt & 0x1F);
 
@@ -1578,7 +1578,7 @@ repeat:
 	th->ticks = st->ticks;
 
 	if(st->sprite & 0x80)
-		th->sprite = 0xFF; // 'NONE'
+		th->sprite = 0; // 'NONE'
 	else
 		th->sprite = sprite_remap[st->sprite] + (st->frm_nxt & 0x1F);
 }

@@ -7,7 +7,7 @@
 #define MAX_X16_WALLS	256	// engine limit (export, with one variant per texture)
 #define MAX_X16_THGSPR	112	// engine limit; (128 total, shared with weapons)
 #define MAX_X16_WPNSPR	16	// engine limit; (128 total, shared with things)
-#define MAX_X16_SKIES	32
+#define MAX_X16_SKIES	16	// export limit
 
 #define MAX_X16_VARIANTS	32	// limited to < 128 by sprite links
 #define MAX_X16_WPNPARTS	15	// engine limit
