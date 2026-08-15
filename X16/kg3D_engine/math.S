@@ -43,9 +43,9 @@ math_setup_vera:
 	lda	#$0C
 	sta	VERA_CTRL
 
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x001E00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H

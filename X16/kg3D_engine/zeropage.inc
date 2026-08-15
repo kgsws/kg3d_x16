@@ -234,6 +234,8 @@ MAP_HEAD_HASH_SKY = $CC
 ; map loading variables
 MAP_LOAD_TMP_L = $D0
 MAP_LOAD_TMP_H = $D1
+MAP_LOAD_AIDX = $D2
+MAP_LOAD_SIDX = $D3
 
 ; thing movement
 THMOVE_FLOORZ_L = $B0

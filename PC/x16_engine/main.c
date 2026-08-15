@@ -78,11 +78,25 @@ typedef struct
 		uint8_t idiv_h[256];	// @ 0x0400
 		uint8_t ydepth_h[256];	// @ 0x0500
 		uint8_t x2a_l[160];	// @ 0x0600
-		uint8_t _padA[96];	// used by engine code; 0x06A0
+		struct
+		{
+			uint8_t _VCACHE_TEX[37]; // $06A0
+			uint8_t _VCACHE_SLT[37]; // $06C5
+			uint8_t _VAR_BASE1[22]; // $06EA
+		} _exA_96;
 		uint8_t x2a_h[160];	// @ 0x0700
-		uint8_t _padB[96];	// used by engine code; 0x07A0
+		struct
+		{
+			uint8_t _VCACHE_PREV[37]; // $07A0
+			uint8_t _VCACHE_NEXT[37]; // $07C5
+			uint8_t _VAR_BASE2[22]; // $07EA
+		} _exB_96;
 		uint8_t xoffs_h[160];	// @ 0x0800
-		uint8_t _padC[79];	// used by engine code; 0x08A0
+		struct
+		{
+			uint8_t _PORTALS_MASKED[64]; // $08A0
+			uint8_t _VAR_BASE0[15]; // $08E0
+		} _exC_79;
 		uint8_t wall_tab[3][3];	// @ 0x08EF
 		uint8_t pow_tab[8];	// @ 0x08F8
 		uint8_t yoffs_l[128];	// @ 0x0900
@@ -91,7 +105,11 @@ typedef struct
 		uint8_t htan_h[128];	// @ 0x0A80
 		uint8_t sin_l[320];	// @ 0x0B00
 		uint8_t sin_h[320];	// @ 0x0C40
-		uint8_t _padD[128];	// used by engine code; 0x0D80
+		struct
+		{
+			uint8_t _PORTALS_SPRITE[64]; // $0D80
+			uint8_t _PORTALS_SECTOR[64]; // $0DC0
+		} _exD_128;
 		uint8_t swap[256];	// @ 0x0E00
 		uint8_t div32[256];	// @ 0x0F00
 		uint8_t sign[256];	// @ 0x1000
@@ -101,9 +119,19 @@ typedef struct
 		uint8_t jmp_spr_h[128];	// @ 0x1280
 		uint8_t jmp_sky_l[256];	// @ 0x1300
 		uint8_t jmp_sky_h[256];	// @ 0x1400
-		uint8_t drcode[0x1000];	// @ 0x1500 // size 0x0F53
-		// used by engine code; 0x2480
-		// used by engine code; 0x24C0
+		uint8_t drcode[0x0F80];	// @ 0x1500 // size 0x0F53
+		struct
+		{
+			uint8_t _PORTALS_X1[64]; // $2480
+			uint8_t _PORTALS_X0[64]; // $24C0
+		} _exE_128;
+#if 0
+		// not stored in the file; provided for reference
+		uint8_t TAB_TEMP_DATA[1024]; // $2500
+		uint8_t TAB_SPRITE_REMAP[128]; // $2900
+		uint8_t _free[128]; // $2980
+		uint8_t TAB_LIGHTMAPS[256 * 8]; // $2A00
+#endif
 	} t0;
 	struct
 	{
@@ -139,8 +167,6 @@ typedef struct
 		uint8_t vidoffs_x[128];	// @ 0xBC00
 		uint8_t vidoffs_y[128];	// @ 0xBC80
 		uint8_t printint[256];	// @ 0xBD00
-		//
-		uint8_t e_pad[0x100];
 	} t1;
 } export_tables_t;
 
@@ -200,7 +226,9 @@ typedef struct
 		struct
 		{
 			uint8_t font_space[128];
-			uint8_t hudinfo[126];
+			uint8_t hudinfo[124];
+			uint8_t num_wspr;
+			uint8_t num_tspr;
 			uint8_t num_walls;
 			uint8_t num_planes;
 			uint8_t font_x[128];
@@ -210,7 +238,7 @@ typedef struct
 	};
 	// VRAM
 	uint8_t vram[0x1C00];
-	// 2 banks
+	// 1 bank
 	union
 	{
 		struct
@@ -234,6 +262,7 @@ typedef struct
 		};
 		uint8_t bank_textures[8192];
 	};
+	// 1 bank
 	uint16_t palette[16][256];
 	// 1 bank
 	uint8_t lightmap[32][256];
@@ -3580,7 +3609,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 			if(!(sprite_remap[st->sprite] & 0x80))
 				continue;
 
-			if(st->sprite >= thing_state->num_sprlnk)
+			if(st->sprite >= gfx_head->num_tspr)
 			{
 				sprite_remap[st->sprite] = num_wframes;
 				if(load_wspr(sprite_hash[st->sprite]))

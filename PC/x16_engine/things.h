@@ -175,7 +175,7 @@ typedef union
 	// state 0 contains extra game config
 	struct
 	{
-		uint8_t num_sprlnk; // number of thing sprite names
+		uint8_t _action;
 		uint8_t menu_logo; // sprite for main menu logo
 		uint8_t _frm_nxt;
 		uint8_t _sprite;

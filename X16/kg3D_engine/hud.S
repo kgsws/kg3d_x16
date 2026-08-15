@@ -105,7 +105,7 @@ write_num:
 	lda	math_txtint,y
 	and	#$0F
 	bne	:+
-	lda	#10
+	lda	#'0'+10
 	sta	math_txtint,y
 	iny
 	dex
@@ -123,22 +123,18 @@ write_num:
 	iny
 @loop_wr:
 	; numeric lookup
-	lda	#$01
-	sta	MATH_VAR_U
+	stz	MATH_VAR_U
 	lda	math_txtint,y
-	and	#$08
-	bne	:+
-	lda	#$F8
-	bra	:++
-:
+	cmp	#'7'
+	bcc	:+
 	inc	MATH_VAR_U
-	lda	#$70
 :
-	ora	math_txtint,y
-	iny
-	asl
-
 	; addr (LO)
+	lda	math_txtint,y
+	iny
+	ina
+	asl
+	ora	#$F0
 	sta	VERA_DATA0
 
 	; addr (HI), mode (4bpp)

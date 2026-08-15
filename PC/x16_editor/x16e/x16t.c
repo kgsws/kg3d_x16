@@ -129,8 +129,8 @@ typedef union
 	// state 0 contains extra game config
 	struct
 	{
-		uint8_t num_sprlnk; // number of thing sprite names
-		uint8_t menu_logo; // sprite for main menu logo
+		uint8_t _action;
+		uint8_t _next;
 		uint8_t _frm_nxt;
 		uint8_t _sprite;
 		uint8_t _ticks;
@@ -3415,8 +3415,6 @@ void x16t_export()
 	memset(state_data, 0, sizeof(state_data));
 
 	// store extra info into dummy state zero
-	state_data->num_sprlnk = x16_num_sprlnk_thg;
-	state_data->menu_logo = 0xFF;
 	state_data->plr_crouch = THING_TYPE_PLAYER_C;
 	state_data->plr_swim = THING_TYPE_PLAYER_S;
 	state_data->plr_fly = THING_TYPE_PLAYER_F;
@@ -3461,12 +3459,6 @@ void x16t_export()
 	{
 		uint8_t *tdst = thing_data + i + 128 + 24 * 256; // 24 = offset for sprite names, stored in 'thing animation info' area; 0xB880
 		uint32_t hash = editor_sprlink[i].hash;
-
-		if(	i >= x16_num_sprlnk_thg &&
-			hash == 0xF8845BD5
-		)
-			// logo sprite
-			state_data->menu_logo = i;
 
 		*tdst = hash;
 		tdst += 256;

@@ -6,7 +6,7 @@ BANK_SWAP_CODE = 2	; [2 banks]
 ; thing info
 BANK_THING_INFO = 4
 
-; loaded from GFX
+; loaded from GFX (both banks and once)
 BAMK_GFX_INFO = 5
 BANK_PALETTE = 6
 
@@ -67,9 +67,6 @@ BANK_PLANE_X = BANK_TABLES_T1 + 5
 BANK_Y_CENTER = BANK_TABLES_T1 + 5
 BANK_VIDOFFS = BANK_TABLES_T1 + 5
 BANK_PRINTINT = BANK_TABLES_T1 + 5
-
-; REMOVE
-BANK_PORTALS = BANK_TABLES_T1 + 5
 
 ;;;; BANK 38+ contains game data
 

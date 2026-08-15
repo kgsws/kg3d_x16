@@ -58,6 +58,9 @@ MAP_TEMP_THING_ANGLE = MAP_TEMP_THING + 11
 MAP_TEMP_THING_FLAGS = MAP_TEMP_THING + 12
 MAP_TEMP_THING_EXTRA = MAP_TEMP_THING + 13
 
+; sprite loading
+MAP_TEMP_SPR_IDX = MAP_TEMP_THING + 16
+
 ;;;
 ; info
 ;;;
@@ -120,17 +123,21 @@ map_init:
 ;;;
 
 ex_precache:
-	; thing states bank
-	lda	#BANK_THING_STATES
+	; extra code bank
+	lda	#BANK_EXTRA_CODE
 	sta	REG_RAM_BANK
 
 	; get thing sprite count
-	lda	THSTATE_STRUCT_THG_SPRLNK
-	sta	TAB_THG_SPRLNK
+	lda	TAB_GFXHEAD_NUM_TSPR
+	sta	TAB_NUM_TSPR
 
 	; get logo sprite
-	lda	THSTATE_STRUCT_MENU_LOGO
+	lda	TAB_GFXHEAD_LOGO_SPR
 	sta	TAB_MENU_LOGO
+
+	; thing states bank
+	lda	#BANK_THING_STATES
+	sta	REG_RAM_BANK
 
 	; get player types
 	lda	THSTATE_STRUCT_PLAYER_C
@@ -145,6 +152,14 @@ ex_precache:
 	sta	MAP_LOAD_WRAM_L
 	lda	#$04
 	sta	MAP_LOAD_WRAM_H
+
+	; reset remaps
+	lda	#$FF
+	ldy	#0
+@loop_remap:
+	sta	TAB_SPRITE_REMAP,y
+	iny
+	bne	@loop_remap
 
 	;;;;;;;;; TODO
 
@@ -356,7 +371,7 @@ ex_map_load:
 	sta	REG_RAM_BANK
 
 	; find sky
-	ldy	#31
+	ldy	#15
 @loop_skyfind:
 	lda	TAB_GINFO_SKY_HASH_L,y
 	cmp	MAP_HEAD_HASH_SKY+0
@@ -379,8 +394,6 @@ ex_map_load:
 	dey
 	bpl	@loop_skyfind
 
-	;;; TODO: load sky texture
-
 @after_sky:
 
 	;;;;
@@ -391,15 +404,7 @@ ex_map_load:
 	lda	#1
 	sta	MAP_TEMP_LIGHT_IDX
 
-	; generate white light
-	lda	#0
-@loop_white:
-	tay
-	sta	TAB_LIGHTMAPS,y
-	dea
-	bne	@loop_white
-
-	; load other lights
+	; load lights
 	lda	MAP_HEAD_COUNT_LIGHTS
 	beq	@no_lights
 @loop_lights:
@@ -965,10 +970,10 @@ load_light:
 	adc	#>MAP_TEMP_LIGHT_DATA
 	sta	@light_copy+2
 
-	; destination
+	; destination (off-by-one)
 	clc
 	lda	MAP_TEMP_LIGHT_IDX
-	adc	#>TAB_LIGHTMAPS
+	adc	#>TAB_LIGHTMAPS-1
 	sta	@light_copy+5
 
 	; copy
@@ -1350,8 +1355,211 @@ load_columns:
 ;;;
 ; load thing sprites
 ;;;
+; MAP_TEMP_TH_TYPE is thing type
+; load all sprites this thing type uses
 
 load_thing_sprites:
+	ldy	MAP_TEMP_TH_TYPE
+
+load_thing_sprites_r:
+	; go trough animations
+	lda	#THTYPE_ANIM_COUNT
+	dec
+	sta	MAP_LOAD_AIDX
+@loop_anim:
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; get state count
+	lda	MAP_LOAD_AIDX
+	ora	#>THTYPE_ANIM_C
+	sta	THTEMP_PTR_H
+	lda	#$80
+	sta	THTEMP_PTR_L
+	lda	(THTEMP_PTR_L),y
+	beq	@skip_anim
+	sta	MAP_LOAD_SIDX
+
+	; get state index pointer
+	lda	MAP_LOAD_AIDX
+	ora	#>THTYPE_ANIM_L
+	sta	THTEMP_PTR_H
+	lda	(THTEMP_PTR_L),y
+	tax
+	lda	MAP_LOAD_AIDX
+	ora	#>THTYPE_ANIM_H
+	sta	THTEMP_PTR_H
+	lda	(THTEMP_PTR_L),y
+
+	; thing states bank
+	and	#$07
+	ora	#BANK_THING_STATES
+	sta	REG_RAM_BANK
+
+	; go trough states
+@loop_state:
+	phx
+	phy
+
+	; get state sprite
+	ldy	THSTATE_STRUCT_SPRITE,x
+
+	; check for 'none'
+	bmi	@skip_load
+
+	; check if already loaded
+	lda	TAB_SPRITE_REMAP,y
+	bpl	@skip_load
+
+	; backup bank
+	lda	REG_RAM_BANK
+	pha
+
+	; load sprite(s)
+	jsr	load_sprite
+
+	; thing states bank
+	pla
+	sta	REG_RAM_BANK
+
+@skip_load:
+	ply
+	plx
+
+	; increment state pointer
+	inx
+	bne	:+
+
+	; increment state bank
+	inc	REG_RAM_BANK
+:
+	; next state
+	dec	MAP_LOAD_SIDX
+	bne	@loop_state
+
+@skip_anim:
+	; next anim
+	dec	MAP_LOAD_AIDX
+	bpl	@loop_anim
+
+	; check for recursion
+	tsx
+	cpx	MAP_TEMP_STACK
+	bne	@skip_recursion
+
+	; go trough spawn types
+	lda	#>THTYPE_STRUCT_SPAWN_A
+	sta	TMP_PTR_H
+	sty	TMP_PTR_L
+@loop_spawn:
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; read spawn[x]
+	lda	(TMP_PTR_L)
+	bmi	:+
+
+	; recursion
+	tay
+	jsr	load_thing_sprites_r
+:
+	; next
+	inc	TMP_PTR_H
+	lda	#>THTYPE_STRUCT_SPAWN_D+1
+	cmp	TMP_PTR_H
+	bne	@loop_spawn
+
+@skip_recursion:
+	rts
+
+;;;
+; load sprite (thing or weapon)
+;;;
+
+load_sprite:
+	phy
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; generate sprite file name
+	lda	THTYPE_SHASH_0,y
+	sta	MAP_TEMP_THING_HASH_0
+	lda	THTYPE_SHASH_1,y
+	sta	MAP_TEMP_THING_HASH_1
+	lda	THTYPE_SHASH_2,y
+	sta	MAP_TEMP_THING_HASH_2
+	lda	THTYPE_SHASH_3,y
+	sta	MAP_TEMP_THING_HASH_3
+
+	; GFX info bank
+	lda	#BAMK_GFX_INFO
+	sta	REG_RAM_BANK
+
+	; find sprite
+	ldy	#0
+@loop_sprfind:
+	lda	TAB_GINFO_SPR_HASH_L,y
+	cmp	MAP_TEMP_THING_HASH_0
+	bne	:+
+	lda	TAB_GINFO_SPR_HASH_M,y
+	cmp	MAP_TEMP_THING_HASH_1
+	bne	:+
+	lda	TAB_GINFO_SPR_HASH_H,y
+	cmp	MAP_TEMP_THING_HASH_2
+	bne	:+
+	lda	TAB_GINFO_SPR_HASH_U,y
+	cmp	MAP_TEMP_THING_HASH_3
+	bne	:+
+
+	; get sector
+	clc
+	lda	TAB_GINFO_SPR_SECT_L,y
+	adc	TAB_GFX_SECTOR_L
+	sta	SD_SEC_L
+	lda	TAB_GINFO_SPR_SECT_M,y
+	adc	TAB_GFX_SECTOR_M
+	sta	SD_SEC_M
+	lda	TAB_GINFO_SPR_SECT_H,y
+	adc	TAB_GFX_SECTOR_H
+	sta	SD_SEC_H
+	lda	TAB_GINFO_SPR_SECT_U,y
+	adc	TAB_GFX_SECTOR_U
+	sta	SD_SEC_U
+	bra	@spr_found
+:
+	; next
+	iny
+	bpl	@loop_sprfind
+
+	; error
+	lda	#15
+	jmp	load_error
+
+	rts
+
+@spr_found:
+	; check type
+	ply
+	cpy	TAB_NUM_TSPR
+	bcc	load_sprite_thg
+
+	;; WEAPON SPRITE
+load_sprite_wpn:
+	; TODO
+
+	rts
+
+	;; THING SPRITE
+load_sprite_thg:
+
+	; mark as loaded
+	lda	MAP_TEMP_SPR_IDX
+	sta	TAB_SPRITE_REMAP,y
+
 	rts
 
 ;;;

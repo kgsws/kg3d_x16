@@ -62,9 +62,11 @@ text_write_la:
 
 	sec
 	sbc	#$20
-	sta	MATH_VAR_U
 	tax
 	beq	@space
+
+	dea
+	sta	MATH_VAR_U
 
 	; Y offset
 	lda	TAB_FONT_YOFFS,x
@@ -75,6 +77,7 @@ text_write_la:
 	sta	MATH_VAR_H
 
 	; shift
+	ldx	MATH_VAR_U
 	lda	TAB_SWAP,x
 	and	#$0F
 	tax
@@ -112,6 +115,7 @@ text_write_la:
 	inc	TAB_TEXT_I
 
 	ldx	MATH_VAR_U
+	inx
 @space:
 	clc
 	lda	TAB_FONT_SPACE,x
@@ -235,15 +239,15 @@ text_sprite_addr:
 font_base_lo:
 	.byte	$F0
 	.byte	$F0
-	.byte	$A0
-	.byte	$B0
-	.byte	$E0
 	.byte	$F0
+	.byte	$60
+	.byte	$70
+	.byte	$C0
 
 font_base_hi:
+	.byte	$02
 	.byte	$03
 	.byte	$04
-	.byte	$0E
-	.byte	$0E
-	.byte	$0E
-	.byte	$0E
+	.byte	$0F
+	.byte	$0F
+	.byte	$0F

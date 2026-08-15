@@ -384,9 +384,9 @@ render_view:
 	lda	#$FE
 	sta	VERA_FX_MAPBASE
 
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x00XX00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
@@ -1167,9 +1167,9 @@ draw_span:
 	lda	#$04
 	sta	VERA_CTRL
 
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x00XX00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
@@ -3175,9 +3175,9 @@ v1diff_opcode:
 	lda	#%10010000
 	sta	VERA_FX_MULT
 
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x00XX00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
@@ -3778,9 +3778,9 @@ wall_render_loop:
 	lda	WALL_CLIP_BOT
 	sta	WALL_Y1
 
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x00XX00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
@@ -4398,9 +4398,9 @@ sprite_draw_opcode:
 	lda	#$04
 	sta	VERA_CTRL
 
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x00XX00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
@@ -5092,9 +5092,9 @@ masked_loop_col:
 	lda	#$04
 	sta	VERA_CTRL
 
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x00XX00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
@@ -5805,9 +5805,9 @@ set_affine_xw_idx:
 ;;;
 
 generate_texture_map_wall:
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x00XX00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
@@ -6208,9 +6208,9 @@ texture_set:
 	lda	#%01000000
 	sta	VERA_FX_CTRL
 
-	; ADDR0 = 0x001F00, increment = 1
+	; ADDR0 = 0x00XX00, increment = 1
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H

@@ -79,6 +79,24 @@ start:
 	.word	text_tabload
 
 	; get sector
+	lda	LDR_GFX_SECTOR+0
+	sta	LDR_TEMP_L
+	lda	LDR_GFX_SECTOR+1
+	sta	LDR_TEMP_H
+	lda	LDR_GFX_SECTOR+2
+	sta	LDR_TEMP_I
+	lda	LDR_GFX_SECTOR+3
+	sta	LDR_TEMP_T
+
+	; extra code bank
+	lda	#BANK_EXTRA_CODE
+	sta	REG_RAM_BANK
+
+	jsr	read_data
+	.byte	$01
+	.byte	$BC
+
+	; get sector
 	clc
 	lda	LDR_GFX_SECTOR+0
 	adc	#TAB_GFX_INFO_PAL

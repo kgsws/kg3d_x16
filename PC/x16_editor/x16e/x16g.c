@@ -447,7 +447,10 @@ typedef struct
 		struct
 		{
 			uint8_t font_space[128];
-			uint8_t hudinfo[126];
+			uint8_t hudinfo[123];
+			uint8_t logo_spr;
+			uint8_t num_wspr;
+			uint8_t num_tspr;
 			uint8_t num_walls;
 			uint8_t num_planes;
 			uint8_t font_x[128];
@@ -8664,6 +8667,7 @@ void x16g_export()
 	int32_t fd;
 	void *ptr;
 	void *export_ptr;
+	hud_export_t *hud;
 	export_head_t *head;
 	uint32_t *pal = x16_palette_data;
 	uint32_t num_pl = 0;
@@ -8672,16 +8676,21 @@ void x16g_export()
 	uint32_t num_li = gfx_idx[GFX_MODE_LIGHTS].max;
 	uint16_t *rtex = stex_data;
 	uint16_t *ttex = stex_data + 2048;
-	hud_export_t *hud = edit_cbor_buffer + offsetof(export_head_t, hudinfo);
 
 	edit_busy_window("Exporting graphics ...");
 
 	/// export buffer; aligned to sector size
 	export_ptr = edit_cbor_buffer + 512;
 	export_ptr = (void*)((uintptr_t)export_ptr & ~511);
+
 	head = export_ptr;
+	hud = export_ptr + offsetof(export_head_t, hudinfo);
 
 	memset(head, 0, sizeof(export_head_t));
+
+	// reset
+
+	head->logo_spr = 0xFF;
 
 	/// HUD + FONT + TILES + TILEMAPS
 
@@ -8742,13 +8751,13 @@ void x16g_export()
 	// font offsets
 	for(uint32_t i = 0; i < FONT_CHAR_COUNT; i++)
 	{
-		head->font_x[i] = font_char[i].yoffs;
-		head->font_y[i] = font_char[i].xoffs;
+		head->font_x[i] = font_char[i].xoffs;
+		head->font_y[i] = font_char[i].yoffs;
 	}
 
 	// numeric
 	for(i = 0; i < NUMS_CHAR_COUNT; i++)
-		ptr = place_data(ptr, nums_char[i].data, 64);
+		ptr = place_data(ptr, nums_char[(NUMS_CHAR_COUNT + i - 1) % NUMS_CHAR_COUNT].data, 64);
 
 	// font, first 48 characters
 	for(i = 1; i <= 48; i++)
@@ -8764,7 +8773,7 @@ void x16g_export()
 	// 64x64 / 128x16! / tiles
 	ptr = place_data(ptr, vram_ranges.r1, sizeof(vram_ranges.r1));
 
-	// font, last 32 characters
+	// font, last 14 characters
 	for( ; i <= 94; i++)
 		ptr = place_data(ptr, font_char[i].data, 32);
 
@@ -9095,6 +9104,8 @@ void x16g_export()
 
 	// weapons
 
+	// + logo sprite // hash == 0xF8845BD5
+
 	// skies
 
 	ptr += 511;
@@ -9139,6 +9150,13 @@ void x16g_export()
 
 		ptr += 65536;
 	}
+
+	// extra info
+
+	head->num_wspr = 0;
+	head->num_tspr = num_sp;
+	head->num_walls = num_wa;
+	head->num_planes = num_pl;
 
 	// save
 

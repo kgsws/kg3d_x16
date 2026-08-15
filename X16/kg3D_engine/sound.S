@@ -3,7 +3,7 @@
 .include "../smc.inc"
 .include "banks.inc"
 .include "zeropage.inc"
-.include "file.inc"
+.include "tables.inc"
 
 .export sound_stop
 .export sound_start
@@ -69,7 +69,7 @@ sound_update:
 
 	; restore
 	stz	VERA_ADDRx_L
-	lda	#$1F
+	lda	#TAB_VERA_MATH_M
 	sta	VERA_ADDRx_M
 	lda	#%00010000
 	sta	VERA_ADDRx_H
