@@ -1297,7 +1297,7 @@ static void projectile_death(uint8_t tdx)
 	thing_t *th = thing_ptr(tdx);
 	uint8_t type = th->ticker.type;
 	int32_t nx, ny, nz;
-	uint8_t texture = 0;
+	uint8_t texture = 0xFF;
 	uint8_t thing = 0;
 
 	hitscan.radius = th->radius;
@@ -1424,7 +1424,7 @@ static void projectile_death(uint8_t tdx)
 		}
 	}
 
-	if(texture == 0xFF)
+	if(!texture)
 	{
 		th->next_state = 0;
 		return;
@@ -1573,7 +1573,7 @@ repeat:
 
 	th->next_state = st->next;
 	th->next_state |= (st->frm_nxt & 0xE0) << 3;
-	th->next_state |= (st->action & 0x80) << 8;
+	th->next_state |= (st->action & 0x80) << 8; // 'FULLBRIGHT'
 
 	th->ticks = st->ticks;
 

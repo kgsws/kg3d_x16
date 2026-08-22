@@ -1464,7 +1464,7 @@ static uint32_t check_sprite_resolution(uint32_t width, uint32_t height)
 	return	width < 1 ||
 		height < 1 ||
 		width > 126 || // > 126 is not supported
-		height > 250 // > 250 is not supported
+		height > 248 // > 248 is not supported
 	;
 }
 
@@ -9082,11 +9082,10 @@ void x16g_export()
 
 		sprh->last = 0xFF;
 
-		// data info in first variant
+		// data info in last variant
 
 		base = (ptr - export_ptr) / 512;
 
-		sprh = dtr;
 		sprh->data = base;
 		sprh->size = (vl->stex_used + 511) / 512;
 

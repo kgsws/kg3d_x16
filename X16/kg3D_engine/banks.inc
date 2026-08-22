@@ -48,7 +48,10 @@ BANK_PLAYER_START = BANK_MAPWALLS + 0	; loaded from map file
 ; sectors in things
 ; index 0 to 127 is used for 'thing id' [thingsec]
 ; index 128 to 255 is used for 'offset in sector things table' [thingces]
-BANK_THING_SECTORS = BANK_MAPWALLS + 7
+BANK_THING_SECTORS = BANK_MAPWALLS + 3
+
+; sprite info
+BANK_SPRITE_INFO = BANK_MAPWALLS + 4	; [4 banks] must be divisible by 4
 
 ; thing states
 BANK_THING_STATES = BANK_MAPWALLS + 8	; [8 banks] must be divisible by 8
@@ -68,5 +71,5 @@ BANK_Y_CENTER = BANK_TABLES_T1 + 5
 BANK_VIDOFFS = BANK_TABLES_T1 + 5
 BANK_PRINTINT = BANK_TABLES_T1 + 5
 
-;;;; BANK 38+ contains game data
-
+; game data, rest of the RAM
+BANK_WRAM_DATA = 38

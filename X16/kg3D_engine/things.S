@@ -3804,7 +3804,8 @@ swap_thing_sector:
 projectile_death:
 	; reset
 	stz	PRJDTH_THING
-	stz	PRJDTH_TEXTURE
+	lda	#$FF
+	sta	PRJDTH_TEXTURE
 
 	; get position
 	lda	RET_THING_IDX
@@ -4019,7 +4020,6 @@ projectile_death:
 	adc	ARG_THING_Z_H
 	sta	ARG_THING_Z_H
 
-@fail_thing:
 	jmp	@handled
 
 @not_thing:
@@ -4293,7 +4293,7 @@ projectile_death:
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	; if(texture == 0xFF)
+	; if(!texture)
 	lda	PRJDTH_TEXTURE
 	bne	:+
 

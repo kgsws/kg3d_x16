@@ -25,8 +25,8 @@
 MAP_FILE_HANDLE = 2
 
 ; structure temp storage
-MAP_TEMP_DATA_STRUCT = TAB_TEMP_DATA + 512
-MAP_TEMP_STACK = TAB_TEMP_DATA + 512 + 64 + 32
+MAP_TEMP_DATA_STRUCT = TAB_TEMP_DATA + 256
+MAP_TEMP_STACK = TAB_TEMP_DATA + 255
 
 ; map light in temp storage
 MAP_TEMP_LIGHT = MAP_TEMP_DATA_STRUCT
@@ -60,6 +60,30 @@ MAP_TEMP_THING_EXTRA = MAP_TEMP_THING + 13
 
 ; sprite loading
 MAP_TEMP_SPR_IDX = MAP_TEMP_THING + 16
+MAP_TEMP_SPR_FRAME = MAP_TEMP_THING + 17
+MAP_TEMP_SPR_FRMIDX = MAP_TEMP_THING + 18
+MAP_TEMP_SPR_COLS_L = MAP_TEMP_THING + 19
+MAP_TEMP_SPR_COLS_H = MAP_TEMP_THING + 20
+MAP_TEMP_SPR_DAT_L = MAP_TEMP_THING + 21
+MAP_TEMP_SPR_DAT_H = MAP_TEMP_THING + 22
+MAP_TEMP_SPR_HEAD = MAP_TEMP_DATA_STRUCT + 256
+MAP_TEMP_SPRH_LAST = MAP_TEMP_SPR_HEAD + 0
+MAP_TEMP_SPRH_FRAME = MAP_TEMP_SPR_HEAD + 1
+MAP_TEMP_SPRH_ROTATION = MAP_TEMP_SPR_HEAD + 2
+MAP_TEMP_SPRH_WIDTH = MAP_TEMP_SPR_HEAD + 3
+MAP_TEMP_SPRH_HEIGHT = MAP_TEMP_SPR_HEAD + 4
+MAP_TEMP_SPRH_OX = MAP_TEMP_SPR_HEAD + 5
+MAP_TEMP_SPRH_OY = MAP_TEMP_SPR_HEAD + 6
+MAP_TEMP_SPRH_DATA_L = MAP_TEMP_SPR_HEAD + 128
+MAP_TEMP_SPRH_DATA_M = MAP_TEMP_SPR_HEAD + 129
+MAP_TEMP_SPRH_DATA_H = MAP_TEMP_SPR_HEAD + 130
+MAP_TEMP_SPRH_DATA_U = MAP_TEMP_SPR_HEAD + 131
+MAP_TEMP_SPRH_SIZE = MAP_TEMP_SPR_HEAD + 132
+MAP_TEMP_SPRH_COLS = MAP_TEMP_SPR_HEAD + 256
+
+;; math
+
+WADDR_DATA = BANK_WRAM_DATA * 32
 
 ;;;
 ; info
@@ -148,9 +172,9 @@ ex_precache:
 	sta	TAB_PLAYER_F
 
 	; reset memory
-	lda	#$C0
+	lda	#<WADDR_DATA
 	sta	MAP_LOAD_WRAM_L
-	lda	#$04
+	lda	#>WADDR_DATA
 	sta	MAP_LOAD_WRAM_H
 
 	; reset remaps
@@ -160,6 +184,34 @@ ex_precache:
 	sta	TAB_SPRITE_REMAP,y
 	iny
 	bne	@loop_remap
+
+	; reset sprites
+	lda	#1
+	sta	MAP_TEMP_SPR_IDX
+
+	; sprite info bank
+	lda	#BANK_SPRITE_INFO
+	sta	REG_RAM_BANK
+
+	; loops
+	ldy	#3
+@loop_sprb:
+	ldx	#0
+@loop_sprr:
+	stz	SPRINFO_STRUCT_COLS_H,x
+	stz	SPRINFO_STRUCT_COLS_B,x
+	stz	SPRINFO_STRUCT_COLS_H+$0800,x
+	stz	SPRINFO_STRUCT_COLS_B+$0800,x
+
+	; next sprite
+	inx
+	bne	@loop_sprr
+
+	; next bank
+	inc	REG_RAM_BANK
+	dey
+	bpl	@loop_sprb
+	
 
 	;;;;;;;;; TODO
 
@@ -1264,10 +1316,8 @@ load_columns:
 	sta	MAP_LOAD_TMP_H
 
 	; WRAM space
-	phx
 	lda	#1
 	jsr	get_wram
-	plx
 
 	; offset
 	tya
@@ -1479,6 +1529,13 @@ load_thing_sprites_r:
 ;;;
 
 load_sprite:
+	lda	MAP_TEMP_SPR_IDX
+	bne	:+
+
+	; error
+	lda	#15
+	jmp	load_error
+:
 	phy
 
 	; thing info bank
@@ -1536,31 +1593,258 @@ load_sprite:
 	bpl	@loop_sprfind
 
 	; error
-	lda	#15
-	jmp	load_error
+;	lda	#16
+;	jmp	load_error
 
+	;; DEBUG ONLY TODO
+	ply
 	rts
 
 @spr_found:
 	; check type
 	ply
 	cpy	TAB_NUM_TSPR
-	bcc	load_sprite_thg
+	bcc	@load_tspr
+	jmp	@load_wspr
 
-	;; WEAPON SPRITE
-load_sprite_wpn:
-	; TODO
+@check_fail:
+	lda	#19
+	jmp	load_error
 
-	rts
-
+@load_tspr:
 	;; THING SPRITE
-load_sprite_thg:
 
 	; mark as loaded
 	lda	MAP_TEMP_SPR_IDX
 	sta	TAB_SPRITE_REMAP,y
 
+	; load variants
+	stz	MAP_TEMP_SPR_FRAME
+@loop_tvar:
+	; load variant
+	stz	TMP_PTR_L
+	lda	#>MAP_TEMP_SPR_HEAD
+	sta	TMP_PTR_H
+	jsr	file_read_sector
+	bcc	:+
+	lda	#17
+	jmp	load_error
+:
+	; if(sprh->rotation > 7)
+	lda	MAP_TEMP_SPRH_ROTATION
+	cmp	#8
+	bcs	@check_fail
+
+	; if(sprh->frame > 26)
+	lda	MAP_TEMP_SPRH_FRAME
+	cmp	#27
+	bcs	@check_fail
+
+	; if(frame < sprh->frame)
+	cmp	MAP_TEMP_SPR_FRAME
+	bcc	:+
+
+	; frame = sprh->frame
+	sta	MAP_TEMP_SPR_FRAME
+:
+	; frmidx = num_sprites + sprh->frame
+	clc
+	adc	MAP_TEMP_SPR_IDX
+
+	; if(frmidx >= 256)
+	bcs	@check_fail
+
+	sta	MAP_TEMP_SPR_FRMIDX
+	tax
+
+	; si->cols = wram_used / 256
+	lda	MAP_LOAD_WRAM_H
+	asl
+	asl
+	asl
+	ldy	MAP_LOAD_WRAM_L
+	ora	TAB_DIV32,y
+	sta	MAP_TEMP_SPR_COLS_H
+	tya
+	and	#$1F
+	ora	#$A0
+	sta	MAP_TEMP_SPR_COLS_L
+	sta	@loop_tcol+5
+
+	; WRAM space for columns
+	lda	#1
+	jsr	get_wram
+
+	; si = sprite_info[sprh->rotation] + frmidx
+	lda	MAP_TEMP_SPRH_ROTATION
+	lsr
+	ora	#BANK_SPRITE_INFO
+	sta	REG_RAM_BANK
+	bcs	:+
+	jmp	@tspr_rote
+:
+	jmp	@tspr_roto
+
+@tspr_next:
+	; column bank
+	lda	MAP_TEMP_SPR_COLS_H
+	sta	REG_RAM_BANK
+
+	; copy columns
+	ldy	#0
+@loop_tcol:
+	lda	MAP_TEMP_SPRH_COLS,y
+	sta	$A000,y	; modified address
+	dey
+	bne	@loop_tcol
+
+	; next
+	lda	MAP_TEMP_SPRH_LAST
+	beq	@loop_tvar
+
+	; WRAM align
+	lda	MAP_LOAD_WRAM_L
+	lsr
+	bcc	:+
+	lda	#1
+	jsr	get_wram
+:
+	; dpos = wram_used / 256
+	lda	MAP_LOAD_WRAM_H
+	sta	MAP_TEMP_SPR_DAT_H
+	asl
+	asl
+	asl
+	ldy	MAP_LOAD_WRAM_L
+	sty	MAP_TEMP_SPR_DAT_L
+	ora	TAB_DIV32,y
+	sta	REG_RAM_BANK
+	tya
+	and	#$1F
+	ora	#$A0
+	pha
+
+	; WRAM space for data
+	lda	MAP_TEMP_SPRH_SIZE
+	asl
+	jsr	get_wram
+
+	; get sector
+	clc
+	lda	MAP_TEMP_SPRH_DATA_L
+	adc	TAB_GFX_SECTOR_L
+	sta	SD_SEC_L
+	lda	MAP_TEMP_SPRH_DATA_M
+	adc	TAB_GFX_SECTOR_M
+	sta	SD_SEC_M
+	lda	MAP_TEMP_SPRH_DATA_H
+	adc	TAB_GFX_SECTOR_H
+	sta	SD_SEC_H
+	lda	MAP_TEMP_SPRH_DATA_U
+	adc	TAB_GFX_SECTOR_U
+	sta	SD_SEC_U
+
+	; load data
+	ldx	MAP_TEMP_SPRH_SIZE
+	pla
+	jsr	file_read_sectors
+	bcc	:+
+	lda	#18
+	jmp	load_error
+:
+	; frame += num_sprites + 1
+	sec
+	lda	MAP_TEMP_SPR_IDX
+	tay
+	adc	MAP_TEMP_SPR_FRAME
+	sta	MAP_TEMP_SPR_FRAME
+
+	; for(uint32_t i = num_sprites; i < frame; i++)
+@loop_dset:
+	; for(uint32_t j = 0; j < 8; j++)
+	ldx	#3
+	lda	#BANK_SPRITE_INFO
+	sta	REG_RAM_BANK
+@loop_rset:
+	; sprite_info[j][i].data = dpos
+	lda	MAP_TEMP_SPR_DAT_L
+	sta	SPRINFO_STRUCT_DATA_L,y
+	sta	SPRINFO_STRUCT_DATA_L+$0800,y
+	lda	MAP_TEMP_SPR_DAT_H
+	sta	SPRINFO_STRUCT_DATA_H,y
+	sta	SPRINFO_STRUCT_DATA_H+$0800,y
+
+	; next rotations
+	inc	REG_RAM_BANK
+	dex
+	bpl	@loop_rset
+
+	; next frame
+	iny
+	cpy	MAP_TEMP_SPR_FRAME
+	bcc	@loop_dset
+
+	; num_sprites = frame
+	lda	MAP_TEMP_SPR_FRAME
+	sta	MAP_TEMP_SPR_IDX
+
 	rts
+
+@load_wspr:
+	;; TODO
+	lda	#111
+	jmp	load_error
+
+@tspr_roto:
+	; columns
+	lda	MAP_TEMP_SPR_COLS_L
+	sta	SPRINFO_STRUCT_COLS_H+$0800,x
+	lda	MAP_TEMP_SPR_COLS_H
+	sta	SPRINFO_STRUCT_COLS_B+$0800,x
+
+	; si->width = sprh->width
+	lda	MAP_TEMP_SPRH_WIDTH
+	sta	SPRINFO_STRUCT_WIDTH+$0800,x
+
+	; si->height = sprh->height
+	lda	MAP_TEMP_SPRH_HEIGHT
+	sta	SPRINFO_STRUCT_HEIGHT+$0800,x
+
+	; si->ox = sprh->ox
+	lda	MAP_TEMP_SPRH_OX
+	sta	SPRINFO_STRUCT_OX+$0800,x
+
+	; si->oy = sprh->oy
+	lda	MAP_TEMP_SPRH_OY
+	sta	SPRINFO_STRUCT_OY+$0800,x
+
+	jmp	@tspr_next
+
+@tspr_rote:
+	; columns
+	lda	MAP_TEMP_SPR_COLS_L
+	sta	SPRINFO_STRUCT_COLS_H,x
+	lda	MAP_TEMP_SPR_COLS_H
+	sta	SPRINFO_STRUCT_COLS_B,x
+
+	; si->width = sprh->width
+	lda	MAP_TEMP_SPRH_WIDTH
+	sta	SPRINFO_STRUCT_WIDTH,x
+
+	; si->height = sprh->height
+	lda	MAP_TEMP_SPRH_HEIGHT
+	sta	SPRINFO_STRUCT_HEIGHT,x
+
+	; si->ox = sprh->ox
+	lda	MAP_TEMP_SPRH_OX
+	sta	SPRINFO_STRUCT_OX,x
+
+	; si->oy = sprh->oy
+	lda	MAP_TEMP_SPRH_OY
+	sta	SPRINFO_STRUCT_OY,x
+
+	jmp	@tspr_next
+
 
 ;;;
 ; check reserve space in WRAM
@@ -1569,7 +1853,6 @@ load_sprite_thg:
 
 get_wram:
 	; check count
-	tax
 	bne	:+
 
 	; = 256

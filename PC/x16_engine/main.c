@@ -1981,7 +1981,7 @@ static void dr_sprite(uint32_t idx)
 	tex_now = spr->tex_now;
 	tex_step = spr->tex_step;
 
-	vera_tex_data(0xF8, 0xF6);
+	vera_tex_data(0xF8, 0xFA);
 
 	lightmap = lightmaps + spr->light * LIGHTMAP_SIZE;
 
@@ -2039,12 +2039,12 @@ static void dr_sprite(uint32_t idx)
 		if(diff < 0)
 		{
 			y1 = clip_bot;
-			tnow = spr->tex_scale * diff;
+			tnow = -spr->tex_scale * diff;
 			tnow >>= 2;
 		} else
 			y1 = bot;
 
-		dr_vspr(x0, y0, y1, tex_now >> 8, tnow, spr->tex_scale / -4);
+		dr_vspr(x0, y0, y1, tex_now >> 8, tnow, spr->tex_scale / 4);
 	}
 }
 
@@ -2403,7 +2403,7 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	si = sprite_info[0] + th->sprite;
 
 	// rotation
-	if(si->cols & 0x8000)
+	if(sprite_info[1][th->sprite].cols)
 	{
 		uint8_t ang;
 		ang = th->angle;
@@ -2533,8 +2533,8 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	spr->next = 0xFF;
 
 	// texture
-	spr->data = wram + si->data * 256;
-	spr->cols = (uint16_t*)(wram + (si->cols & 0x7FFF) * 256);
+	spr->data = wram + (si->data & 0x7FFF) * 256;
+	spr->cols = (uint16_t*)(wram + si->cols * 256);
 
 	// clipping copy & depth check
 	for(uint8_t xx = x0 / 2; xx < (x1+1) / 2; xx++)
@@ -3483,14 +3483,9 @@ static uint32_t load_tspr(uint32_t hash)
 		uint8_t coll[128];
 		uint8_t colh[128];
 	} *sprh;
-	struct
-	{
-		uint8_t frm;
-		uint8_t rot;
-	} spdb[256];
 	int32_t idx;
 	uint8_t *data;
-	uint32_t dpos, dsiz, ii;
+	uint32_t dpos, dsiz;
 	uint32_t frame = 0;
 
 	idx = find_sprite(hash);
@@ -3501,7 +3496,6 @@ static uint32_t load_tspr(uint32_t hash)
 
 	sprh = (void*)(game_gfx + idx * 512);
 
-	ii = 0;
 	while(1)
 	{
 		uint32_t frmidx;
@@ -3521,19 +3515,9 @@ static uint32_t load_tspr(uint32_t hash)
 		if(frmidx >= 256)
 			return 1;
 
-		spdb[ii].frm = frmidx;
-		spdb[ii].rot = sprh->rotation;
-		ii++;
-
-		if(sprh->rotation)
-			sprite_info[0][frmidx].cols |= 0x8000;
-
 		si = sprite_info[sprh->rotation] + frmidx;
 
-		if(si->cols & 0x7FFF)
-			return 1;
-
-		si->cols |= wram_used / 256;
+		si->cols = wram_used / 256;
 		cols = get_wram(256);
 		if(!cols)
 			return 1;
@@ -3553,14 +3537,13 @@ static uint32_t load_tspr(uint32_t hash)
 			break;
 
 		sprh++;
-
-		if(ii >= 256)
-			return 1;
 	}
 
 	// load data
 
-	sprh = (void*)(game_gfx + idx * 512);
+	if(wram_used & 256)
+		// align
+		get_wram(256);
 
 	dpos = wram_used / 256;
 	dsiz = sprh->size * 512;
@@ -3573,14 +3556,19 @@ static uint32_t load_tspr(uint32_t hash)
 
 	memcpy(data, game_gfx + sprh->data * 512, dsiz);
 
+	// new index
+
+	frame += num_sprites + 1;
+
 	// fill data offset in each variant
 
-	for(uint32_t i = 0; i < ii; i++)
-		sprite_info[spdb[i].rot][spdb[i].frm].data = dpos;
+	for(uint32_t i = num_sprites; i < frame; i++)
+		for(uint32_t j = 0; j < 8; j++)
+			sprite_info[j][i].data = dpos;
 
 	//
 
-	num_sprites += frame + 1;
+	num_sprites = frame;
 
 	return 0;
 }
@@ -3827,7 +3815,7 @@ static uint32_t load_map()
 	uint32_t esbase;
 
 	// TODO: precache
-	wram_used = 64 * 8192;
+	wram_used = 38 * 8192;
 	num_sprites = num_sprites_pre;
 	num_wframes = num_wframes_pre;
 	memcpy(sprite_remap, sprite_remap_pre, sizeof(sprite_remap));

@@ -15,8 +15,8 @@
 .export video_image_from_file
 .export video_load_vram
 .export video_draw_vline
-.export video_draw_wline
-.export video_draw_lline
+.export video_draw_vline_sf
+.export video_draw_vline_sl
 .export video_draw_hline
 .export video_draw_sline
 
@@ -541,7 +541,7 @@ video_draw_vline:
 ; VIDEO_DRAW_Y is off by one
 ; uses X and Y
 
-video_draw_wline:
+video_draw_vline_sf:
 	; jump table lookup (length)
 	ldx	VIDEO_DRAW_L
 	lda	TAB_JMP_SPW_L,x
@@ -551,7 +551,7 @@ video_draw_wline:
 
 	bra	vdraw_tline
 
-video_draw_lline:
+video_draw_vline_sl:
 	; jump table lookup (length)
 	ldx	VIDEO_DRAW_L
 	lda	TAB_JMP_SPR_L,x

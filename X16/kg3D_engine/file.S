@@ -244,7 +244,7 @@ file_read_sector:
 ; read data block
 ;;;
 ; X - sector count
-; A - HI of destination
+; A - HI of destination (must be even)
 
 file_read_sectors:
 	; destination

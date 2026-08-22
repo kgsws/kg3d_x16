@@ -368,10 +368,8 @@ render_view:
 	lda	#$08
 	sta	VERA_CTRL
 
-;;; TODO: sprite FX settings
-	; set affine X position (256px, mirrored)
-	lda	#1
-	sta	VERA_FX_Y_POS_L
+	; set affine X position (256px line)
+	stz	VERA_FX_Y_POS_L
 	stz	VERA_FX_Y_POS_H
 
 	; dcsel = 2, addrsel = 0
@@ -381,7 +379,7 @@ render_view:
 	; vera FX
 	lda	#$F8
 	sta	VERA_FX_TILEBASE
-	lda	#$FE
+	lda	#$FA
 	sta	VERA_FX_MAPBASE
 
 	; ADDR0 = 0x00XX00, increment = 1
@@ -3906,10 +3904,1080 @@ wall_skip_draw:
 ;;;
 
 prepare_sprite:
-	;;; TODO
+	sta	SPRITE_THING
+	tay
+
+	; if(proj_spr_idx >= 32)
+	lda	PROJECTION_SPRITE_IDX
+	cmp	#32
+	bcc	:+
+@bail:
+	rts
+:
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; thing sprite
+	lda	THING_STRUCT_SPRITE,y
+	sta	THTEMP_PTR_L
+	beq	@bail
+
+	; thing clip flag
+	lda	THING_STRUCT_EFLAGS,y
+	and	#THING_EFLAG_SPRCLIP
+	sta	SPRITE_CLIP_FLAG
+
+	; thing angle
+	lda	THING_STRUCT_ANGLE,y
+	sta	SPRITE_ANG_L
+
+	; thing bright flag
+	lda	THING_STRUCT_NXTFRM_H,y
+	sta	SPRITE_BRIGHT
+
+	; dcsel = 2, addrsel = 0
+	lda	#$04
+	sta	VERA_CTRL
+
+	; ADDR0 = 0x00XX00, increment = 1
+	stz	VERA_ADDRx_L
+	lda	#TAB_VERA_MATH_M
+	sta	VERA_ADDRx_M
+	lda	#%00010000
+	sta	VERA_ADDRx_H
+
+	; enable cache write
+	lda	#%01000000
+	sta	VERA_FX_CTRL
+
+	; reset accumulator, set addition, enable multiplication
+	lda	#%10010000
+	sta	VERA_FX_MULT
+
+	; dcsel = 6, addrsel = 0
+	lda	#$0C
+	sta	VERA_CTRL
+
+	; p2a_coord.x = (th->x >> 8) - (projection.x >> 8)
+	sec
+	lda	THING_STRUCT_X_L,y
+	sbc	PROJECTION_X_L
+	sta	MATH_P2A_X_L
+	lda	THING_STRUCT_X_H,y
+	sbc	PROJECTION_X_H
+	sta	MATH_P2A_X_H
+
+	; p2a_coord.y = (th->y >> 8) - (projection.y >> 8)
+	sec
+	lda	THING_STRUCT_Y_L,y
+	sbc	PROJECTION_Y_L
+	sta	MATH_P2A_Y_L
+	lda	THING_STRUCT_Y_H,y
+	sbc	PROJECTION_Y_H
+	sta	MATH_P2A_Y_H
+
+	; dist = (p2a_coord.x * projection.sin + p2a_coord.y * projection.cos) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; p2a_coord.x
+	lda	MATH_P2A_X_L
+	sta	VERA_FX_CACHE_L
+	lda	MATH_P2A_X_H
+	sta	VERA_FX_CACHE_M
+
+	; projection.sin
+	lda	PROJECTION_SIN_L
+	sta	VERA_FX_CACHE_H
+	lda	PROJECTION_SIN_H
+	sta	VERA_FX_CACHE_U
+
+	; accumulate
+	lda	VERA_FX_ACCUM
+
+	; p2a_coord.y
+	lda	MATH_P2A_Y_L
+	sta	VERA_FX_CACHE_L
+	lda	MATH_P2A_Y_H
+	sta	VERA_FX_CACHE_M
+
+	; projection.cos
+	lda	PROJECTION_COS_L
+	sta	VERA_FX_CACHE_H
+	lda	PROJECTION_COS_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	SPRITE_DIST_L
+	lda	VERA_DATA0
+	sta	SPRITE_DIST_H
+
+	; if(dist <= 16)
+	bpl	:+
+@behind:
+	; behind camera
+	rts
+:
+	bne	:+
+	lda	SPRITE_DIST_L
+	cmp	#17
+	bcc	@behind
+:
+	; a0 = point_to_angle()
+	jsr	math_p2a
+
+	; sprite info bank
+	lda	#BANK_SPRITE_INFO
+	sta	REG_RAM_BANK
+
+	; frame
+	ldx	THTEMP_PTR_L
+
+	; if(sprite_info[1][th->sprite].cols)
+	lda	SPRINFO_STRUCT_COLS_B+$0800,x
+	beq	@roteven
+
+	; a0 >> 4
+	ldy	MATH_VAR_L
+	lda	TAB_SWAP,y
+	and	#$0F
+	sta	SPRITE_ANG_H
+	ldy	MATH_VAR_H
+	lda	TAB_SWAP,y
+	and	#$F0
+	tsb	SPRITE_ANG_H
+
+	; ang = th->angle - (a0 >> 4)
+	sec
+	lda	SPRITE_ANG_L
+	sbc	SPRITE_ANG_H
+
+	; ang += 0x90
+	clc
+	adc	#$90
+
+	; ang >>= 5
+	tay
+	lda	TAB_DIV32,y
+
+	; the bank
+	lsr
+	ora	#BANK_SPRITE_INFO
+	sta	REG_RAM_BANK
+	bcc	@roteven
+
+	;; ODD ROTATION
+
+	; frm->width
+	lda	SPRINFO_STRUCT_WIDTH+$0800,x
+	sta	SPRITE_WIDTH
+
+	; frm->height
+	lda	SPRINFO_STRUCT_HEIGHT+$0800,x
+	sta	SPRITE_HEIGHT
+
+	; frm->ox
+	lda	SPRINFO_STRUCT_OX+$0800,x
+	sta	SPRITE_OFFS_X
+
+	; frm->oy
+	lda	SPRINFO_STRUCT_OY+$0800,x
+	sta	SPRITE_OFFS_Y_L
+
+	; frm->offs_cols
+	lda	SPRINFO_STRUCT_COLS_H+$0800,x
+	sta	SPRITE_COLS_H
+	lda	SPRINFO_STRUCT_COLS_B+$0800,x
+	sta	SPRITE_COLS_B
+
+	bra	@rotdone
+
+@roteven:
+	;; EVEN ROTATION
+
+	; frm->width
+	lda	SPRINFO_STRUCT_WIDTH,x
+	sta	SPRITE_WIDTH
+
+	; frm->height
+	lda	SPRINFO_STRUCT_HEIGHT,x
+	sta	SPRITE_HEIGHT
+
+	; frm->ox
+	lda	SPRINFO_STRUCT_OX,x
+	sta	SPRITE_OFFS_X
+
+	; frm->oy
+	lda	SPRINFO_STRUCT_OY,x
+	sta	SPRITE_OFFS_Y_L
+
+	; frm->offs_cols
+	lda	SPRINFO_STRUCT_COLS_H,x
+	sta	SPRITE_COLS_H
+	lda	SPRINFO_STRUCT_COLS_B,x
+	sta	SPRITE_COLS_B
+
+@rotdone:
+	; frm->offs_data
+	lda	SPRINFO_STRUCT_DATA_L,x
+	sta	SPRITE_DATA_L
+	lda	SPRINFO_STRUCT_DATA_H,x
+	sta	SPRITE_DATA_H
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; thing scale
+	ldy	SPRITE_THING
+	lda	THING_STRUCT_SCALE,y
+	asl
+	sta	SPRITE_SCALE_L
+	lda	#0
+	rol
+	sta	SPRITE_SCALE_H
+	clc
+	lda	#64
+	adc	SPRITE_SCALE_L
+	sta	SPRITE_SCALE_L
+	bcc	:+
+	inc	SPRITE_SCALE_H
+:
+	; a0 = (a0 - projection.a + 512) & 2047
+	sec
+	lda	MATH_VAR_L
+	sbc	PROJECTION_A_L
+	sta	SPRITE_ANG_L
+	lda	MATH_VAR_H
+	sbc	PROJECTION_A_H
+	clc
+	adc	#$02
+	and	#$07
+	sta	SPRITE_ANG_H
+
+	; a2x bank
+	lda	#BANK_A2X
+	sta	REG_RAM_BANK
+
+	; xc = angle2x[a0]
+	ldy	SPRITE_ANG_L
+	lda	SPRITE_ANG_H
+	ora	#>TAB_A2X_L
+	sta	HI_PTR_H
+	lda	(HI_PTR_L),y
+	sta	SPRITE_XC_L
+	lda	SPRITE_ANG_H
+	ora	#>TAB_A2X_H
+	sta	HI_PTR_H
+	lda	(HI_PTR_L),y
+	sta	SPRITE_XC_H
+
+	; depth table bank
+	lda	#BANK_YDEPTH_L
+	sta	REG_RAM_BANK
+
+	; dist = tab_depth[dist]
+	ldy	SPRITE_DIST_L
+	lda	SPRITE_DIST_H
+	ora	#>TAB_YDEPTH_L
+	sta	HI_PTR_H
+	lda	(HI_PTR_L),y
+	sta	SPRITE_DIST_L
+	lda	SPRITE_DIST_H
+	stz	SPRITE_DIST_H
+	bne	:+
+	lda	TAB_YDEPTH_H,y
+	sta	SPRITE_DIST_H
+:
+	; dscl = (dist * spr_scale) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist
+	lda	SPRITE_DIST_L
+	sta	VERA_FX_CACHE_L
+	lda	SPRITE_DIST_H
+	sta	VERA_FX_CACHE_M
+
+	; spr_scale
+	lda	SPRITE_SCALE_L
+	sta	VERA_FX_CACHE_H
+	lda	SPRITE_SCALE_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	SPRITE_DSCL_L
+	lda	VERA_DATA0
+	sta	SPRITE_DSCL_H
+
+	; zdiff = (spr_xoffs * dscl) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; spr_xoffs
+	stz	VERA_FX_CACHE_M
+	lda	SPRITE_OFFS_X
+	asl
+	sta	VERA_FX_CACHE_L
+	bcc	:+
+	lda	#$FF
+	sta	VERA_FX_CACHE_M
+:
+	; dscl
+	lda	SPRITE_DSCL_L
+	sta	VERA_FX_CACHE_H
+	lda	SPRITE_DSCL_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; x0 = xc - zdiff
+	sec
+	lda	SPRITE_XC_L
+	sbc	VERA_DATA0
+	sta	SPRITE_X0_L
+	lda	SPRITE_XC_H
+	sbc	VERA_DATA0
+	sta	SPRITE_X0_H
+
+	; zdiff = (spr_width * dscl) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; spr_width
+	lda	SPRITE_WIDTH
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; dscl is already set
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; x1 = x0 + zdiff
+	clc
+	lda	SPRITE_X0_L
+	adc	VERA_DATA0
+	sta	SPRITE_X1_L
+	lda	SPRITE_X0_H
+	adc	VERA_DATA0
+	sta	SPRITE_X1_H
+
+	; xdiff = x1 - x0
+	sec
+	lda	SPRITE_X1_L
+	sbc	SPRITE_X0_L
+	sta	SPRITE_XDIFF_L
+	lda	SPRITE_X1_H
+	sbc	SPRITE_X0_H
+	sta	SPRITE_XDIFF_H
+
+	; if(xdiff <= 0)
+	bpl	:+
+	stz	SPRITE_XDIFF_L
+	lda	#0
+:
+	ora	SPRITE_XDIFF_L
+	bne	:+
+
+	; x1 = x0 + 1
+	lda	SPRITE_X0_L
+	ina
+	sta	SPRITE_X1_L
+	stz	SPRITE_X1_H
+:
+	; if(x1 <= projection.x0d)
+	sec
+	lda	SPRITE_X1_L
+	sbc	PROJECTION_X0D
+	sta	SPRITE_TMP_0
+	lda	SPRITE_X1_H
+	sbc	#$00
+	bpl	:+
+@too_left:
+	rts
+:
+	ora	SPRITE_TMP_0
+	beq	@too_left
+
+	; if(x0 >= projection.x1d)
+	sec
+	lda	PROJECTION_X1D
+	sbc	SPRITE_X0_L
+	sta	SPRITE_TMP_0
+	lda	#$00
+	sbc	SPRITE_X0_H
+	bpl	:+
+@too_right:
+	rts
+:
+	ora	SPRITE_TMP_0
+	beq	@too_right
+
+	; spr_yoffs = (spr_yoffs * spr_scale) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; spr_yoffs
+	stz	VERA_FX_CACHE_M
+	lda	SPRITE_OFFS_Y_L
+	asl
+	sta	VERA_FX_CACHE_L
+	bcc	:+
+	lda	#$FF
+	sta	VERA_FX_CACHE_M
+:
+	; spr_scale
+	lda	SPRITE_SCALE_L
+	sta	VERA_FX_CACHE_H
+	lda	SPRITE_SCALE_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	SPRITE_OFFS_Y_L
+	lda	VERA_DATA0
+	sta	SPRITE_OFFS_Y_H
+
+	;; BOT
+
+	ldy	SPRITE_THING
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; zdiff = projection.z - ((th->z >> 8) + spr_yoffs)
+	clc
+	lda	THING_STRUCT_Z_L,y
+	adc	SPRITE_OFFS_Y_L
+	sta	SPRITE_DIFF_L
+	lda	THING_STRUCT_Z_H,y
+	adc	SPRITE_OFFS_Y_H
+	sta	SPRITE_DIFF_H
+	sec
+	lda	PROJECTION_Z_L
+	sbc	SPRITE_DIFF_L
+	sta	SPRITE_DIFF_L
+	lda	PROJECTION_Z_H
+	sbc	SPRITE_DIFF_H
+	sta	SPRITE_DIFF_H
+
+	; bot = (dist * zdiff) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist
+	lda	SPRITE_DIST_L
+	sta	VERA_FX_CACHE_L
+	lda	SPRITE_DIST_H
+	sta	VERA_FX_CACHE_M
+
+	; zdiff
+	lda	SPRITE_DIFF_L
+	sta	VERA_FX_CACHE_H
+	lda	SPRITE_DIFF_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; bot += projection.ycw
+	clc
+	lda	VERA_DATA0
+	adc	PROJECTION_YCW
+	sta	SPRITE_BOT_L
+	lda	VERA_DATA0
+	adc	#0
+	sta	SPRITE_BOT_H
+
+	; if(bot <= 0)
+	bpl	:+
+@too_top:
+	rts
+:
+	ora	SPRITE_BOT_L
+	beq	@too_top
+
+	;; TOP
+
+	; zdiff -= (spr_height * spr_scale) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; spr_height
+	lda	SPRITE_HEIGHT
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; spr_scale
+	lda	SPRITE_SCALE_L
+	sta	VERA_FX_CACHE_H
+	lda	SPRITE_SCALE_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; zdiff -= result >> 8
+	sec
+	lda	SPRITE_DIFF_L
+	sbc	VERA_DATA0
+	sta	SPRITE_DIFF_L
+	lda	SPRITE_DIFF_H
+	sbc	VERA_DATA0
+	sta	SPRITE_DIFF_H
+
+	; top = (dist * zdiff) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist
+	lda	SPRITE_DIST_L
+	sta	VERA_FX_CACHE_L
+	lda	SPRITE_DIST_H
+	sta	VERA_FX_CACHE_M
+
+	; zdiff
+	lda	SPRITE_DIFF_L
+	sta	VERA_FX_CACHE_H
+	lda	SPRITE_DIFF_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; top += projection.ycw
+	clc
+	lda	VERA_DATA0
+	adc	PROJECTION_YCW
+	sta	SPRITE_TOP
+	lda	VERA_DATA0
+	adc	#0
+
+	; if(top < 0)
+	bmi	@top_is_negative
+
+	; if(top >= 256)
+	beq	:+
+@too_bot:
+	rts
+:
+	; if(top >= 120)
+	lda	SPRITE_TOP
+	cmp	#120
+	bcs	@too_bot
+
+@top_is_negative:
+
+	;; BOT CLIP
+	lda	#$FF
+	sta	SPRITE_CLIP_Y1
+
+	; sector bank
+	lda	#BANK_SECTORS
+	sta	REG_RAM_BANK
+
+	; the sector
+	ldy	SECTOR_PTR_I
+
+	; check if required (flag)
+	lda	SPRITE_CLIP_FLAG
+	bne	:+
+
+	; check if required (link)
+	lda	SECTOR_STRUCT_FLOOR_LINK,y
+	beq	@no_bot_clip
+:
+	;; y1 = (dist * (projection.z - sec->height_floor)) >> 8;
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; projection.z - sec->height_floor
+	sec
+	lda	PROJECTION_Z_L
+	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_L,y
+	sta	VERA_FX_CACHE_H
+	lda	PROJECTION_Z_H
+	sbc	SECTOR_STRUCT_FLOOR_HEIGHT_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; y1 += projection.ycw
+	clc
+	lda	VERA_DATA0
+	adc	PROJECTION_YCW
+	tax
+	lda	VERA_DATA0
+	adc	#0
+	bne	:+
+	stx	SPRITE_CLIP_Y1
+	bpl	:+
+	stz	SPRITE_CLIP_Y1
+:
+@no_bot_clip:
+
+	;; TOP CLIP
+	stz	SPRITE_CLIP_Y0
+
+	; check if required (flag)
+	lda	SPRITE_CLIP_FLAG
+	bne	:+
+
+	; check if required
+	lda	SECTOR_STRUCT_CEILING_LINK,y
+	beq	@no_top_clip
+:
+	;; y1 = (dist * (projection.z - sec->height_ceiling)) >> 8;
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; projection.z - sec->height_ceiling
+	sec
+	lda	PROJECTION_Z_L
+	sbc	SECTOR_STRUCT_CEILING_HEIGHT_L,y
+	sta	VERA_FX_CACHE_H
+	lda	PROJECTION_Z_H
+	sbc	SECTOR_STRUCT_CEILING_HEIGHT_H,y
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; y1 += projection.ycw
+	clc
+	lda	VERA_DATA0
+	adc	PROJECTION_YCW
+	tax
+	lda	VERA_DATA0
+	adc	#0
+	bmi	:+
+	stx	SPRITE_CLIP_Y0
+	beq	:+
+	lda	#$FF
+	sta	SPRITE_CLIP_Y0
+:
+@no_top_clip:
+
+	;; texture
+
+	; inverse division bank
+	lda	#BANK_IDIV_L
+	sta	REG_RAM_BANK
+
+	; inv_div[xdiff]
+	jsr	math_idiv
+
+	; tex_step = (spr_width * inv_div) >> 8
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; spr_width
+	lda	SPRITE_WIDTH
+	sta	VERA_FX_CACHE_L
+	stz	VERA_FX_CACHE_M
+
+	; inv_div
+	lda	MATH_VAR_L
+	sta	VERA_FX_CACHE_H
+	lda	MATH_VAR_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+	sta	SPRITE_TEX_STEP_L
+	lda	VERA_DATA0
+	sta	SPRITE_TEX_STEP_H
+
+	; tex_now = 0
+	stz	SPRITE_TEX_NOW_L
+	stz	SPRITE_TEX_NOW_H
+
+	; if(x1 == x0 + 1)
+	sec
+	lda	SPRITE_X1_L
+	sbc	SPRITE_X0_L
+	tax
+	lda	SPRITE_X1_H
+	sbc	SPRITE_X0_H
+	bne	:+
+	txa
+	cmp	#1
+	bne	:+
+
+	; tex_now = (spr_width << 6) & 0xFF00
+	lda	SPRITE_WIDTH
+	lsr
+	lsr
+	sta	SPRITE_TEX_NOW_H
+:
+	; if(x1 > projection.x1d)
+	sec
+	lda	PROJECTION_X1D
+	sbc	SPRITE_X1_L
+	lda	#0
+	sbc	SPRITE_X1_H
+	bpl	:+
+
+	; x1 = projection.x1d
+	lda	PROJECTION_X1D
+	sta	SPRITE_X1_L
+:
+	; xdiff = x0 - projection.x0d
+	sec
+	lda	SPRITE_X0_L
+	sbc	PROJECTION_X0D
+	sta	SPRITE_XDIFF_L
+	lda	SPRITE_X0_H
+	sbc	#0
+	sta	SPRITE_XDIFF_H
+
+	; if(xdiff < 0)
+	bpl	:+
+
+	; x0 = projection.x0d
+	lda	PROJECTION_X0D
+	sta	SPRITE_X0_L
+
+	; tex_now = tex_step * -xdiff
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; tex_step
+	lda	SPRITE_TEX_STEP_L
+	sta	VERA_FX_CACHE_L
+	lda	SPRITE_TEX_STEP_H
+	sta	VERA_FX_CACHE_M
+
+	; -xdiff
+	sec
+	lda	#0
+	sbc	SPRITE_XDIFF_L
+	sta	VERA_FX_CACHE_H
+	lda	#0
+	sbc	SPRITE_XDIFF_H
+	sta	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result
+	stz	VERA_ADDRx_L
+	lda	VERA_DATA0
+	sta	SPRITE_TEX_NOW_L
+	lda	VERA_DATA0
+	sta	SPRITE_TEX_NOW_H
+:
+	; texture bank
+	lda	#BANK_TSCALE
+	sta	REG_RAM_BANK
+
+	; depth = tex_scale[dist]
+	ldy	SPRITE_DIST_L
+	lda	#>TAB_TSCALE_L
+	ora	SPRITE_DIST_H
+	sta	HI_PTR_H
+	lda	(HI_PTR_L),y
+	sta	SPRITE_DEPTH_L
+	lda	#>TAB_TSCALE_H
+	tsb	HI_PTR_H
+	lda	(HI_PTR_L),y
+	sta	SPRITE_DEPTH_H
+
+	; tex_scale = tex_scale[dscl]
+	lda	#>TAB_TSCALE_L
+	ora	SPRITE_DSCL_H
+	sta	HI_PTR_H
+	ldy	SPRITE_DSCL_L
+	lda	(HI_PTR_L),y
+	sta	SPRITE_TEX_SCALE_L
+	lda	#>TAB_TSCALE_H
+	tsb	HI_PTR_H
+	lda	(HI_PTR_L),y
+	sta	SPRITE_TEX_SCALE_H
+
+	; pointer
+	lda	PROJECTION_SPRITE_IDX
+	ora	#$A0
+	sta	HI_PTR_H
+
+	; sprite bank
+	lda	#BANK_DRAW_SPRITES
+	sta	REG_RAM_BANK
+
+	; structure - first property
+	ldy	#SPRITE_FIRST_PROP
+
+	; spr->depth
+	lda	SPRITE_DEPTH_L
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_DEPTH_H
+	sta	(HI_PTR_L),y
+
+	; spr->next
+	iny
+	lda	#$FF
+	sta	(HI_PTR_L),y
+
+	; spr->x0
+	iny
+	lda	SPRITE_X0_L
+	sta	(HI_PTR_L),y
+
+	; spr->x1
+	iny
+	lda	SPRITE_X1_L
+	sta	(HI_PTR_L),y
+
+	; spr->bot
+	iny
+	lda	SPRITE_BOT_L
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_BOT_H
+	sta	(HI_PTR_L),y
+
+	; spr->y0
+	iny
+	lda	SPRITE_CLIP_Y0
+	sta	(HI_PTR_L),y
+
+	; spr->y1
+	iny
+	lda	SPRITE_CLIP_Y1
+	sta	(HI_PTR_L),y
+
+	; spr->tex_now
+	iny
+	lda	SPRITE_TEX_NOW_L
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_TEX_NOW_H
+	sta	(HI_PTR_L),y
+
+	; spr->tex_step
+	iny
+	lda	SPRITE_TEX_STEP_L
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_TEX_STEP_H
+	sta	(HI_PTR_L),y
+
+	; spr->tex_scale
+	iny
+	lda	SPRITE_TEX_SCALE_L
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_TEX_SCALE_H
+	sta	(HI_PTR_L),y
+
+	; spr->dist
+	iny
+	lda	SPRITE_DIST_L
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_DIST_H
+	sta	(HI_PTR_L),y
+
+	; spr->scale
+	iny
+	lda	SPRITE_SCALE_L
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_SCALE_H
+	sta	(HI_PTR_L),y
+
+	; spr->cols
+	iny
+	lda	SPRITE_COLS_H
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_COLS_B
+	sta	(HI_PTR_L),y
+
+	; spr->data
+	iny
+	lda	SPRITE_DATA_L
+	sta	(HI_PTR_L),y
+	iny
+	lda	SPRITE_DATA_H
+	sta	(HI_PTR_L),y
+
+	; spr->light
+	iny
+	lda	#0
+	ldx	SPRITE_BRIGHT
+	bmi	:+
+	lda	PROJECTION_LIGHT
+:
+	sta	(HI_PTR_L),y
+
+	; other pointer
+	lda	#80
+	sta	TMP_PTR_L
+	lda	HI_PTR_H
+	sta	TMP_PTR_H
+
+	; clipping copy & depth check
+	lda	SPRITE_X0_L
+	lsr
+	tay
+	asl
+	sta	SPRITE_X0_L
+	sec
+	lda	SPRITE_X1_L
+	ina
+	sbc	SPRITE_X0_L
+	lsr
+	tax
+@loop_proj:
+	; spr->clip_bot[x0] = clip_bot[x0]
+	lda	RENDER_CLIP_BOT,y
+	sta	(TMP_PTR_L),y
+
+	; if(spr->depth > tmap_scale[x0])
+	sec
+	lda	SPRITE_DEPTH_L
+	sbc	RENDER_TEXSCALE_L,y
+	sta	MATH_TEMP
+	lda	SPRITE_DEPTH_H
+	sbc	RENDER_TEXSCALE_H,y
+	bmi	:+
+	ora	MATH_TEMP
+	beq	:+
+
+	; spr->clip_top[x0] = 120
+	lda	#120
+	sta	(HI_PTR_L),y
+	bra	:++
+:
+	; spr->clip_top[x0] = clip_top[x0]
+	lda	RENDER_CLIP_TOP,y
+	sta	(HI_PTR_L),y
+:
+	; next
+	iny
+	dex
+	bne	@loop_proj
+
+	; depth sorting
+
+	; prev = 0xFF
+	lda	#$FF
+	sta	SPRITE_SORT_PREV
+
+	; check = proj_spr_first
+	lda	PROJECTION_FIRST_SPRITE
+	sta	SPRITE_SORT_CHECK
+
+	; while(!(check & 0x80))
+@loop_sort:
+	lda	SPRITE_SORT_CHECK
+	bmi	@done
+
+	; 'check' pointer
+	ora	#$A0
+	sta	IH_PTR_H
+
+	; if(spr->depth > check->depth)
+	ldy	#SPRITE_FIRST_PROP
+	sec
+	lda	(IH_PTR_L),y
+	sbc	SPRITE_DEPTH_L
+	iny
+	lda	(IH_PTR_L),y
+	sbc	SPRITE_DEPTH_H
+	bpl	@done
+
+	; prev = check
+	lda	SPRITE_SORT_CHECK
+	sta	SPRITE_SORT_PREV
+
+	; check = check->next
+	iny
+	lda	(IH_PTR_L),y
+	sta	SPRITE_SORT_CHECK
+
+	; next
+	bra	@loop_sort
+@done:
+	; if(!(check & 0x80))
+	lda	SPRITE_SORT_CHECK
+	bmi	:+
+
+	; spr->next = check
+	ldy	#SPRITE_FIRST_PROP+2
+	sta	(HI_PTR_L),y
+:
+	; if(!(prev & 0x80))
+	lda	SPRITE_SORT_PREV
+	bmi	:+
+
+	; 'prev' pointer
+	ora	#$A0
+	sta	IH_PTR_H
+
+	; prev->next = proj_spr_idx
+	lda	PROJECTION_SPRITE_IDX
+	sta	(IH_PTR_L),y
+	bra	:++
+:
+	; proj_spr_first = proj_spr_idx
+	lda	PROJECTION_SPRITE_IDX
+	sta	PROJECTION_FIRST_SPRITE
+:
+	; proj_spr_idx++
+	inc	PROJECTION_SPRITE_IDX
 
 	; time
 	jmp	time_update
+
 
 ;;;
 ; sprite: render
@@ -4016,10 +5084,10 @@ render_sprite:
 	; spr->cols
 	iny
 	lda	(HI_PTR_L),y
-	sta	SPRITE_COLS_L
+	sta	SPRITE_COLS_H
 	iny
 	lda	(HI_PTR_L),y
-	sta	SPRITE_COLS_H
+	sta	SPRITE_COLS_B
 
 	; spr->data
 	iny
@@ -4037,22 +5105,22 @@ render_sprite:
 	bne	:+
 
 	; use fullbright code
-	lda	#<video_draw_vline
+	lda	#<video_draw_vline_sf
 	sta	sprite_draw_opcode+1
-	lda	#>video_draw_vline
+	lda	#>video_draw_vline_sf
 	sta	sprite_draw_opcode+2
 
 	bra	:++
 :
 	; enable light table
 	clc
-	adc	#>TAB_LIGHTMAPS
+	adc	#>TAB_LIGHTMAPS-1
 	sta	LIGHTMAP_H
 
 	; use remapping code
-	lda	#<video_draw_wline
+	lda	#<video_draw_vline_sl
 	sta	sprite_draw_opcode+1
-	lda	#>video_draw_wline
+	lda	#>video_draw_vline_sl
 	sta	sprite_draw_opcode+2
 :
 	; column loop
@@ -4089,16 +5157,9 @@ sprite_loop_col:
 	ldy	SPRITE_TEX_NOW_H
 
 	; get column pointer
-	lda	SPRITE_COLS_H
-	asl
-	asl
-	asl
-	ldx	SPRITE_COLS_L
-	ora	TAB_DIV32,x
+	lda	SPRITE_COLS_B
 	sta	COLUMN_PTR_B
-	txa
-	and	#$1F
-	ora	#$A0
+	lda	SPRITE_COLS_H
 	sta	COLUMN_PTR_H
 
 	; get column offset
@@ -4392,7 +5453,7 @@ sprite_loop_col:
 
 	; draw column
 sprite_draw_opcode:
-	jsr	video_draw_wline	; modified address
+	jsr	video_draw_vline_sf	; modified address
 
 	; dcsel = 2, addrsel = 0
 	lda	#$04
