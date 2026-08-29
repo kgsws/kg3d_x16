@@ -226,7 +226,8 @@ typedef struct
 		struct
 		{
 			uint8_t font_space[128];
-			uint8_t hudinfo[124];
+			uint8_t hudinfo[123];
+			uint8_t logo_spr;
 			uint8_t num_wspr;
 			uint8_t num_tspr;
 			uint8_t num_walls;
@@ -284,14 +285,22 @@ typedef struct
 	uint8_t used; // not on X16
 } texture_info_t;
 
-typedef struct
+typedef union
 {
-	uint16_t cols;
-	uint16_t data;
-	uint8_t width;
-	uint8_t height;
-	int8_t ox;
-	int8_t oy;
+	struct
+	{
+		uint16_t cols;
+		uint16_t data;
+		uint8_t width;
+		uint8_t height;
+		int8_t ox;
+		int8_t oy;
+	} tspr;
+	struct
+	{
+		uint16_t dnrm;
+		uint16_t info;
+	} wspr;
 } sprite_info_t;
 
 typedef struct
@@ -463,9 +472,7 @@ uint8_t *const font_info = game_gfx;
 static uint8_t sprite_remap_pre[sizeof(sprite_remap)];
 static sprite_info_t sprite_info[8][256];
 static uint32_t num_sprites;
-static uint32_t num_wframes;
 static uint32_t num_sprites_pre;
-static uint32_t num_wframes_pre;
 
 // texture stuff
 static uint32_t texload_idx;
@@ -483,7 +490,7 @@ static uint8_t *lightmap;
 static uint8_t *colormap;
 
 static uint32_t wram_used;
-static uint32_t wram_used_pc;
+static uint32_t wram_used_pre;
 uint8_t wram[0x200000];
 
 static uint32_t sky_base;
@@ -1497,7 +1504,7 @@ static void dr_vspr(uint32_t x, int32_t y0, int32_t y1, int32_t tx, int32_t tnow
 	tex_y_start = 0;
 	tex_x_start = 0;
 
-	tex_offs_y = 0; // TODO
+	tex_offs_y = 0;
 
 	tex_offs_x = tnow << 1;
 	tex_step_y = 0;
@@ -2403,7 +2410,7 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	si = sprite_info[0] + th->sprite;
 
 	// rotation
-	if(sprite_info[1][th->sprite].cols)
+	if(sprite_info[1][th->sprite].tspr.cols)
 	{
 		uint8_t ang;
 		ang = th->angle;
@@ -2418,10 +2425,10 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	a0 &= 0x07FF;
 
 	// texture
-	spr_width = si->width;
-	spr_height = si->height * 2;
-	spr_xoffs = si->ox * 2;
-	spr_yoffs = si->oy * 2;
+	spr_width = si->tspr.width;
+	spr_height = si->tspr.height * 2;
+	spr_xoffs = si->tspr.ox * 2;
+	spr_yoffs = si->tspr.oy * 2;
 	spr_scale = th->scale * 2 + 64;
 
 	// center X
@@ -2533,8 +2540,8 @@ static void prepare_sprite(uint8_t tdx, sector_t *sec)
 	spr->next = 0xFF;
 
 	// texture
-	spr->data = wram + (si->data & 0x7FFF) * 256;
-	spr->cols = (uint16_t*)(wram + si->cols * 256);
+	spr->data = wram + (si->tspr.data & 0x7FFF) * 256;
+	spr->cols = (uint16_t*)(wram + si->tspr.cols * 256);
 
 	// clipping copy & depth check
 	for(uint8_t xx = x0 / 2; xx < (x1+1) / 2; xx++)
@@ -3517,7 +3524,7 @@ static uint32_t load_tspr(uint32_t hash)
 
 		si = sprite_info[sprh->rotation] + frmidx;
 
-		si->cols = wram_used / 256;
+		si->tspr.cols = wram_used / 256;
 		cols = get_wram(256);
 		if(!cols)
 			return 1;
@@ -3528,10 +3535,10 @@ static uint32_t load_tspr(uint32_t hash)
 			cols[i * 2 + 1] = sprh->colh[i];
 		}
 
-		si->width = sprh->width;
-		si->height = sprh->height;
-		si->ox = sprh->ox;
-		si->oy = sprh->oy;
+		si->tspr.width = sprh->width;
+		si->tspr.height = sprh->height;
+		si->tspr.ox = sprh->ox;
+		si->tspr.oy = sprh->oy;
 
 		if(sprh->last)
 			break;
@@ -3540,10 +3547,6 @@ static uint32_t load_tspr(uint32_t hash)
 	}
 
 	// load data
-
-	if(wram_used & 256)
-		// align
-		get_wram(256);
 
 	dpos = wram_used / 256;
 	dsiz = sprh->size * 512;
@@ -3564,7 +3567,7 @@ static uint32_t load_tspr(uint32_t hash)
 
 	for(uint32_t i = num_sprites; i < frame; i++)
 		for(uint32_t j = 0; j < 8; j++)
-			sprite_info[j][i].data = dpos;
+			sprite_info[j][i].tspr.data = dpos;
 
 	//
 
@@ -3579,7 +3582,7 @@ static uint32_t load_wspr(uint32_t hash)
 	return 0;
 }
 
-static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
+static uint32_t load_thing_sprites(uint32_t type, uint32_t type_wspr, uint32_t recursion)
 {
 	thing_type_t *info = thing_type + type;
 	uint8_t text[64];
@@ -3599,11 +3602,15 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 
 			if(st->sprite >= gfx_head->num_tspr)
 			{
-				sprite_remap[st->sprite] = num_wframes;
+				if(!type_wspr)
+					continue;
+				sprite_remap[st->sprite] = num_sprites;
 				if(load_wspr(sprite_hash[st->sprite]))
 					return 1;
 			} else
 			{
+				if(type_wspr)
+					continue;
 				sprite_remap[st->sprite] = num_sprites;
 				if(load_tspr(sprite_hash[st->sprite]))
 					return 1;
@@ -3617,7 +3624,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 	for(uint32_t i = 0; i < THING_MAX_SPAWN_TYPES; i++)
 	{
 		uint32_t tt = info->spawn[i];
-		if(tt < MAX_X16_THING_TYPES && load_thing_sprites(tt, recursion + 1))
+		if(tt < MAX_X16_THING_TYPES && load_thing_sprites(tt, 0, 1))
 			return 1;
 	}
 
@@ -3814,11 +3821,10 @@ static uint32_t load_map()
 	uint32_t temp;
 	uint32_t esbase;
 
-	// TODO: precache
-	wram_used = 38 * 8192;
+	// copy precached
+	wram_used = wram_used_pre;
 	num_sprites = num_sprites_pre;
-	num_wframes = num_wframes_pre;
-	memcpy(sprite_remap, sprite_remap_pre, sizeof(sprite_remap));
+	memcpy(sprite_remap, sprite_remap_pre, num_sprites_pre);
 
 	fd = open("DATA/DEFAULT.MAP", O_RDONLY);
 	if(fd < 0)
@@ -3983,7 +3989,7 @@ static uint32_t load_map()
 		if(type < 0)
 			goto error;
 
-		if(load_thing_sprites(type, 0))
+		if(load_thing_sprites(type, 0, 0))
 			goto error;
 
 		ti = thing_spawn((int32_t)mt.x << 8, (int32_t)mt.y << 8, (int32_t)mt.z << 8, (int32_t)mt.sector, type, 0);
@@ -4011,8 +4017,32 @@ error:
 
 static uint32_t precache()
 {
-	num_sprites_pre = 1;
-	memset(sprite_remap_pre, 0xFF, sizeof(sprite_remap_pre));
+	// clear
+
+	wram_used = 38 * 8192;
+	num_sprites = 1;
+	memset(sprite_remap, 0xFF, sizeof(sprite_remap));
+
+	// weapon sprites first
+
+	if(gfx_head->logo_spr < 128)
+	{
+		sprite_remap[gfx_head->logo_spr] = num_sprites;
+		if(load_wspr(sprite_hash[gfx_head->logo_spr]))
+			return 1;
+	}
+
+	for(uint32_t i = THING_WEAPON_FIRST; i < THING_WEAPON_FIRST + THING_WEAPON_COUNT; i++)
+	{
+		if(load_thing_sprites(i, 1, 1))
+			return 1;
+	}
+
+	// save
+
+	wram_used_pre = wram_used;
+	num_sprites_pre = num_sprites;
+	memcpy(sprite_remap_pre, sprite_remap, sizeof(sprite_remap));
 
 	return 0;
 }

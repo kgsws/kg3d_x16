@@ -204,12 +204,10 @@ file_read_sector:
 
 	; read 512 bytes
 	jsr	@read
-	inc	TMP_PTR_H
 	jsr	@read
 
 	; dummy checksum
 	lda	VERA_SPI_DATA
-	inc	TMP_PTR_H
 
 	; increment sector
 	inc	SD_SEC_L
@@ -238,6 +236,20 @@ file_read_sector:
 	sta	(TMP_PTR_L),y
 	iny
 	bne	@loop_data
+
+	; block
+	inc	TMP_PTR_H
+
+	; bank check
+	lda	TMP_PTR_H
+	cmp	#$C0
+	bne	:+
+
+	; bank change
+	lda	#$A0
+	sta	TMP_PTR_H
+	inc	REG_RAM_BANK
+:
 	rts
 
 ;;;
@@ -259,16 +271,6 @@ file_read_sectors:
 
 	; fail
 	rts
-:
-	; bank check
-	lda	TMP_PTR_H
-	cmp	#$C0
-	bne	:+
-
-	; bank change
-	lda	#$A0
-	sta	TMP_PTR_H
-	inc	REG_RAM_BANK
 :
 	; next
 	dex

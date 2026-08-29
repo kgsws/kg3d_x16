@@ -1500,15 +1500,16 @@ load_thing_sprites_r:
 
 	; go trough spawn types
 	lda	#>THTYPE_STRUCT_SPAWN_A
-	sta	TMP_PTR_H
-	sty	TMP_PTR_L
+	sta	@spopcode+2
+	sty	@spopcode+1
 @loop_spawn:
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
 
 	; read spawn[x]
-	lda	(TMP_PTR_L)
+@spopcode:
+	lda	$A000	; modfied address
 	bmi	:+
 
 	; recursion
@@ -1516,9 +1517,9 @@ load_thing_sprites_r:
 	jsr	load_thing_sprites_r
 :
 	; next
-	inc	TMP_PTR_H
+	inc	@spopcode+2
 	lda	#>THTYPE_STRUCT_SPAWN_D+1
-	cmp	TMP_PTR_H
+	cmp	@spopcode+2
 	bne	@loop_spawn
 
 @skip_recursion:
@@ -1702,13 +1703,6 @@ load_sprite:
 	lda	MAP_TEMP_SPRH_LAST
 	beq	@loop_tvar
 
-	; WRAM align
-	lda	MAP_LOAD_WRAM_L
-	lsr
-	bcc	:+
-	lda	#1
-	jsr	get_wram
-:
 	; dpos = wram_used / 256
 	lda	MAP_LOAD_WRAM_H
 	sta	MAP_TEMP_SPR_DAT_H

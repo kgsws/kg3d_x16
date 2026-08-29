@@ -1470,12 +1470,8 @@ static uint32_t check_sprite_resolution(uint32_t width, uint32_t height)
 
 static uint32_t check_weapon_resolution(uint32_t width, uint32_t height)
 {
-	return	width & 7 ||
-		width < 8 ||
-		height < 8 ||
-		width > 160 ||
-		height > 120
-	;
+	return	width != 160 ||
+		height != 120;
 }
 
 static uint32_t check_part_resolution(uint32_t res)
@@ -3833,8 +3829,8 @@ static int32_t swpn_apply()
 			return 1;
 	}
 
-	stex_size += 255;
-	stex_size &= ~255;
+	stex_size += 511;
+	stex_size &= ~511;
 	stex_fullbright = stex_size;
 
 	for(uint32_t i = 0; i < UI_WPN_PARTS; i++)
@@ -3852,8 +3848,8 @@ static int32_t swpn_apply()
 			return 1;
 	}
 
-	stex_size += 255;
-	stex_size &= ~255;
+	stex_size += 511;
+	stex_size &= ~511;
 
 	if(!stex_size)
 		return -1;
@@ -3872,7 +3868,7 @@ static int32_t swpn_apply()
 		part->y += height;
 	}
 
-	memcpy(ws->data + ws->stex_used, stex_data, stex_size);
+	memcpy((uint8_t*)ws->data + ws->stex_used, stex_data, stex_size);
 
 	va = ws->variant + va->wpn.base;
 	count = va->wpn.count;
@@ -8672,7 +8668,8 @@ void x16g_export()
 	uint32_t *pal = x16_palette_data;
 	uint32_t num_pl = 0;
 	uint32_t num_wa = 0;
-	uint32_t num_sp = 0;
+	uint32_t num_tsp = 0;
+	uint32_t num_wsp = 0;
 	uint32_t num_li = gfx_idx[GFX_MODE_LIGHTS].max;
 	uint16_t *rtex = stex_data;
 	uint16_t *ttex = stex_data + 2048;
@@ -9026,16 +9023,16 @@ void x16g_export()
 
 		base = (ptr - export_ptr) / 512;
 
-		ii = num_sp | 128;
+		ii = num_tsp | 128;
 		head->extra_data[0][ii] = vl->hash;
 		head->extra_data[1][ii] = vl->hash >> 8;
 		head->extra_data[2][ii] = vl->hash >> 16;
 		head->extra_data[3][ii] = vl->hash >> 24;
 
-		head->sprite_offs[0][num_sp] = base;
-		head->sprite_offs[1][num_sp] = base >> 8;
-		head->sprite_offs[2][num_sp] = base >> 16;
-		head->sprite_offs[3][num_sp] = base >> 24;
+		head->sprite_offs[0][num_tsp] = base;
+		head->sprite_offs[1][num_tsp] = base >> 8;
+		head->sprite_offs[2][num_tsp] = base >> 16;
+		head->sprite_offs[3][num_tsp] = base >> 24;
 
 		// save variants
 
@@ -9098,12 +9095,225 @@ void x16g_export()
 
 		//
 
-		num_sp++;
+		num_tsp++;
 	}
 
 	// weapons
 
-	// + logo sprite // hash == 0xF8845BD5
+	num_wsp = num_tsp;
+
+	for(uint32_t i = 0; i < gfx_idx[GFX_MODE_WEAPONS].max; i++)
+	{
+		variant_list_t *vl = x16_weapon + i;
+		uint32_t count, bits;
+		uint32_t base, ii;
+		void *hptr;
+		int32_t inv = -1;
+		struct
+		{
+			struct
+			{
+				uint8_t offs;
+				uint8_t x;
+				uint8_t y;
+				uint8_t flags;
+			} part[MAX_X16_WPNPARTS];
+			uint8_t _padA[128 - MAX_X16_WPNPARTS * 4];
+			uint32_t d_nrm;
+			uint32_t d_bri;
+			uint8_t sz_nrm;
+			uint8_t sz_bri;
+			uint8_t frame;
+			uint8_t count;
+			uint8_t last;
+		} *sprh; // one entry per sector
+		struct
+		{
+			uint32_t dstart;
+			uint32_t nsz, bsz;
+			uint32_t nrm, bri;
+		} cache;
+
+		count = swpn_count_valid(vl, &bits, &inv);
+
+		if(inv >= 0)
+			edit_status_printf("Weapon '%s' frame %c has too many parts!", vl->name, 'A' + inv);
+
+		if(!count)
+			continue;
+
+		if(!vl->max)
+			continue;
+
+		if(!vl->stex_used)
+			continue;
+
+		// LOGO
+		if(vl->hash == 0xF8845BD5)
+			head->logo_spr = num_wsp;
+
+		// padding
+
+		ptr += 511;
+		ptr = (void*)((uintptr_t)ptr & ~511);
+		hptr = ptr;
+
+		// info
+
+		base = (ptr - export_ptr) / 512;
+
+		ii = num_wsp | 128;
+		head->extra_data[0][ii] = vl->hash;
+		head->extra_data[1][ii] = vl->hash >> 8;
+		head->extra_data[2][ii] = vl->hash >> 16;
+		head->extra_data[3][ii] = vl->hash >> 24;
+
+		head->sprite_offs[0][num_wsp] = base;
+		head->sprite_offs[1][num_wsp] = base >> 8;
+		head->sprite_offs[2][num_wsp] = base >> 16;
+		head->sprite_offs[3][num_wsp] = base >> 24;
+
+		// save variants
+
+		for(uint32_t i = 0; i < vl->max; i++)
+		{
+			variant_info_t *va = vl->variant + i;
+			uint32_t valid = 0;
+
+			if(!(bits & (1 << i)))
+				continue;
+
+			sprh = ptr;
+			ptr += 512;
+
+			for(int32_t j = UI_WPN_PARTS-1; j >= 0; j--)
+			{
+				wpnspr_part_t *part = va->ws.part + j;
+				uint32_t flags = 0x0C;
+
+				if(!part->width)
+					continue;
+
+				switch(part->width)
+				{
+					case 8:
+						flags |= 0 << 4;
+					break;
+					case 16:
+						flags |= 1 << 4;
+					break;
+					case 32:
+						flags |= 2 << 4;
+					break;
+					default:
+						flags |= 3 << 4;
+					break;
+				}
+
+				switch(part->height)
+				{
+					case 8:
+						flags |= 0 << 6;
+					break;
+					case 16:
+						flags |= 1 << 6;
+					break;
+					case 32:
+						flags |= 2 << 6;
+					break;
+					default:
+						flags |= 3 << 6;
+					break;
+				}
+
+				flags |= part->flags & 3; // XY mirror
+
+				sprh->part[valid].offs = part->offset / 32;
+				sprh->part[valid].x = 48 + part->x;
+				sprh->part[valid].y = part->y;
+				sprh->part[valid].flags = flags;
+
+				valid++;
+			}
+
+			sprh->frame = va->wpn.frm;
+			sprh->count = valid;
+			sprh->last = 0;
+		}
+
+		sprh->last = 0xFF;
+
+		// fill data and offsets
+
+		cache.dstart = 0xFFFFFFFF;
+
+		for(uint32_t i = 0; i < vl->max; i++)
+		{
+			variant_info_t *va = vl->variant + i;
+			uint32_t nsz, bsz, siz, ofs;
+
+			if(!(bits & (1 << i)))
+				continue;
+
+			nsz = va->ws.dbright >> 9;
+			bsz = (va->ws.dsize - va->ws.dbright) >> 9;
+
+			sprh = hptr;
+			hptr += 512;
+
+			if(cache.dstart != va->ws.dstart)
+			{
+				// info
+
+				sprh->sz_nrm = nsz;
+				sprh->sz_bri = bsz;
+
+				// fullbright
+
+				sprh->d_bri = (ptr - export_ptr) / 512;
+
+				ofs = va->ws.dstart + va->ws.dbright;
+				siz = bsz * 512;
+
+				for(uint32_t i = 0; i < siz; i++)
+					*(uint8_t*)ptr++ = vl->data[ofs + i];
+
+				// normal, all lights
+
+				sprh->d_nrm = (ptr - export_ptr) / 512;
+
+				ofs = va->ws.dstart;
+
+				if(nsz)
+				{
+					siz = nsz * 512;
+					for(uint32_t i = 0; i < num_li; i++)
+					{
+						memcpy_light(ptr, vl->data + ofs, siz, i);
+						ptr += siz;
+					}
+				}
+
+				// cache
+
+				cache.dstart = va->ws.dstart;
+				cache.nsz = nsz;
+				cache.bsz = bsz;
+				cache.nrm = sprh->d_nrm;
+				cache.bri = sprh->d_bri;
+			} else
+			{
+				sprh->sz_nrm = cache.nsz;
+				sprh->sz_bri = cache.bsz;
+				sprh->d_nrm = cache.nrm;
+				sprh->d_bri = cache.bri;
+			}
+		}
+
+		//
+
+		num_wsp++;
+	}
 
 	// skies
 
@@ -9152,8 +9362,8 @@ void x16g_export()
 
 	// extra info
 
-	head->num_wspr = 0;
-	head->num_tspr = num_sp;
+	head->num_wspr = num_wsp;
+	head->num_tspr = num_tsp;
 	head->num_walls = num_wa;
 	head->num_planes = num_pl;
 
