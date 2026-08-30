@@ -1998,11 +1998,11 @@ static int32_t cbor_gfx_wpn_group(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t type,
 			uint32_t count = cbor_entry_index - base;
 			uint32_t dbase, dsize;
 
-			load_ndata += 255;
-			load_ndata &= ~255;
+			load_ndata += 511;
+			load_ndata &= ~511;
 
-			load_bdata += 255;
-			load_bdata &= ~255;
+			load_bdata += 511;
+			load_bdata &= ~511;
 
 			if(	count >= MAX_X16_WPNGROUP ||
 				load_ndata + load_bdata > SWPN_MAX_DATA
@@ -9117,13 +9117,14 @@ void x16g_export()
 				uint8_t x;
 				uint8_t y;
 				uint8_t flags;
-			} part[MAX_X16_WPNPARTS];
-			uint8_t _padA[128 - MAX_X16_WPNPARTS * 4];
+			} part[MAX_X16_WPNPARTS+1];
+			uint8_t _padA[128 - (MAX_X16_WPNPARTS+1) * 4];
 			uint32_t d_nrm;
 			uint32_t d_bri;
 			uint8_t sz_nrm;
 			uint8_t sz_bri;
 			uint8_t frame;
+			uint8_t fbase;
 			uint8_t count;
 			uint8_t last;
 		} *sprh; // one entry per sector
@@ -9232,11 +9233,13 @@ void x16g_export()
 				sprh->part[valid].x = 48 + part->x;
 				sprh->part[valid].y = part->y;
 				sprh->part[valid].flags = flags;
-
 				valid++;
 			}
 
+			sprh->part[valid].offs = 0xFF;
+
 			sprh->frame = va->wpn.frm;
+			sprh->fbase = va->wpn.base;
 			sprh->count = valid;
 			sprh->last = 0;
 		}
@@ -9263,6 +9266,8 @@ void x16g_export()
 
 			if(cache.dstart != va->ws.dstart)
 			{
+				uint8_t *src;
+
 				// info
 
 				sprh->sz_nrm = nsz;
@@ -9275,8 +9280,9 @@ void x16g_export()
 				ofs = va->ws.dstart + va->ws.dbright;
 				siz = bsz * 512;
 
+				src = (uint8_t*)vl->data + ofs;
 				for(uint32_t i = 0; i < siz; i++)
-					*(uint8_t*)ptr++ = vl->data[ofs + i];
+					*(uint8_t*)ptr++ = *src++;
 
 				// normal, all lights
 
@@ -9289,8 +9295,11 @@ void x16g_export()
 					siz = nsz * 512;
 					for(uint32_t i = 0; i < num_li; i++)
 					{
-						memcpy_light(ptr, vl->data + ofs, siz, i);
-						ptr += siz;
+						uint8_t *lightmap = x16_light_data + i * 256;
+
+						src = (uint8_t*)vl->data + ofs;
+						for(uint32_t i = 0; i < siz; i++)
+							*(uint8_t*)ptr++ = lightmap[*src++];
 					}
 				}
 

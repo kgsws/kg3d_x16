@@ -285,6 +285,28 @@ typedef struct
 	uint8_t used; // not on X16
 } texture_info_t;
 
+typedef struct
+{
+	uint8_t offs;
+	uint8_t x;
+	uint8_t y;
+	uint8_t flags;
+} wpn_part_t;
+
+typedef struct
+{
+	wpn_part_t part[128 / 4];
+	uint32_t d_nrm;
+	uint32_t d_bri;
+	uint8_t sz_nrm;
+	uint8_t sz_bri;
+	uint8_t frame;
+	uint8_t fbase;
+	uint8_t count;
+	uint8_t last;
+	uint8_t _pad[128 - 14];
+} wpn_head_t;
+
 typedef union
 {
 	struct
@@ -298,8 +320,9 @@ typedef union
 	} tspr;
 	struct
 	{
-		uint16_t dnrm;
+		uint32_t dnrm;
 		uint16_t info;
+		uint8_t magic;
 	} wspr;
 } sprite_info_t;
 
@@ -310,6 +333,14 @@ typedef struct
 	uint8_t texture;
 	uint8_t texslot;
 } vcache_link_t;
+
+typedef struct
+{
+	uint8_t magic;
+	uint8_t light;
+	uint8_t idx;
+	int32_t avg;
+} show_wpn_t;
 
 //
 
@@ -364,9 +395,11 @@ static uint8_t plc_bot[80];
 static uint32_t stopped;
 static uint32_t keybits;
 
+static show_wpn_t show_wpn_now;
+
 static float gl_fov_x, gl_fov_y;
 
-static uint8_t show_wpn_slot = 0x8E;
+static uint8_t show_wpn_slot = 0x40;
 
 p2a_t p2a_coord;
 
@@ -2879,124 +2912,124 @@ static void do_3D()
 
 static void do_2D()
 {
-/*	show_wpn_t show_wpn;
+	show_wpn_t show_wpn;
+	sprite_info_t *si;
+	x16_sprite_t *spr;
+	uint32_t i;
 
 	// weapon
-	show_wpn.idx = 0xFF;
 
 	if(camera_thing == player_thing)
 		show_wpn.idx = thing_ptr(0)->sprite;
+	else
+		show_wpn.idx = 0;
 
-	if(show_wpn.idx >= 128)
+	if(show_wpn.idx)
 	{
-		show_wpn.light = 0;
-		show_wpn_now.light = 0;
-		show_wpn.offs = 0;
-		show_wpn_now.offs = 0;
+		show_wpn_now.idx = show_wpn.idx;
+
+		show_wpn.light = SECTOR_LIGHT(&map_sectors[thingsec[camera_thing][0]]);
+		si = sprite_info[show_wpn.light] + show_wpn.idx;
+
+		if(si->wspr.magic != show_wpn_now.magic)
+		{
+			// update all pixels, swap buffers
+			wpn_head_t *info = (wpn_head_t*)(wram + si->wspr.info * 256);
+			uint8_t *dst;
+
+			show_wpn_now.magic = si->wspr.magic;
+			show_wpn_now.light = 0xFF; // force normal pixel update
+
+			show_wpn_slot ^= 0x80;
+			dst = vram + ((114688 + show_wpn_slot * 32) & 0x1FFFF);
+
+			// copy only fullbright pixels here
+			memcpy(dst + info->sz_nrm * 512, game_gfx + info->d_bri * 512, info->sz_bri * 512);
+		}
+
+		if(show_wpn.light != show_wpn_now.light)
+		{
+			// update unlit pixels
+			wpn_head_t *info = (wpn_head_t*)(wram + si->wspr.info * 256);
+			uint8_t *dst = vram + ((114688 + show_wpn_slot * 32) & 0x1FFFF);
+			uint8_t *src = game_gfx + si->wspr.dnrm * 512;
+
+			memcpy(dst, src, info->sz_nrm * 512);
+
+			show_wpn_now.light = show_wpn.light;
+		}
 	} else
 	{
-		show_wpn.light = SECTOR_LIGHT(&map_sectors[thingsec[camera_thing][0]]);
-		show_wpn.offs = weapon_frame[show_wpn.idx].info.start;
-	}
-
-	if(show_wpn.offs != show_wpn_now.offs)
-	{
-		// update all pixels, swap buffers
-		weapon_frame_t *wfrm = weapon_frame + show_wpn.idx;
-		uint8_t *dst;
-
-		show_wpn_now.offs = show_wpn.offs;
-		show_wpn_now.light = 0xFF; // force normal pixel update
-
-		show_wpn_slot ^= 1;
-		dst = vram + ((show_wpn_slot * 0x2000) & 0x1FFFF);
-
-		// copy only fullbright pixels here
-		memcpy(dst + wfrm->info.nsz * 256, wram + (show_wpn.offs + wfrm->info.nsz) * 256, wfrm->info.bsz * 256);
-	}
-
-	if(show_wpn.light != show_wpn_now.light)
-	{
-		// update unlit pixels
-		weapon_frame_t *wfrm = weapon_frame + show_wpn.idx;
-		uint8_t *dst = vram + ((show_wpn_slot * 0x2000) & 0x1FFFF);
-		uint8_t *src = wram + show_wpn.offs * 256;
-		uint32_t count = wfrm->info.nsz * 256;
-		uint8_t *light = lightmaps + show_wpn.light * LIGHTMAP_SIZE;
-
-		show_wpn_now.light = show_wpn.light;
-		for(uint32_t i = 0; i < count; i++)
-			*dst++ = light[*src++];
+		if(!show_wpn_now.idx)
+			return; // TODO: HUD
+		show_wpn_now.magic = 0;
+		show_wpn_now.idx = 0;
 	}
 
 	// update parts, always
+	spr = (x16_sprite_t*)&vram[0x1FC00 + 106 * sizeof(x16_sprite_t)];
+	i = 0;
+
+	if(show_wpn.idx)
 	{
-		x16_sprite_t *spr = (x16_sprite_t*)&vram[0x1FC00 + 106 * sizeof(x16_sprite_t)];
-		uint32_t i = 0;
+		thing_t *th = thing_ptr(player_thing);
+		thing_t *tw = thing_ptr(0);
+		wpn_part_t *part = (wpn_part_t*)(wram + si->wspr.info * 256);
+		int32_t ox, oy;
+		int32_t dist = 0;
 
-		show_wpn_now.idx = show_wpn.idx;
+		ox = abs(th->mx) >> 8;
+		oy = abs(th->my) >> 8;
+		dist = ox > oy ? ox + oy / 2 : oy + ox / 2;
+		dist *= inv_div[thing_type[th->ticker.type].speed];
+		dist >>= 8;
 
-		if(show_wpn.idx < 128)
+		if(dist > 127)
+			dist = 127;
+
+		if(tw->iflags)
+			dist >>= 2;
+
+		show_wpn_now.avg >>= 1;
+		show_wpn_now.avg += dist;
+
+		dist = show_wpn_now.avg >> 1;
+		if(dist)
 		{
-			thing_t *th = thing_ptr(player_thing);
-			thing_t *tw = thing_ptr(0);
-			weapon_part_t *part = weapon_frame[show_wpn.idx].part;
-			int32_t ox, oy;
-			int32_t dist = 0;
-
-			ox = abs(th->mx) >> 8;
-			oy = abs(th->my) >> 8;
-			dist = ox > oy ? ox + oy / 2 : oy + ox / 2;
-			dist *= inv_div[thing_type[th->ticker.type].speed];
-			dist >>= 8;
-
-			if(dist > 127)
-				dist = 127;
-
-			if(tw->iflags)
-				dist >>= 2;
-
-			show_wpn_now.avg >>= 1;
-			show_wpn_now.avg += dist;
-
-			dist = show_wpn_now.avg >> 1;
-			if(dist)
-			{
-				dist <<= 4;
-				ox = ((tab_sin[(level_tick << 4) & 0xFF] * dist) >> 16) - 48;
-				oy = ((tab_cos[(level_tick << 4) & 0xFF] * dist) >> 16);
-				if(oy < 0)
-					oy = -oy;
-			} else
-			{
-				ox = -48;
-				oy = 0;
-			}
-
-			oy += tw->height;
-
-			if(th->pitch >= 148)
-			{
-				int32_t diff = (int32_t)th->pitch - 148;
-				oy += diff >> 2;
-			}
-
-			for( ; i < 15 && part->addr < 128; i++, spr++, part++)
-			{
-				spr->addr = (show_wpn_slot << 8) | part->addr;
-				spr->x = ox + (int16_t)part->x;
-				spr->y = oy + part->y;
-				spr->ia = part->info;
-				spr->ib = part->info & 0xF0;
-			}
+			dist <<= 4;
+			ox = ((tab_sin[(level_tick << 4) & 0xFF] * dist) >> 16) - 48;
+			oy = ((tab_cos[(level_tick << 4) & 0xFF] * dist) >> 16);
+			if(oy < 0)
+				oy = -oy;
+		} else
+		{
+			ox = -48;
+			oy = 0;
 		}
 
-		for( ; i < 15; i++, spr++)
-			spr->ia = 0;
+		oy += tw->height;
+
+		if(th->pitch >= 148)
+		{
+			int32_t diff = (int32_t)th->pitch - 148;
+			oy += diff >> 2;
+		}
+
+		for( ; i < 15 && part->offs < 128; i++, spr++, part++)
+		{
+			spr->addr = 0x8E00 | (show_wpn_slot + part->offs);
+			spr->x = ox + (int16_t)part->x;
+			spr->y = oy + part->y;
+			spr->ia = part->flags;
+			spr->ib = part->flags & 0xF0;
+		}
 	}
 
+	for( ; i < 15; i++, spr++)
+		spr->ia = 0;
+
 	// HUD
-	hud_draw();*/
+//	hud_draw();
 }
 
 //
@@ -3447,7 +3480,7 @@ static void *get_wram(uint32_t size)
 	return ret;
 }
 
-static uint32_t find_sprite(uint32_t hash)
+static int32_t find_sprite(uint32_t hash)
 {
 	for(uint32_t i = 0; i < 128; i++)
 	{
@@ -3460,19 +3493,13 @@ static uint32_t find_sprite(uint32_t hash)
 		h |= (uint32_t)gfx_head->extra_data[3][ii] << 24;
 
 		if(hash == h)
-		{
-			h = gfx_head->sprite_offs[0][i];
-			h |= (uint32_t)gfx_head->sprite_offs[1][i] << 8;
-			h |= (uint32_t)gfx_head->sprite_offs[2][i] << 16;
-			h |= (uint32_t)gfx_head->sprite_offs[3][i] << 24;
-			return h;
-		}
+			return i;
 	}
 
 	return -1;
 }
 
-static uint32_t load_tspr(uint32_t hash)
+static uint32_t load_tspr(int32_t gidx)
 {
 	struct
 	{
@@ -3490,16 +3517,16 @@ static uint32_t load_tspr(uint32_t hash)
 		uint8_t coll[128];
 		uint8_t colh[128];
 	} *sprh;
-	int32_t idx;
 	uint8_t *data;
-	uint32_t dpos, dsiz;
+	uint32_t idx, dpos, dsiz;
 	uint32_t frame = 0;
 
-	idx = find_sprite(hash);
-	if(idx < 0)
-		return 1;
-
 	// load variants
+
+	idx = gfx_head->sprite_offs[0][gidx];
+	idx |= (uint32_t)gfx_head->sprite_offs[1][gidx] << 8;
+	idx |= (uint32_t)gfx_head->sprite_offs[2][gidx] << 16;
+	idx |= (uint32_t)gfx_head->sprite_offs[3][gidx] << 24;
 
 	sprh = (void*)(game_gfx + idx * 512);
 
@@ -3576,13 +3603,79 @@ static uint32_t load_tspr(uint32_t hash)
 	return 0;
 }
 
-static uint32_t load_wspr(uint32_t hash)
+static uint32_t load_wspr(int32_t gidx)
 {
-	printf("TODO: wspr 0x%08X\n", hash);
+	wpn_head_t *sprh;
+	uint32_t idx;
+	uint32_t frame = 0;
+
+	// load variants
+
+	idx = gfx_head->sprite_offs[0][gidx];
+	idx |= (uint32_t)gfx_head->sprite_offs[1][gidx] << 8;
+	idx |= (uint32_t)gfx_head->sprite_offs[2][gidx] << 16;
+	idx |= (uint32_t)gfx_head->sprite_offs[3][gidx] << 24;
+
+	sprh = (void*)(game_gfx + idx * 512);
+
+	while(1)
+	{
+		uint32_t frmidx, brmidx;
+		sprite_info_t *si;
+		uint32_t infpos;
+		wpn_head_t *info;
+
+		if(sprh->frame > 26)
+			return 1;
+
+		if(frame < sprh->frame)
+			frame = sprh->frame;
+
+		frmidx = num_sprites + sprh->frame;
+		if(frmidx >= 256)
+			return 1;
+
+		brmidx = num_sprites + sprh->fbase;
+
+		// white light
+
+		si = sprite_info[0] + frmidx;
+
+		infpos = wram_used / 256;
+
+		info = get_wram(256);
+		memcpy(info, sprh, 256);
+
+		si->wspr.dnrm = sprh->d_nrm;
+		si->wspr.info = infpos;
+		si->wspr.magic = brmidx;
+
+		// other lights
+
+		for(uint32_t i = 1; i < map_head.count_lights; i++)
+		{
+			si = sprite_info[i] + frmidx;
+			si->wspr.dnrm = sprh->d_nrm + sprh->sz_nrm * light_remap[i];
+			si->wspr.info = infpos;
+			si->wspr.magic = brmidx;
+		}
+
+		// next
+		if(sprh->last)
+			break;
+
+		// one entry per sector
+		sprh++;
+		sprh++;
+	}
+
+	// new index
+	num_sprites += frame + 1;
+
 	return 0;
 }
 
-static uint32_t load_thing_sprites(uint32_t type, uint32_t type_wspr, uint32_t recursion)
+static uint32_t load_thing_sprites(uint32_t type, uint32_t recursion)
 {
 	thing_type_t *info = thing_type + type;
 	uint8_t text[64];
@@ -3594,25 +3687,27 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t type_wspr, uint32_t r
 
 		for(uint32_t k = 0; k < anim->count; k++, st++)
 		{
+			int32_t idx;
+
 			if(st->sprite & 0x80)
 				continue;
 
 			if(!(sprite_remap[st->sprite] & 0x80))
 				continue;
 
-			if(st->sprite >= gfx_head->num_tspr)
+			idx = find_sprite(sprite_hash[st->sprite]);
+			if(idx < 0)
+				return 1;
+
+			if(idx >= gfx_head->num_tspr)
 			{
-				if(!type_wspr)
-					continue;
 				sprite_remap[st->sprite] = num_sprites;
-				if(load_wspr(sprite_hash[st->sprite]))
+				if(load_wspr(idx))
 					return 1;
 			} else
 			{
-				if(type_wspr)
-					continue;
 				sprite_remap[st->sprite] = num_sprites;
-				if(load_tspr(sprite_hash[st->sprite]))
+				if(load_tspr(idx))
 					return 1;
 			}
 		}
@@ -3624,7 +3719,7 @@ static uint32_t load_thing_sprites(uint32_t type, uint32_t type_wspr, uint32_t r
 	for(uint32_t i = 0; i < THING_MAX_SPAWN_TYPES; i++)
 	{
 		uint32_t tt = info->spawn[i];
-		if(tt < MAX_X16_THING_TYPES && load_thing_sprites(tt, 0, 1))
+		if(tt < MAX_X16_THING_TYPES && load_thing_sprites(tt, 1))
 			return 1;
 	}
 
@@ -3989,7 +4084,7 @@ static uint32_t load_map()
 		if(type < 0)
 			goto error;
 
-		if(load_thing_sprites(type, 0, 0))
+		if(load_thing_sprites(type, 0))
 			goto error;
 
 		ti = thing_spawn((int32_t)mt.x << 8, (int32_t)mt.y << 8, (int32_t)mt.z << 8, (int32_t)mt.sector, type, 0);
@@ -4001,6 +4096,11 @@ static uint32_t load_map()
 
 	// done
 	close(fd);
+
+	// weapons
+	for(uint32_t i = THING_WEAPON_FIRST; i < THING_WEAPON_FIRST + THING_WEAPON_COUNT; i++)
+		if(load_thing_sprites(i, 0))
+			return 1;
 
 	// stats
 //	printf("%u sinfo; %u sfrm; %u wfrm\nWRAM %u / %u\nVRAM %u / %u\n", num_sprites, num_sframes, num_wframes, wram_used / 256, sizeof(wram) / 256, ((VRAM_TEXTURE_END - VRAM_TEXTURE_START) - vram_8bpp - vram_4bpp) / 2048, (VRAM_TEXTURE_END - VRAM_TEXTURE_START) / 2048);
@@ -4023,18 +4123,12 @@ static uint32_t precache()
 	num_sprites = 1;
 	memset(sprite_remap, 0xFF, sizeof(sprite_remap));
 
-	// weapon sprites first
+	// logo
 
 	if(gfx_head->logo_spr < 128)
 	{
-		sprite_remap[gfx_head->logo_spr] = num_sprites;
-		if(load_wspr(sprite_hash[gfx_head->logo_spr]))
-			return 1;
-	}
-
-	for(uint32_t i = THING_WEAPON_FIRST; i < THING_WEAPON_FIRST + THING_WEAPON_COUNT; i++)
-	{
-		if(load_thing_sprites(i, 1, 1))
+		map_head.count_lights = 0;
+		if(load_wspr(gfx_head->logo_spr))
 			return 1;
 	}
 
