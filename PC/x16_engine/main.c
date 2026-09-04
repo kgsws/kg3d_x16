@@ -305,6 +305,7 @@ typedef struct
 	uint8_t count;
 	uint8_t last;
 	uint8_t _pad[128 - 14];
+	uint8_t _not_loaded[256];
 } wpn_head_t;
 
 typedef union
@@ -3637,22 +3638,15 @@ static uint32_t load_wspr(int32_t gidx)
 
 		brmidx = num_sprites + sprh->fbase;
 
-		// white light
-
-		si = sprite_info[0] + frmidx;
+		// base info
 
 		infpos = wram_used / 256;
-
 		info = get_wram(256);
 		memcpy(info, sprh, 256);
 
-		si->wspr.dnrm = sprh->d_nrm;
-		si->wspr.info = infpos;
-		si->wspr.magic = brmidx;
+		// sprites for lights
 
-		// other lights
-
-		for(uint32_t i = 1; i < map_head.count_lights; i++)
+		for(uint32_t i = 0; i < map_head.count_lights; i++)
 		{
 			si = sprite_info[i] + frmidx;
 			si->wspr.dnrm = sprh->d_nrm + sprh->sz_nrm * light_remap[i];
@@ -3665,7 +3659,6 @@ static uint32_t load_wspr(int32_t gidx)
 			break;
 
 		// one entry per sector
-		sprh++;
 		sprh++;
 	}
 
@@ -3921,6 +3914,18 @@ static uint32_t load_map()
 	num_sprites = num_sprites_pre;
 	memcpy(sprite_remap, sprite_remap_pre, num_sprites_pre);
 
+	// clear sprites
+	for(uint32_t i = num_sprites; i < 256; i++)
+	{
+		for(uint32_t j = 0; j < 8; j++)
+		{
+			sprite_info[j][i].tspr.cols = 0;
+			sprite_info[j][i].tspr.width = 0;
+		}
+	}
+
+	/// LOAD
+
 	fd = open("DATA/DEFAULT.MAP", O_RDONLY);
 	if(fd < 0)
 		return 1;
@@ -4131,6 +4136,11 @@ static uint32_t precache()
 		if(load_wspr(gfx_head->logo_spr))
 			return 1;
 	}
+
+	// player
+	for(uint32_t i = THING_TYPE_PLAYER_F; i < MAX_X16_THING_TYPES; i++)
+		if(load_thing_sprites(i, 0))
+			return 1;
 
 	// save
 

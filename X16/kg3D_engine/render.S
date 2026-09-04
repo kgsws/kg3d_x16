@@ -4124,6 +4124,11 @@ prepare_sprite:
 	sta	SPRITE_COLS_B
 
 @rotdone:
+	; empty check
+	lda	SPRITE_WIDTH
+	bne	:+
+	rts
+:
 	; frm->offs_data
 	lda	SPRINFO_STRUCT_DATA_L,x
 	sta	SPRITE_DATA_L
