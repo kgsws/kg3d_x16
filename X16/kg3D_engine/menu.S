@@ -36,24 +36,15 @@ STRUCT_MENU_ITEM_FUNC = $0A
 .segment "CODE"
 
 menu_wspr_draw:
-	; no swing
-	lda	#$D0
-	sta	MATH_VAR_L
-	lda	#$FF
-	sta	MATH_VAR_H
-	stz	MATH_VAR_U
-	stz	MATH_COUNTER
-
 	; force update weapon
 	stz	TAB_HUD_UPDATE
-	jsr	render_wspr_draw
+	jsr	render_update_weapon
 
 	; extra code bank
 	lda	#BANK_EXTRA_CODE
 	sta	REG_RAM_BANK
 
-	; restore menu pointer
-	jmp	set_menu_ptr
+	rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -96,22 +87,49 @@ set_menu_ptr:
 	rts
 
 ;;;
+; logo update
+;;;
+
+menu_update_logo:
+	lda	INPUT_MOUSE_A
+	pha
+	lda	INPUT_MOUSE_B
+	pha
+	lda	INPUT_MOUSE_C
+	pha
+	lda	INPUT_MOUSE_D
+	pha
+
+	jsr	menu_wspr_draw
+
+	pla
+	sta	INPUT_MOUSE_D
+	pla
+	sta	INPUT_MOUSE_C
+	pla
+	sta	INPUT_MOUSE_B
+	pla
+	sta	INPUT_MOUSE_A
+
+	jmp	set_menu_ptr
+
+;;;
 ; enter or leave the menu
 ;;;
 
+menu_disable:
+	lda	#$FF
+	sta	TAB_MENU_ACTIVE
+	sta	TAB_MENU_LOGO_DIS
+	bra	menu_toggle_ex
+
 menu_toggle:
+	stz	TAB_MENU_LOGO_DIS
+
+menu_toggle_ex:
 	; clear current input
 	stz	INPUT_STATE_L
 	stz	INPUT_STATE_H
-
-	; invalidate weapon sprite
-	lda	#$FF
-	sta	TMP_REND_WPN_IDX
-	sta	G_WPN_NOW_LIGHT
-	stz	G_WPN_NOW_OFFS_L
-	stz	G_WPN_NOW_OFFS_H
-	stz	G_WPN_AVG
-	stz	G_WPN_LIGHT_NEW
 
 	; toggle
 	lda	TAB_MENU_ACTIVE
@@ -126,7 +144,7 @@ menu_toggle:
 	sta	TMP_PTR_L
 
 	; use logo
-	lda	TAB_MENU_LOGO
+	lda	TAB_MENU_LOGO_SPR
 	sta	mptr_main+STRUCT_MENU_TITLE
 
 	; set keyboard handler
@@ -159,7 +177,7 @@ menu_toggle:
 	stz	VERA_FX_CTRL
 
 	; update weapon sprite
-	jsr	menu_wspr_draw
+	jsr	menu_update_logo
 
 	; clear text
 	stz	TAB_TEXT_I
@@ -348,13 +366,11 @@ menu_update:
 	;;;;;;
 	;;; TITLE (LOGO)
 
-	; logo
-	dey
-	lda	(TMP_PTR_L),y
-	sta	TMP_REND_WPN_IDX
+	; logo enabled
+	stz	TAB_MENU_LOGO_DIS
 
 	; update weapon sprite
-	jsr	menu_wspr_draw
+	jsr	menu_update_logo
 
 	; item Y
 	lda	#64
@@ -371,10 +387,10 @@ menu_update:
 	lda	(TMP_PTR_L),y
 	sta	ARG_TEXT_PTR_L
 
-	; update weapon sprite
+	; logo disabled
 	lda	#$FF
-	sta	TMP_REND_WPN_IDX
-	jsr	menu_wspr_draw
+	sta	TAB_MENU_LOGO_DIS
+	jsr	menu_update_logo
 
 	; X
 	jsr	text_width
@@ -1058,7 +1074,7 @@ sel_video_set:
 ;;;
 
 sel_new_game:
-	jsr	menu_toggle
+	jsr	menu_disable
 	jmp	reset_map
 
 ;;;;;;;;;;;;;;;;;;;;;

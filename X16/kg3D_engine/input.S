@@ -695,6 +695,8 @@ input_save_config:
 	dex
 	bpl	@loop_cpy
 
+	; TODO: show info text
+
 	; save
 	lda	#1
 	jsr	set_conf_file

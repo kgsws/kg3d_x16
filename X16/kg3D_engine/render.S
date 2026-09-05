@@ -14,7 +14,7 @@
 
 .export render_init
 .export render_view
-.export render_wspr_draw
+.export render_update_weapon
 
 ;;;
 ; NOTES
@@ -69,12 +69,13 @@ render_init:
 	stz	RENDER_PLC_BOT+255
 
 	; prepare weapon
-	lda	#$8E
+	lda	#$40
 	sta	G_WPN_VERA_SLOT
+	lda	#$C8
+	sta	G_WPN_VERA_PAGE
 	lda	#$FF
 	sta	G_WPN_NOW_LIGHT
-	stz	G_WPN_NOW_OFFS_L
-	stz	G_WPN_NOW_OFFS_H
+	stz	G_WPN_NOW_MAGIC
 	stz	G_WPN_AVG
 
 	rts
@@ -464,66 +465,443 @@ render_view:
 :
 	;;; WEAPON
 
+render_update_weapon:
+	; enable check
+	lda	TAB_MENU_LOGO_DIS
+	bne	@no_weapon
+
 	; menu check
 	lda	TAB_MENU_ACTIVE
-	beq	:+
+	beq	@skip_logo
 
-	; menu logo active
-	jmp	hud_update
-:
-	; weapon check
-	lda	#$FF
+	; show_wpn.light = 0
+	stz	TMP_REND_WPN_LIGHT
+
+	; show_wpn.idx = 0
+	stz	TMP_REND_WPN_IDX
+
+	; if(gfx_head->logo_spr < 128)
+	lda	TAB_MENU_LOGO_SPR
+	bmi	@no_weapon
+
+	; show_wpn.idx = sprite_remap[gfx_head->logo_spr]
+	tax
+	lda	TAB_SPRITE_REMAP,x
 	sta	TMP_REND_WPN_IDX
+	bra	@yes_weapon
+
+@skip_logo:
+	; show_wpn.idx = 0
+	stz	TMP_REND_WPN_IDX
 
 	; if(camera_thing == player_thing)
 	lda	G_PLAYER_THING
 	cmp	G_CAMERA_THING
-	bne	wspr_no_gfx
+	bne	@no_weapon
 
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
 
-	; show_wpn.idx = things[0].sprite
+	; show_wpn.idx = thing_ptr(0)->sprite
 	lda	THING_STRUCT_SPRITE
 	sta	TMP_REND_WPN_IDX
 
-render_wspr_draw:
-	; check sprite
-	lda	TMP_REND_WPN_IDX
-	bmi	wspr_no_gfx
+	; if(show_wpn.idx)
+	bne	@yes_weapon
 
-	jsr	update_weapon_gfx
-
-wspr_no_gfx:
-	; prepare sprite update
-	inc	TMP_PTR_L
-	inc	TMP_PTR_L
-	ldx	#15
-
-	; check if empty
-	lda	TMP_REND_WPN_IDX
-	bpl	:+
-
-	; ADDR0 = 0x01FF56, increment = 8
-	lda	#$56
-	sta	VERA_ADDRx_L
-	lda	#$FF
-	sta	VERA_ADDRx_M
-	lda	#%01000001
-	sta	VERA_ADDRx_H
-
-	bra	@loop_wspr_inv
+@no_weapon:
+	; if(!show_wpn_now.idx)
+	lda	G_WPN_NOW_IDX
+	bne	:+
+	jmp	hud_update
 :
+	; show_wpn_now.idx = 0
+	stz	G_WPN_NOW_IDX
+
+	; fake source
+	lda	#$FF
+	sta	RENDER_PLC_BOT
+	lda	#>RENDER_PLC_BOT
+	sta	HI_PTR_H
+
+	jmp	@skip_wpndata
+
+@yes_weapon:
+	; show_wpn_now.idx = show_wpn.idx
+	sta	G_WPN_NOW_IDX
+
+	; show_wpn.light = SECTOR_LIGHT(&map_sectors[thingsec[camera_thing][0]])
+	ldx	G_WPN_LIGHT_NEW
+	lda	TAB_SWAP,x
+
+	; si = sprite_info[show_wpn.light] + show_wpn.idx;
+	ldx	TMP_REND_WPN_IDX
+	lsr
+	ora	#BANK_SPRITE_INFO
+	sta	REG_RAM_BANK
+	bcc	:+
+	lda	SPRINFO_STRUCT_INFO_H+$0800,x
+	sta	HI_PTR_H
+	lda	SPRINFO_STRUCT_INFO_B+$0800,x
+	sta	TMP_REND_WPN_BANK
+	lda	SPRINFO_STRUCT_FLAGS+$0800,x
+	sta	MATH_TEMP_A
+	lda	SPRINFO_STRUCT_MAGIC+$0800,x
+	bra	:++
+:
+	lda	SPRINFO_STRUCT_INFO_H,x
+	sta	HI_PTR_H
+	lda	SPRINFO_STRUCT_INFO_B,x
+	sta	TMP_REND_WPN_BANK
+	lda	SPRINFO_STRUCT_FLAGS,x
+	sta	MATH_TEMP_A
+	lda	SPRINFO_STRUCT_MAGIC,x
+:
+	; if(si->wspr.magic != show_wpn_now.magic)
+	cmp	G_WPN_NOW_MAGIC
+	beq	@magic_match
+
+	; show_wpn_now.magic = si->wspr.magic
+	sta	G_WPN_NOW_MAGIC
+
+	; show_wpn_slot ^= 0x80
+	lda	G_WPN_VERA_SLOT
+	eor	#$80
+	sta	G_WPN_VERA_SLOT
+
+	; page
+	lda	G_WPN_VERA_PAGE
+	eor	#$10
+	sta	G_WPN_VERA_PAGE
+
+	; check
+	lda	MATH_TEMP_A
+	lsr
+	bcc	@no_bri
+
+	; WRAM
+	lda	TMP_REND_WPN_BANK
+	sta	REG_RAM_BANK
+
+	; fullbright pixels
+	ldy	#WPNINFO_STRUCT_SZ_BRI
+	lda	(HI_PTR_L),y
+	tax
+	iny
+	lda	(HI_PTR_L),y
+	sta	SD_SEC_L
+	iny
+	lda	(HI_PTR_L),y
+	sta	SD_SEC_M
+	iny
+	lda	(HI_PTR_L),y
+	sta	SD_SEC_H
+	iny
+	lda	(HI_PTR_L),y
+	sta	SD_SEC_U
+	iny
+	lda	(HI_PTR_L),y
+	asl
+
+	; dst = vram + ((0x1C000 + show_wpn_slot * 32) & 0x1FFFF)
+	; dst + info->sz_nrm * 512
+	clc
+	adc	G_WPN_VERA_PAGE
+	sta	VERA_ADDRx_M
+	lda	#%00010001
+	sta	VERA_ADDRx_H
+	stz	VERA_ADDRx_L
+
+	; load
+	jsr	video_load_vram_ex
+
+@no_bri:
+	; show_wpn_now.light = 0xFF
+	lda	G_WPN_LIGHT_NEW
+	bra	@wpn_light
+
+@magic_match:
+	; if(show_wpn.light != show_wpn_now.light)
+	lda	G_WPN_LIGHT_NEW
+	cmp	G_WPN_NOW_LIGHT
+	beq	@skip_wpndata
+
+@wpn_light:
+	; show_wpn_now.light = show_wpn.light
+	sta	G_WPN_NOW_LIGHT
+
+	; check
+	lda	MATH_TEMP_A
+	bpl	@skip_wpndata
+
+	; normal pixels
+	ldx	G_WPN_LIGHT_NEW
+	lda	TAB_SWAP,x
+	ldx	TMP_REND_WPN_IDX
+	lsr
+	ora	#BANK_SPRITE_INFO
+	sta	REG_RAM_BANK
+	bcc	:+
+	lda	SPRINFO_STRUCT_DNRM_L+$0800,x
+	sta	SD_SEC_L
+	lda	SPRINFO_STRUCT_DNRM_M+$0800,x
+	sta	SD_SEC_M
+	lda	SPRINFO_STRUCT_DNRM_H+$0800,x
+	sta	SD_SEC_H
+	lda	SPRINFO_STRUCT_DNRM_U+$0800,x
+	bra	:++
+:
+	lda	SPRINFO_STRUCT_DNRM_L,x
+	sta	SD_SEC_L
+	lda	SPRINFO_STRUCT_DNRM_M,x
+	sta	SD_SEC_M
+	lda	SPRINFO_STRUCT_DNRM_H,x
+	sta	SD_SEC_H
+	lda	SPRINFO_STRUCT_DNRM_U,x
+:
+	sta	SD_SEC_U
+
+	; WRAM
+	lda	TMP_REND_WPN_BANK
+	sta	REG_RAM_BANK
+
+	; normal size
+	ldy	#WPNINFO_STRUCT_SZ_NRM
+	lda	(HI_PTR_L),y
+	tax
+
+	; dst = vram + ((0x1C000 + show_wpn_slot * 32) & 0x1FFFF)
+	lda	G_WPN_VERA_PAGE
+	sta	VERA_ADDRx_M
+	lda	#%00010001
+	sta	VERA_ADDRx_H
+	stz	VERA_ADDRx_L
+
+	; load
+	jsr	video_load_vram_ex
+
+@skip_wpndata:
 	; menu check
 	lda	TAB_MENU_ACTIVE
+	beq	@do_swing
+
+	; TODO
+	lda	#$D0
+	sta	MATH_VAR_L
+	lda	#$FF
+	sta	MATH_VAR_H
+	stz	MATH_VAR_U
+	stz	MATH_COUNTER
+
+	jmp	@finish_weapon
+
+	;; XY swing
+@do_swing:
+	; enable math
+	jsr	math_setup_vera
+
+	; get player thing
+	ldy	G_PLAYER_THING
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; get thing pitch
+	stz	MATH_COUNTER
+	lda	THING_STRUCT_PITCH,y
+	cmp	#148
+	bcc	:+
+	sec
+	sbc	#148
+	lsr
+	lsr
+	sta	MATH_COUNTER
+:
+	; add Y offset
+	clc
+	lda	MATH_COUNTER
+	adc	THING_STRUCT_HEIGHT
+	sta	MATH_COUNTER
+
+	; get weapon iflags
+	lda	THING_STRUCT_IFLAGS
+	pha
+
+	; get thing type
+	ldx	TICKER_STRUCT_TYPE,y
+
+	; thing info bank
+	lda	#BANK_THING_INFO
+	sta	REG_RAM_BANK
+
+	; get thing speed
+	lda	THTYPE_STRUCT_SPEED,x
+	sta	MATH_VAR_L
+	stz	MATH_VAR_H
+
+	; ticker structure bank
+	lda	#BANK_TICKER_STRUCT
+	sta	REG_RAM_BANK
+
+	; abs(mx)
+	lda	THING_STRUCT_MX_L,y
+	bpl	:+
+	eor	#$FF
+	ina
+:
+	sta	MATH_P2A_X_L
+
+	; abs(my)
+	lda	THING_STRUCT_MY_L,y
+	bpl	:+
+	eor	#$FF
+	ina
+:
+	sta	MATH_P2A_Y_L
+
+	; dist = ox > oy ? ox + oy / 2 : oy + ox / 2
+	cmp	MATH_P2A_X_L
+	bcs	:+
+
+	; ox + oy / 2
+	lsr
+	clc
+	adc	MATH_P2A_X_L
+	sta	VERA_FX_CACHE_H
+
+	bra	:++
+:
+	; oy + ox / 2
+	lda	MATH_P2A_X_L
+	lsr
+	clc
+	adc	MATH_P2A_Y_L
+	sta	VERA_FX_CACHE_H
+:
+	; inverse division bank
+	lda	#BANK_IDIV_L
+	sta	REG_RAM_BANK
+
+	;; dist *= inv_div[speed]
+
+	; inv_div[speed]
+	jsr	math_idiv
+	lda	MATH_VAR_L
+	sta	VERA_FX_CACHE_L
+	lda	MATH_VAR_H
+	sta	VERA_FX_CACHE_M
+
+	; dist
+	stz	VERA_FX_CACHE_U
+
+	; save result
+	stz	VERA_DATA0
+
+	; get result (>> 8)
+	lda	VERA_DATA0
+
+	; limit to 127
+	bpl	:+
+	lda	#127
+:
+	sta	MATH_VAR_U
+
+	; attack check
+	plx
+	beq	:+
+
+	; change swing
+	lsr
+	lsr
+	sta	MATH_VAR_U
+:
+	; show_wpn_now.avg >>= 1
+	lda	G_WPN_AVG
+	lsr
+
+	; show_wpn_now.avg += dist
+	clc
+	adc	MATH_VAR_U
+	sta	G_WPN_AVG
+
+	; dist = show_wpn_now.avg >> 1
+	lsr
 	bne	:+
 
-	; XY swing
-	jsr	update_weapon_swing
-:
-	ldx	#15
+	; X = -48
+	lda	#$D0
+	sta	MATH_VAR_L
+	lda	#$FF
+	sta	MATH_VAR_H
 
+	; Y = 0
+	stz	MATH_VAR_U
+
+	jmp	@finish_swing
+:
+	;; ox = ((tab_sin[(level_tick << 4) & 0xFF] * dist) >> 16) - 48
+
+	; dist << 4
+	tax
+	lda	TAB_SWAP,x
+	and	#$F0
+	sta	VERA_FX_CACHE_H
+	lda	TAB_SWAP,x
+	and	#$0F
+	sta	VERA_FX_CACHE_U
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; level_tick << 4
+	ldx	G_LEVEL_TICK_L
+	lda	TAB_SWAP,x
+	and	#$F0
+	tax
+
+	; tab_sin
+	math_read_sin	VERA_FX_CACHE_L, VERA_FX_CACHE_M
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 16) - 48
+	lda	VERA_DATA0
+	sec
+	lda	VERA_DATA0
+	sbc	#48
+	sta	MATH_VAR_L
+	lda	VERA_DATA0
+	sbc	#0
+	sta	MATH_VAR_H
+
+	;; oy = ((tab_cos[(level_tick << 4) & 0xFF] * dist) >> 16)
+
+	; reset accumulator
+	lda	VERA_FX_ACCUM_RESET
+
+	; dist is already set
+
+	; tab_cos
+	math_read_cos	VERA_FX_CACHE_L, VERA_FX_CACHE_M
+
+	; save result
+	stz	VERA_ADDRx_L
+	stz	VERA_DATA0
+
+	; get result (>> 16)
+	lda	VERA_DATA0
+	lda	VERA_DATA0
+	bpl	:+
+	eor	#$FF
+	ina
+:
+	sta	MATH_VAR_U
+
+@finish_swing:
 	; dcsel = 2, addrsel = 0
 	lda	#$04
 	sta	VERA_CTRL
@@ -531,10 +909,7 @@ wspr_no_gfx:
 	; disable cache write
 	stz	VERA_FX_CTRL
 
-	; wsprite frame bank
-;	lda	#BANK_WSPR_INFO
-;	sta	REG_RAM_BANK
-
+@finish_weapon:
 	; ADDR0 = 0x01FF50, increment = 1
 	lda	#$50
 	sta	VERA_ADDRx_L
@@ -543,55 +918,62 @@ wspr_no_gfx:
 	lda	#%00010001
 	sta	VERA_ADDRx_H
 
-	; copy valid sprites
-@loop_wspr_prt:
-	; addr (lo)
-	lda	(TMP_PTR_L)
-	bmi	@do_wspr_inv
-	sta	VERA_DATA0
-	inc	TMP_PTR_L
+	; WRAM
+	lda	TMP_REND_WPN_BANK
+	sta	REG_RAM_BANK
 
-	; addr (hi)
-	lda	G_WPN_VERA_SLOT
+	; copy valid sprites
+	ldx	#15
+	ldy	#0
+@loop_part:
+	; addr
+	clc
+	lda	(HI_PTR_L),y
+	bmi	@stop_part
+	adc	G_WPN_VERA_SLOT
+	sta	VERA_DATA0
+	lda	#$8E
+	adc	#0
 	sta	VERA_DATA0
 
 	; X
+	iny
 	clc
-	lda	(TMP_PTR_L)
+	lda	(HI_PTR_L),y
 	adc	MATH_VAR_L
 	sta	VERA_DATA0
 	lda	#0
 	adc	MATH_VAR_H
 	sta	VERA_DATA0
-	inc	TMP_PTR_L
 
 	; Y
+	iny
 	clc
-	lda	(TMP_PTR_L)
+	lda	(HI_PTR_L),y
 	adc	MATH_VAR_U
 	clc
 	adc	MATH_COUNTER
 	sta	VERA_DATA0
 	stz	VERA_DATA0
-	inc	TMP_PTR_L
 
 	; infoA
-	lda	(TMP_PTR_L)
+	iny
+	lda	(HI_PTR_L),y
 	sta	VERA_DATA0
 
 	; infoB
+	iny
 	and	#$F0
 	sta	VERA_DATA0
-	inc	TMP_PTR_L
 
 	; next
 	dex
-	bne	@loop_wspr_prt
+	bne	@loop_part
 
 	; done
 	jmp	hud_update
 
-@do_wspr_inv:
+@stop_part:
 	; dummy
 	stz	VERA_DATA0
 	stz	VERA_DATA0
@@ -604,10 +986,10 @@ wspr_no_gfx:
 	sta	VERA_ADDRx_H
 
 	; invalidate the rest
-@loop_wspr_inv:
+@loop_inv:
 	stz	VERA_DATA0
 	dex
-	bne	@loop_wspr_inv
+	bne	@loop_inv
 
 	; done
 	jmp	hud_update
@@ -6505,224 +6887,6 @@ plane_set_angle:
 	; dcsel = 2, addrsel = 0
 	lda	#$04
 	sta	VERA_CTRL
-
-	rts
-
-;;;
-; update weapon pixels
-;;;
-
-update_weapon_gfx:
-	;; TODO
-	rts
-
-;;;
-; update weapon XY offset
-;;;
-
-update_weapon_swing:
-	; enable math
-	jsr	math_setup_vera
-
-	; get player thing
-	ldy	G_PLAYER_THING
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; get thing pitch
-	stz	MATH_COUNTER
-	lda	THING_STRUCT_PITCH,y
-	cmp	#148
-	bcc	:+
-	sec
-	sbc	#148
-	lsr
-	lsr
-	sta	MATH_COUNTER
-:
-	; add Y offset
-	clc
-	lda	MATH_COUNTER
-	adc	THING_STRUCT_HEIGHT
-	sta	MATH_COUNTER
-
-	; get weapon iflags
-	lda	THING_STRUCT_IFLAGS
-	pha
-
-	; get thing type
-	ldx	TICKER_STRUCT_TYPE,y
-
-	; thing info bank
-	lda	#BANK_THING_INFO
-	sta	REG_RAM_BANK
-
-	; get thing speed
-	lda	THTYPE_STRUCT_SPEED,x
-	sta	MATH_VAR_L
-	stz	MATH_VAR_H
-
-	; ticker structure bank
-	lda	#BANK_TICKER_STRUCT
-	sta	REG_RAM_BANK
-
-	; abs(mx)
-	lda	THING_STRUCT_MX_L,y
-	bpl	:+
-	eor	#$FF
-	ina
-:
-	sta	MATH_P2A_X_L
-
-	; abs(my)
-	lda	THING_STRUCT_MY_L,y
-	bpl	:+
-	eor	#$FF
-	ina
-:
-	sta	MATH_P2A_Y_L
-
-	; dist = ox > oy ? ox + oy / 2 : oy + ox / 2
-	cmp	MATH_P2A_X_L
-	bcs	:+
-
-	; ox + oy / 2
-	lsr
-	clc
-	adc	MATH_P2A_X_L
-	sta	VERA_FX_CACHE_H
-
-	bra	:++
-:
-	; oy + ox / 2
-	lda	MATH_P2A_X_L
-	lsr
-	clc
-	adc	MATH_P2A_Y_L
-	sta	VERA_FX_CACHE_H
-:
-	; inverse division bank
-	lda	#BANK_IDIV_L
-	sta	REG_RAM_BANK
-
-	;; dist *= inv_div[speed]
-
-	; inv_div[speed]
-	jsr	math_idiv
-	lda	MATH_VAR_L
-	sta	VERA_FX_CACHE_L
-	lda	MATH_VAR_H
-	sta	VERA_FX_CACHE_M
-
-	; dist
-	stz	VERA_FX_CACHE_U
-
-	; save result
-	stz	VERA_DATA0
-
-	; get result (>> 8)
-	lda	VERA_DATA0
-
-	; limit to 127
-	bpl	:+
-	lda	#127
-:
-	sta	MATH_VAR_U
-
-	; attack check
-	plx
-	beq	:+
-
-	; change swing
-	lsr
-	lsr
-	sta	MATH_VAR_U
-:
-	; show_wpn_now.avg >>= 1
-	lda	G_WPN_AVG
-	lsr
-
-	; show_wpn_now.avg += dist
-	clc
-	adc	MATH_VAR_U
-	sta	G_WPN_AVG
-
-	; dist = show_wpn_now.avg >> 1
-	lsr
-	bne	:+
-
-	; X = -48
-	lda	#$D0
-	sta	MATH_VAR_L
-	lda	#$FF
-	sta	MATH_VAR_H
-
-	; Y = 0
-	stz	MATH_VAR_U
-
-	rts
-:
-	;; ox = ((tab_sin[(level_tick << 4) & 0xFF] * dist) >> 16) - 48
-
-	; dist << 4
-	tax
-	lda	TAB_SWAP,x
-	and	#$F0
-	sta	VERA_FX_CACHE_H
-	lda	TAB_SWAP,x
-	and	#$0F
-	sta	VERA_FX_CACHE_U
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; level_tick << 4
-	ldx	G_LEVEL_TICK_L
-	lda	TAB_SWAP,x
-	and	#$F0
-	tax
-
-	; tab_sin
-	math_read_sin	VERA_FX_CACHE_L, VERA_FX_CACHE_M
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 16) - 48
-	lda	VERA_DATA0
-	sec
-	lda	VERA_DATA0
-	sbc	#48
-	sta	MATH_VAR_L
-	lda	VERA_DATA0
-	sbc	#0
-	sta	MATH_VAR_H
-
-	;; oy = ((tab_cos[(level_tick << 4) & 0xFF] * dist) >> 16)
-
-	; reset accumulator
-	lda	VERA_FX_ACCUM_RESET
-
-	; dist is already set
-
-	; tab_cos
-	math_read_cos	VERA_FX_CACHE_L, VERA_FX_CACHE_M
-
-	; save result
-	stz	VERA_ADDRx_L
-	stz	VERA_DATA0
-
-	; get result (>> 16)
-	lda	VERA_DATA0
-	lda	VERA_DATA0
-	bpl	:+
-	eor	#$FF
-	ina
-:
-	sta	MATH_VAR_U
 
 	rts
 

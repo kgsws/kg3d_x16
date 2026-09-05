@@ -14,6 +14,7 @@
 .export video_setup_imgline
 .export video_image_from_file
 .export video_load_vram
+.export video_load_vram_ex
 .export video_draw_vline
 .export video_draw_vline_sf
 .export video_draw_vline_sl
@@ -372,10 +373,18 @@ video_image_from_file:
 ;;;
 ; read from SD to VRAM
 ;;;
-; X - destination block
 ; SD_SEC_* - source sector
 ; assuming addrsel = 0
 
+; X - sector count
+; assuming ADDR0 set
+video_load_vram_ex:
+	; render code bank
+	lda	#BANK_RCODE
+	sta	REG_RAM_BANK
+	bra	load_vram_loop_sector
+
+; X - destination block
 video_load_vram:
 	; ADDR0 = block*2048, increment = 1
 	stz	VERA_ADDRx_L
@@ -394,7 +403,7 @@ video_load_vram:
 
 	; read sectors
 	ldx	#4
-@loop_sector:
+load_vram_loop_sector:
 	; dummy byte
 	lda	#$FF
 	sta	VERA_SPI_DATA
@@ -431,7 +440,7 @@ video_load_vram:
 
 	; got error
 @fail:
-	jsr	@stop
+	jsr	load_vram_stop
 
 	; TODO: error / fail ?
 	rts
@@ -448,7 +457,7 @@ video_load_vram:
 
 	; read 512 bytes
 	jsr	TAB_SD_VRAM_RD
-	jsr	@stop
+	jsr	load_vram_stop
 
 	; increment sector
 	inc	SD_SEC_L
@@ -461,9 +470,9 @@ video_load_vram:
 :
 	; next
 	dex
-	bne	@loop_sector
+	bne	load_vram_loop_sector
 
-@stop:
+load_vram_stop:
 	; deselect
 	stz	VERA_SPI_CTRL
 

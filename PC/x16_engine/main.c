@@ -296,17 +296,17 @@ typedef struct
 typedef struct
 {
 	wpn_part_t part[128 / 4];
-	uint32_t d_nrm;
+	uint8_t sz_bri;
 	uint32_t d_bri;
 	uint8_t sz_nrm;
-	uint8_t sz_bri;
+	uint32_t d_nrm;
 	uint8_t frame;
 	uint8_t fbase;
 	uint8_t count;
 	uint8_t last;
 	uint8_t _pad[128 - 14];
 	uint8_t _not_loaded[256];
-} wpn_head_t;
+} __attribute__((packed)) wpn_head_t;
 
 typedef union
 {
@@ -2942,7 +2942,7 @@ static void do_2D()
 			show_wpn_now.light = 0xFF; // force normal pixel update
 
 			show_wpn_slot ^= 0x80;
-			dst = vram + ((114688 + show_wpn_slot * 32) & 0x1FFFF);
+			dst = vram + ((0x1C000 + show_wpn_slot * 32) & 0x1FFFF);
 
 			// copy only fullbright pixels here
 			memcpy(dst + info->sz_nrm * 512, game_gfx + info->d_bri * 512, info->sz_bri * 512);
@@ -2952,7 +2952,7 @@ static void do_2D()
 		{
 			// update unlit pixels
 			wpn_head_t *info = (wpn_head_t*)(wram + si->wspr.info * 256);
-			uint8_t *dst = vram + ((114688 + show_wpn_slot * 32) & 0x1FFFF);
+			uint8_t *dst = vram + ((0x1C000 + show_wpn_slot * 32) & 0x1FFFF);
 			uint8_t *src = game_gfx + si->wspr.dnrm * 512;
 
 			memcpy(dst, src, info->sz_nrm * 512);
@@ -2963,7 +2963,6 @@ static void do_2D()
 	{
 		if(!show_wpn_now.idx)
 			return; // TODO: HUD
-		show_wpn_now.magic = 0;
 		show_wpn_now.idx = 0;
 	}
 
@@ -3018,7 +3017,8 @@ static void do_2D()
 
 		for( ; i < 15 && part->offs < 128; i++, spr++, part++)
 		{
-			spr->addr = 0x8E00 | (show_wpn_slot + part->offs);
+			spr->addr = 0x8E00 + show_wpn_slot + part->offs;
+printf("%04X\n", spr->addr);
 			spr->x = ox + (int16_t)part->x;
 			spr->y = oy + part->y;
 			spr->ia = part->flags;
@@ -3908,6 +3908,9 @@ static uint32_t load_map()
 	int32_t fd;
 	uint32_t temp;
 	uint32_t esbase;
+
+	// weapon reset
+	show_wpn_now.magic = 0;
 
 	// copy precached
 	wram_used = wram_used_pre;

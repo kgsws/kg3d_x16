@@ -9119,15 +9119,17 @@ void x16g_export()
 				uint8_t flags;
 			} part[MAX_X16_WPNPARTS+1];
 			uint8_t _padA[128 - (MAX_X16_WPNPARTS+1) * 4];
-			uint32_t d_nrm;
+			uint8_t sz_bri;
 			uint32_t d_bri;
 			uint8_t sz_nrm;
-			uint8_t sz_bri;
+			uint32_t d_nrm;
 			uint8_t frame;
 			uint8_t fbase;
 			uint8_t count;
 			uint8_t last;
-		} *sprh; // one entry per sector
+			uint8_t _pad[128 - 14];
+			uint8_t _not_loaded[256];
+		} __attribute__((packed)) *sprh; // one entry per sector
 		struct
 		{
 			uint32_t dstart;

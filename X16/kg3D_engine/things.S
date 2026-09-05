@@ -155,6 +155,7 @@ thing_spawn_org:
 	sta	REG_RAM_BANK
 
 	; spawn sprite
+	lda	#0
 	ldy	THSTATE_STRUCT_SPRITE,x
 	bmi	:+
 
@@ -415,6 +416,11 @@ thing_clear:
 	;; PLAYER WEAPON
 	; thing 0 is always weapon of local player
 
+	stz	TAB_MENU_LOGO_DIS
+	stz	G_WPN_NOW_MAGIC
+	lda	#$FF
+	sta	G_WPN_NOW_IDX
+
 	; thing info bank
 	lda	#BANK_THING_INFO
 	sta	REG_RAM_BANK
@@ -434,6 +440,7 @@ thing_clear:
 	sta	REG_RAM_BANK
 
 	; the sprite
+	lda	#0
 	ldx	THSTATE_STRUCT_SPRITE,y
 	bmi	:+
 
@@ -442,8 +449,9 @@ thing_clear:
 	and	#$1F
 	clc
 	adc	TAB_SPRITE_REMAP,x
-	tax
 :
+	sta	THING_STRUCT_SPRITE
+
 	; ticker structure bank
 	lda	#BANK_TICKER_STRUCT
 	sta	REG_RAM_BANK
@@ -457,9 +465,6 @@ thing_clear:
 	lda	#64
 	sta	THING_STRUCT_HEIGHT
 	stz	THING_STRUCT_COUNTER
-
-	; save sprite
-	stx	THING_STRUCT_SPRITE
 
 	; state ticks
 	lda	#1
@@ -5412,8 +5417,8 @@ thing_actdone:
 	lda	THSTATE_STRUCT_NEXT,x
 	pha	; <next L>
 
-	; spawn sprite
-	lda	#$FF
+	; the sprite
+	lda	#0
 	ldy	THSTATE_STRUCT_SPRITE,x
 	bmi	:+
 

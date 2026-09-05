@@ -7,6 +7,7 @@
 .import video_setup_imgline
 .import video_image_from_file
 .import video_load_vram
+.import video_load_vram_ex
 .import video_draw_vline
 .import video_draw_vline_sf
 .import video_draw_vline_sl

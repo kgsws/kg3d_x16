@@ -1,4 +1,4 @@
 
 .import render_init
 .import render_view
-.import render_wspr_draw
+.import render_update_weapon
