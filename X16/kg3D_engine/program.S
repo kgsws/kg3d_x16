@@ -226,7 +226,27 @@ start:
 	dey
 	bne	@loop_spr
 
-	;; CHECKER
+	;; VERSION CHECK
+
+	stz	REG_ROM_BANK
+	lda	$FF80
+	cmp	#48
+	bcs	:+
+
+	; text: version
+	jsr	write_text
+	.word	$0710
+	.word	text_version
+
+	jmp	error_plain
+:
+	cmp	#49
+	bcs	:+
+
+	; patch sector read
+	stz	sys_read_fl+1
+:
+	;; FILE CHECKER
 
 	; text: checking files
 	jsr	write_text
@@ -382,6 +402,7 @@ error:
 	.word	$0710
 	.word	text_miss
 :
+error_plain:
 	; text: reboot
 	jsr	write_text
 	.word	$0E0E
@@ -617,6 +638,48 @@ file_check:
 ;;;
 
 sys_read_fl:
+	bra	sys_read
+
+	; read stack
+	tsx
+
+	; load pointer
+	lda	$0101,x
+	sta	LDR_TEMP_L
+	lda	$0102,x
+	sta	LDR_TEMP_H
+
+	; advance return address
+	clc
+	lda	$0101,x
+	adc	#5
+	sta	$0101,x
+	bcc	:+
+	inc	$0102,x
+:
+	; destination
+	ldy	#5
+	lda	(LDR_TEMP_L),y
+	sta	LDR_TEMP_L
+	stz	LDR_TEMP_H
+
+	; ROM r48
+	stz	REG_RAM_BANK
+	ldy	#0
+	lda	$B7E1
+	sta	(LDR_TEMP_L),y
+	iny
+	lda	$B7E2
+	sta	(LDR_TEMP_L),y
+	iny
+	lda	$B7E3
+	sta	(LDR_TEMP_L),y
+	iny
+	lda	$B7E4
+	sta	(LDR_TEMP_L),y
+
+	clc
+	rts
 
 sys_read:
 	; read stack
@@ -1038,6 +1101,8 @@ text_load:
 	.asciiz	"Loading engine code ..."
 text_reboot:
 	.asciiz	"Press any key to reboot ..."
+text_version:
+	.asciiz	"Outdated X16-ROM version!"
 text_miss:
 	.asciiz	"File KG3D.GFX is missing!"
 text_frag0:
