@@ -346,16 +346,18 @@ void r_draw_plane(kge_sector_t *sector, uint32_t plane)
 	}
 }
 
-static void draw_wall(kge_sector_t *sec, kge_line_t *ln, uint32_t texflg, float top, float bot, float oy)
+static void draw_wall(kge_sector_t *sec, kge_line_t *ln, editor_texture_t *et, uint32_t texflg, float top, float bot, float oy)
 {
 	kge_x16_tex_t *ti = ln->texture + (texflg & 3);
-	editor_texture_t *et = editor_texture + ti->idx;
 	float tt, tb, tl, tr;
 	uint32_t flags = ti->flags & TEXFLAG_MIRROR_X;
 	float w, h;
 
 	if(bot >= top)
 		return;
+
+	if(!et)
+		et = editor_texture + ti->idx;
 
 	set_identity(sec, ln, IDENT_WALL_TOP + (texflg & 3));
 
@@ -612,7 +614,7 @@ void render_scan_sector(kge_sector_t *sec, uint32_t recursion)
 			bt = ft;
 			bb = fb;
 
-			draw_wall(sec, line, line->info.flags << 8, ft, fb, 0);
+			draw_wall(sec, line, NULL, line->info.flags << 8, ft, fb, 0);
 		}
 
 		ent = ent->next;
@@ -658,7 +660,7 @@ void render_scan_sector(kge_sector_t *sec, uint32_t recursion)
 			bt = ft;
 			bb = fb;
 
-			draw_wall(sec, line, wflags | 0, ft, fb, 0);
+			draw_wall(sec, line, NULL, wflags | 0, ft, fb, 0);
 		} else
 		{
 			bs = line->backsector;
@@ -676,10 +678,10 @@ use_split:
 			gl_vertex_buf[3].y = v1->y;
 
 			// bottom wall
-			draw_wall(sec, line, wflags | 1, bb, fb, 0);
+			draw_wall(sec, line, NULL, wflags | 1, bb, fb, 0);
 
 			// top wall
-			draw_wall(sec, line, wflags | 0, ft, bt, 0);
+			draw_wall(sec, line, NULL, wflags | 0, ft, bt, 0);
 
 			// backsector portal
 			if(	bt > fb &&
@@ -735,31 +737,43 @@ use_split:
 		if(line->texture[2].idx)
 		{
 			kge_x16_tex_t *ti = line->texture + 2;
-			editor_texture_t *et = editor_texture + ti->idx;
-			float top, bot, bbb;
-			float offs = 0;
+			editor_texture_t et;
+			uint32_t width, height;
+			uint32_t *gltex;
 
-			top = line->stuff.normal.x * 0.1f;
-			bot = line->stuff.normal.y * 0.1f;
+			x16g_get_thingsel_texinfo(ti->idx - 1, &width, &height, &gltex);
+			if(width && height)
+			{
+				float top, bot, bbb;
+				float offs = 0;
 
-			gl_vertex_buf[0].x = v0->x + top;
-			gl_vertex_buf[0].y = v0->y + bot;
-			gl_vertex_buf[1].x = v1->x + top;
-			gl_vertex_buf[1].y = v1->y + bot;
-			gl_vertex_buf[2].x = gl_vertex_buf[0].x;
-			gl_vertex_buf[2].y = gl_vertex_buf[0].y;
-			gl_vertex_buf[3].x = gl_vertex_buf[1].x;
-			gl_vertex_buf[3].y = gl_vertex_buf[1].y;
+				et.width = 128;
+				et.height = height;
+				et.gltex = *gltex;
+				et.type = X16G_TEX_TYPE_WALL;
 
-			bbb = ti->flags & TEXFLAG_PEG_MID_BACK ? bb : fb;
-			bot = bbb + ti->oy * 2;
-			top = bot + et->height * 2;
+				top = line->stuff.normal.x * 0.1f;
+				bot = line->stuff.normal.y * 0.1f;
 
-			shader_buffer.lightmap = LIGHTMAP_IDX(sec->light.idx);
+				gl_vertex_buf[0].x = v0->x + top;
+				gl_vertex_buf[0].y = v0->y + bot;
+				gl_vertex_buf[1].x = v1->x + top;
+				gl_vertex_buf[1].y = v1->y + bot;
+				gl_vertex_buf[2].x = gl_vertex_buf[0].x;
+				gl_vertex_buf[2].y = gl_vertex_buf[0].y;
+				gl_vertex_buf[3].x = gl_vertex_buf[1].x;
+				gl_vertex_buf[3].y = gl_vertex_buf[1].y;
 
-			glEnable(GL_ALPHA_TEST);
-			draw_wall(sec, line, wflags | 2, top, bot, offs * 0.5f);
-			glDisable(GL_ALPHA_TEST);
+				bbb = ti->flags & TEXFLAG_PEG_MID_BACK ? bb : fb;
+				bot = bbb + ti->oy * 2;
+				top = bot + height * 2;
+
+				shader_buffer.lightmap = LIGHTMAP_IDX(sec->light.idx);
+
+				glEnable(GL_ALPHA_TEST);
+				draw_wall(sec, line, &et, wflags | 2, top, bot, offs * 0.5f);
+				glDisable(GL_ALPHA_TEST);
+			}
 		}
 	}
 }

@@ -212,25 +212,25 @@ static const uint8_t *const blocking_name[NUM_BLOCKBITS] =
 
 // other text
 
-const uint8_t *txt_right_left[] =
+const uint8_t *const txt_right_left[] =
 {
 	"right",
 	"left"
 };
 
-const uint8_t *txt_yes_no[] =
+const uint8_t *const txt_yes_no[] =
 {
 	"yes",
 	"no"
 };
 
-const uint8_t *txt_top_bot[] =
+const uint8_t *const txt_top_bot[] =
 {
 	"top",
 	"bottom"
 };
 
-const uint8_t *txt_back_front[] =
+const uint8_t *const txt_back_front[] =
 {
 	"back",
 	"front"
@@ -263,6 +263,8 @@ static int32_t mode_2d3d;
 kge_thing_pos_t edit_wf_pos;
 
 kge_thing_t *edit_camera_thing;
+
+kge_thing_t edit_fake_masked_th;
 
 void *edit_cbor_buffer;
 
@@ -1376,35 +1378,83 @@ static void thing_select_fill()
 
 	if(selector_dest.thing)
 	{
-		for( ; i < TEXTURE_LIST_MAX && idx < sizeof(internal_thing) / sizeof(internal_thing_t); idx++, i++)
+		if(selector_dest.thing == &edit_fake_masked_th)
 		{
-			internal_thing_t *it = internal_thing + idx;
-			glui_image_t *img;
-			glui_text_t *txt;
+			if(!idx)
+			{
+				editor_texture_t *et = editor_texture + idx;
+				glui_image_t *img;
+				glui_text_t *txt;
 
-			txt = (glui_text_t*)*elm;
-			elm++;
+				txt = (glui_text_t*)*elm;
+				elm++;
 
-			txt->base.custom = it->type;
-			txt->base.click = thing_select_click;
-			glui_set_text(txt, it->name, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
+				txt->base.custom = 255;
+				txt->base.click = thing_select_click;
+				glui_set_text(txt, et->name, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
 
-			img = (glui_image_t*)*elm;
-			elm++;
+				img = (glui_image_t*)*elm;
+				elm++;
 
-			x16g_set_thingsel_texture(img, it->tidx);
+				img->shader = SHADER_FRAGMENT_RGB;
+				img->gltex = &et->gltex;
 
-			img->base.x = txt->base.x + (TEXTURE_ENTRY_W - img->base.width) / 2;
-			img->base.y = txt->base.y + (TEXTURE_ENTRY_W - img->base.height) / 2;
+				if(et->width > et->height)
+				{
+					img->base.width = 128;
+					img->base.height = 128 * ((float)et->height / (float)et->width);
+				} else
+				{
+					img->base.width = 128 * ((float)et->width / (float)et->height);
+					img->base.height = 128;
+				}
 
-			img->coord.s[0] = 0.0f;
-			img->coord.s[1] = 1.0f;
+				img->base.x = txt->base.x + (TEXTURE_ENTRY_W - img->base.width) / 2;
+				img->base.y = txt->base.y + (TEXTURE_ENTRY_W - img->base.height) / 2;
 
-			img->coord.t[0] = 0.0f;
-			img->coord.t[1] = 1.0f;
+				img->coord.s[0] = 0.0f;
+				img->coord.s[1] = 1.0f;
+				img->coord.t[0] = 0.0f;
+				img->coord.t[1] = 1.0f;
+
+				i++;
+				idx++;
+			}
+
+			tdx = idx - 1;
+		} else
+		{
+			for( ; i < TEXTURE_LIST_MAX && idx < sizeof(internal_thing) / sizeof(internal_thing_t); idx++, i++)
+			{
+				internal_thing_t *it = internal_thing + idx;
+				glui_image_t *img;
+				glui_text_t *txt;
+
+				txt = (glui_text_t*)*elm;
+				elm++;
+
+				txt->base.custom = it->type;
+				txt->base.click = thing_select_click;
+				glui_set_text(txt, it->name, glui_font_small_kfn, GLUI_ALIGN_CENTER_BOT);
+
+				img = (glui_image_t*)*elm;
+				elm++;
+
+				x16g_set_thingsel_texture(img, it->tidx);
+
+				img->base.x = txt->base.x + (TEXTURE_ENTRY_W - img->base.width) / 2;
+				img->base.y = txt->base.y + (TEXTURE_ENTRY_W - img->base.height) / 2;
+
+				img->coord.s[0] = 0.0f;
+				img->coord.s[1] = 1.0f;
+
+				img->coord.t[0] = 0.0f;
+				img->coord.t[1] = 1.0f;
+			}
+
+			tdx = idx - sizeof(internal_thing) / sizeof(internal_thing_t);
 		}
 
-		tdx = idx - sizeof(internal_thing) / sizeof(internal_thing_t);
 		top = MAX_X16_THING_TYPES - X16_NUM_UNLISTED_THINGS;
 	}
 
@@ -1855,6 +1905,36 @@ static int32_t thing_select_click(glui_element_t *elm, int32_t x, int32_t y)
 {
 	ui_file_select.base.disabled = 1;
 
+	if(mode_2d3d == EDIT_MODE_3D)
+	{
+		input_analog_h = 0;
+		input_analog_v = 0;
+		system_mouse_grab(1);
+	}
+
+	if(selector_dest.thing == &edit_fake_masked_th)
+	{
+		edit_clear_hit(1);
+
+		if(elm->base.custom < 128)
+		{
+			thing_def_t *ti = thing_info + elm->base.custom;
+			export_type_t *info = &ti->info;
+			if(ti->name.text[0])
+			{
+				strcpy(selector_dest.thing->masked_line->texture[2].name, ti->name.text);
+				selector_dest.thing->masked_line->texture[2].idx = elm->base.custom + 1;
+			} else
+				elm->base.custom = 128;
+		}
+		if(elm->base.custom >= 128)
+		{
+			memset(selector_dest.thing->masked_line->texture[2].name, 0, sizeof(selector_dest.thing->masked_line->texture[2].name));
+			selector_dest.thing->masked_line->texture[2].idx = 0;
+		}
+		return 1;
+	}
+
 	if(edit_x16_mode == EDIT_XMODE_THG)
 	{
 		x16t_thing_select(elm->base.custom);
@@ -1864,13 +1944,6 @@ static int32_t thing_select_click(glui_element_t *elm, int32_t x, int32_t y)
 	selector_dest.thing->prop.type = elm->base.custom;
 
 	edit_update_thing_type(selector_dest.thing);
-
-	if(mode_2d3d == EDIT_MODE_3D)
-	{
-		input_analog_h = 0;
-		input_analog_v = 0;
-		system_mouse_grab(1);
-	}
 
 	return 1;
 }
@@ -4004,37 +4077,61 @@ void edit_clear_hit(uint32_t forced)
 		edit_highlight_changed();
 }
 
-static void set_hl_texture(glui_image_t *img, kge_x16_tex_t *tex)
+static void set_hl_texture(glui_image_t *img, kge_x16_tex_t *tex, uint32_t is_masked)
 {
 	editor_texture_t *et = editor_texture + tex->idx;
 	uint32_t shader;
+	uint32_t *gltex;
+	float w, h;
 
-	switch(et->type)
+	if(is_masked)
 	{
-		case X16G_TEX_TYPE_WALL:
-		case X16G_TEX_TYPE_PLANE:
+		uint32_t width, height;
+
+		x16g_get_thingsel_texinfo(tex->idx - 1, &width, &height, &gltex);
+		if(width && height)
+		{
 			shader = SHADER_FRAGMENT_PALETTE;
-		break;
-		default:
-			shader = SHADER_FRAGMENT_RGB;
-		break;
+			w = width;
+			h = height;
+			et = NULL;
+		} else
+			et = editor_texture;
+	}
+
+	if(et)
+	{
+		gltex = &et->gltex;
+		w = et->width;
+		h = et->height;
+
+		switch(et->type)
+		{
+			case X16G_TEX_TYPE_WALL:
+			case X16G_TEX_TYPE_PLANE:
+				shader = SHADER_FRAGMENT_PALETTE;
+			break;
+			default:
+				shader = SHADER_FRAGMENT_RGB;
+			break;
+		}
 	}
 
 	img->shader = shader;
-	img->gltex = &et->gltex;
+	img->gltex = gltex;
 
 	img->coord.s[0] = 0.0f;
 	img->coord.s[1] = 1.0f;
 	img->coord.t[0] = 0.0f;
 	img->coord.t[1] = 1.0f;
 
-	if(et->width > et->height)
+	if(w > h)
 	{
 		img->base.width = 64;
-		img->base.height = 64.0f * ((float)et->height / (float)et->width);
+		img->base.height = 64.0f * (h / w);
 	} else
 	{
-		img->base.width = 64.0f * ((float)et->width / (float)et->height);
+		img->base.width = 64.0f * (w / h);
 		img->base.height = 64;
 	}
 }
@@ -4104,7 +4201,7 @@ void edit_highlight_changed()
 			sprintf(dst, "\nRot: %u\nx: %u y: %u", sp->texture.angle, sp->texture.ox, sp->texture.oy);
 			glui_set_text(&ui_edit_highlight_textA, text, glui_font_tiny_kfn, GLUI_ALIGN_CENTER_TOP);
 
-			set_hl_texture(&ui_edit_highlight_imgA, &sp->texture);
+			set_hl_texture(&ui_edit_highlight_imgA, &sp->texture, 0);
 
 			// ceiling
 
@@ -4113,7 +4210,7 @@ void edit_highlight_changed()
 			sprintf(text, "%s\x0B\n\n\n\n\nZ: %.0f\nRot: %u\nx: %u y: %u", sp->link ? "CEILING" : "Ceiling", sp->height, sp->texture.angle, sp->texture.ox, sp->texture.oy);
 			glui_set_text(&ui_edit_highlight_textB, text, glui_font_tiny_kfn, GLUI_ALIGN_CENTER_TOP);
 
-			set_hl_texture(&ui_edit_highlight_imgB, &sp->texture);
+			set_hl_texture(&ui_edit_highlight_imgB, &sp->texture, 0);
 
 			// other
 
@@ -4178,7 +4275,7 @@ void edit_highlight_changed()
 			tex = edit_hit.line->texture + 0;
 
 			make_wall_info(&ui_edit_highlight_textB, text, "Top", tex);
-			set_hl_texture(&ui_edit_highlight_imgB, tex);
+			set_hl_texture(&ui_edit_highlight_imgB, tex, 0);
 
 			count = 2;
 
@@ -4196,7 +4293,7 @@ void edit_highlight_changed()
 				tex = edit_hit.line->texture + 1;
 
 				make_wall_info(&ui_edit_highlight_textC, text, "Bot", tex);
-				set_hl_texture(&ui_edit_highlight_imgC, tex);
+				set_hl_texture(&ui_edit_highlight_imgC, tex, 0);
 
 				count = 3;
 
@@ -4214,7 +4311,7 @@ void edit_highlight_changed()
 					tex = edit_hit.line->texture + 2;
 
 					make_wall_info(&ui_edit_highlight_textD, text, "Mid", tex);
-					set_hl_texture(&ui_edit_highlight_imgD, tex);
+					set_hl_texture(&ui_edit_highlight_imgD, tex, 1);
 
 					count = 4;
 				}
@@ -4226,7 +4323,7 @@ void edit_highlight_changed()
 				tex = edit_hit.line->texture + 1;
 
 				make_wall_info(&ui_edit_highlight_textC, text, "Bot", tex);
-				set_hl_texture(&ui_edit_highlight_imgC, tex);
+				set_hl_texture(&ui_edit_highlight_imgC, tex, 0);
 
 				count = 3;
 			} else
@@ -4237,7 +4334,7 @@ void edit_highlight_changed()
 				tex = edit_hit.line->texture + 2;
 
 				make_wall_info(&ui_edit_highlight_textC, text, "Mid", tex);
-				set_hl_texture(&ui_edit_highlight_imgC, tex);
+				set_hl_texture(&ui_edit_highlight_imgC, tex, 1);
 
 				count = 3;
 			}
@@ -4298,8 +4395,6 @@ void edit_highlight_changed()
 			glui_set_text(&ui_edit_highlight_textA, text, glui_font_tiny_kfn, GLUI_ALIGN_CENTER_TOP);
 
 			// image
-			th->sprite.shader;
-
 			img->shader = th->sprite.shader;
 			img->gltex = &th->sprite.gltex;
 

@@ -1463,7 +1463,7 @@ static uint32_t check_sprite_resolution(uint32_t width, uint32_t height)
 {
 	return	width < 1 ||
 		height < 1 ||
-		width > 126 || // > 126 is not supported
+		(width > 126 && width != 128) ||
 		height > 248 // > 248 is not supported
 	;
 }
@@ -1730,7 +1730,7 @@ static int32_t cbor_gfx_stex_variant(kgcbor_ctx_t *ctx, uint8_t *key, uint8_t ty
 		cbor_load_object->max = cbor_entry_index;
 
 		// set stride
-		vi->sw.stride = (vi->sw.width + 3) & ~3;
+		vi->sw.stride = cbor_stex_is_sprite ? 128 : (vi->sw.width + 3) & ~3;
 
 		return 0;
 
@@ -2946,6 +2946,24 @@ static uint32_t find_wall_texture(uint8_t *name)
 	return fallback;
 }
 
+static uint32_t find_mask_texture(uint8_t *name)
+{
+	if(!name[0])
+	{
+		name[0] = '\t';
+		name[1] = 0;
+		return 0;
+	}
+
+	for(uint32_t i = 0; i < MAX_X16_THING_TYPES; i++)
+	{
+		if(!strcmp(thing_info[i].name.text, name))
+			return i + 1;
+	}
+
+	return 0;
+}
+
 static uint32_t find_sector_light(uint8_t *name)
 {
 	for(uint32_t i = 0; i < x16_num_lights; i++)
@@ -3315,7 +3333,7 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 
 	// save info
 	vi->sw.width = img->width;
-	vi->sw.stride = (img->width + 3) & ~3;
+	vi->sw.stride = 128;
 	vi->sw.height = img->height;
 
 	// add dummy transparent pixel
@@ -3436,7 +3454,7 @@ static uint32_t stex_sprite_texture(image_t *img, variant_list_t *sp)
 	if(last_used < img->width)
 	{
 		vi->sw.width -= img->width - last_used;
-		vi->sw.stride = (img->width + 3) & ~3;
+		vi->sw.stride = 128;
 	}
 
 	return 0;
@@ -9428,7 +9446,7 @@ void x16g_update_map()
 
 			line->texture[0].idx = find_wall_texture(line->texture[0].name);
 			line->texture[1].idx = find_wall_texture(line->texture[1].name);
-			line->texture[2].idx = 0;//find_mask_texture(line->texture[2].name);
+			line->texture[2].idx = find_mask_texture(line->texture[2].name);
 		}
 
 		ont = sec->objects.top;
@@ -9958,6 +9976,18 @@ void x16g_set_thingsel_texture(glui_image_t *img, uint32_t idx)
 
 	img->base.width = gi->width;
 	img->base.height = gi->height;
+}
+
+void x16g_get_thingsel_texinfo(uint32_t idx, uint32_t *w, uint32_t *h, uint32_t **g)
+{
+	thing_sprite_t *spr = x16_thing_sprite + idx;
+
+	if(g)
+		*g = x16_thing_texture + idx;
+	if(w)
+		*w = spr->width;
+	if(h)
+		*h = spr->height;
 }
 
 int32_t x16g_spritelink_by_hash(uint32_t hash)

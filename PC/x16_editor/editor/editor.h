@@ -245,14 +245,16 @@ extern uint8_t edit_info_box_text[1024];
 
 extern kge_thing_t *edit_camera_thing;
 
+extern kge_thing_t edit_fake_masked_th;
+
 extern void *edit_cbor_buffer;
 
 extern uint32_t edit_x16_mode;
 
-extern const uint8_t *txt_right_left[];
-extern const uint8_t *txt_yes_no[];
-extern const uint8_t *txt_top_bot[];
-extern const uint8_t *txt_back_front[];
+extern const uint8_t *const txt_right_left[];
+extern const uint8_t *const txt_yes_no[];
+extern const uint8_t *const txt_top_bot[];
+extern const uint8_t *const txt_back_front[];
 
 //
 

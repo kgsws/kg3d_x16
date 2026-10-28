@@ -176,7 +176,7 @@ typedef struct
 
 typedef struct
 {
-	editor_texture_t *texture;
+	thing_sprite_t *spr;
 	int16_t tmap_scale[80];
 	uint8_t clip_top[80];
 	uint8_t tmap_coord[160];
@@ -1107,30 +1107,34 @@ static void dr_wall(kge_sector_t *sec, kge_line_t *line, vertex_t *ld, uint32_t 
 		proj_msk_idx < MAX_MASKED
 	){
 		proj_msk_t *mt = proj_msk + proj_msk_idx;
-		kge_sector_t *ss = sec;
-		uint32_t pli = PLANE_BOT;
+		thing_sprite_t *spr = x16_thing_sprite + line->texture[2].idx - 1;
 
-		mt->bz = line->texture[2].oy * 2;
+		if(spr->width && spr->height)
+		{
+			kge_sector_t *ss = sec;
 
-		if(line->texture[2].flags & TEXFLAG_PEG_MID_BACK)
-			ss = line->backsector;
+			mt->bz = line->texture[2].oy * 2;
 
-		mt->scale_now = scale_now;
-		mt->scale_step = scale_step;
-		mt->x0 = xx;
-		mt->x1 = x1;
-		mt->texture = editor_texture + line->texture[2].idx;
-		mt->bz += ss->plane[PLANE_BOT].height;
-		mt->xor = line->texture[2].flags & TEXFLAG_MIRROR_X ? 0x00 : 0xFF;
-		mt->ox = line->texture[2].ox;
-		mt->light = sec->light.idx;
+			if(line->texture[2].flags & TEXFLAG_PEG_MID_BACK)
+				ss = line->backsector;
 
-		memcpy(mt->tmap_scale, tmap_scale, sizeof(tmap_scale));
-		memcpy(mt->tmap_coord, tmap_coord, sizeof(tmap_coord));
+			mt->scale_now = scale_now;
+			mt->scale_step = scale_step;
+			mt->x0 = xx;
+			mt->x1 = x1;
+			mt->spr = spr;
+			mt->bz += ss->plane[PLANE_BOT].height;
+			mt->xor = line->texture[2].flags & TEXFLAG_MIRROR_X ? 0x00 : 0xFF;
+			mt->ox = line->texture[2].ox;
+			mt->light = sec->light.idx;
 
-		masked_idx = proj_msk_idx;
+			memcpy(mt->tmap_scale, tmap_scale, sizeof(tmap_scale));
+			memcpy(mt->tmap_coord, tmap_coord, sizeof(tmap_coord));
 
-		proj_msk_idx++;
+			masked_idx = proj_msk_idx;
+
+			proj_msk_idx++;
+		}
 	}
 
 	if(line->backsector || line->texture_split != INFINITY)
@@ -1441,9 +1445,9 @@ static void dr_sprite(uint32_t idx)
 static void dr_masked(uint32_t idx)
 {
 	proj_msk_t *mt = proj_msk + idx;
-	editor_texture_t *et = mt->texture;
+	thing_sprite_t *spr = mt->spr;
 	uint8_t x0, x1;
-	const uint8_t *src_data;
+	const uint16_t *src_data;
 	uint32_t *src_offs;
 	int32_t scale_now, scale_step;
 	int16_t zdiff;
@@ -1451,8 +1455,8 @@ static void dr_masked(uint32_t idx)
 	x0 = mt->x0 * 2;
 	x1 = mt->x1 * 2;
 
-	src_data = et->data;
-	src_offs = et->offs;
+	src_data = spr->data;
+	src_offs = spr->offs;
 
 	tex_width = 256;
 	tex_height = 256;
@@ -1476,11 +1480,14 @@ static void dr_masked(uint32_t idx)
 		uint8_t y0, y1;
 		int16_t top;
 		int16_t bot;
-		const uint8_t *src;
+		const uint16_t *src;
 		uint8_t len, offs;
 		uint8_t tx;
 
-		tx = ((mt->tmap_coord[x0] - mt->ox) ^ mt->xor) & (et->width - 1);
+		tx = ((mt->tmap_coord[x0] - mt->ox) ^ mt->xor) & 127;
+		if(tx >= spr->width)
+			goto next;
+
 		src = src_data + src_offs[tx];
 
 		len = *src++;

@@ -291,7 +291,11 @@ typedef struct kge_thing_s
 	kge_thing_validcount_t vc;
 	kge_identity_t ident;
 	sector_link_t *thinglist;
-	kge_ticcmd_t *ticcmd;
+	union
+	{
+		kge_ticcmd_t *ticcmd;
+		kge_line_t *masked_line;
+	};
 } kge_thing_t;
 
 //

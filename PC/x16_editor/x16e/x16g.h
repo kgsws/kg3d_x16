@@ -173,6 +173,7 @@ uint32_t x16g_generate_weapon_texture(uint32_t idx, uint32_t frm, int32_t *box);
 
 void x16g_set_sprite_texture(struct kge_thing_s *);
 void x16g_set_thingsel_texture(struct glui_image_s *, uint32_t);
+void x16g_get_thingsel_texinfo(uint32_t, uint32_t*, uint32_t*, uint32_t**);
 
 uint8_t x16g_palette_match(uint32_t color, uint32_t skip_bright);
 void x16g_img_pal_conv(struct image_s *img, uint8_t *dst);

@@ -33,13 +33,13 @@ static float height_clipboard[2] = {256, 0};
 
 //
 
-static const uint8_t *txt_floor_ceiling[] =
+static const uint8_t *const txt_floor_ceiling[] =
 {
 	"Ceiling",
 	"Floor",
 };
 
-static const uint8_t *txt_highlight[] =
+static const uint8_t *const txt_highlight[] =
 {
 	"none",
 	"tooltip",
@@ -47,7 +47,7 @@ static const uint8_t *txt_highlight[] =
 	"full",
 };
 
-static const uint8_t *txt_preview[] =
+static const uint8_t *const txt_preview[] =
 {
 	"none",
 	"small",
@@ -392,7 +392,13 @@ static int32_t in3d_pick()
 
 	if(edit_hit.line)
 	{
-		edit_ui_texture_select(edit_hit.idx & 2 ? "Select masked texture." : "Select wall texture.", &edit_hit.line->texture[edit_hit.idx], edit_hit.idx & 2);
+		if(edit_hit.idx & 2)
+		{
+			memset(&edit_fake_masked_th, 0, sizeof(edit_fake_masked_th));
+			edit_fake_masked_th.masked_line = edit_hit.line;
+			edit_ui_thing_select(&edit_fake_masked_th);
+		} else
+			edit_ui_texture_select("Select wall texture.", &edit_hit.line->texture[edit_hit.idx], edit_hit.idx & 2);
 		return 1;
 	}
 
@@ -797,18 +803,22 @@ static int32_t in3d_wall_mirror_x()
 
 static int32_t in3d_wall_swap_xy()
 {
-	// TODO: TEXFLAG_PEG_MID_BACK
-
 	if(edit_hit.line)
 	{
 		kge_x16_tex_t *dest;
-
 		dest = &edit_hit.line->texture[edit_hit.idx];
 
-		if(editor_texture[dest->idx].type == X16G_TEX_TYPE_PLANE)
+		if(edit_hit.idx & 2)
 		{
-			dest->flags ^= TEXFLAG_SWAP_XY;
-			edit_status_printf("Texture rotate: %s", txt_yes_no[!(dest->flags & TEXFLAG_SWAP_XY)]);
+			dest->flags ^= TEXFLAG_PEG_MID_BACK;
+			edit_status_printf("Texture peg: %s", txt_back_front[!(dest->flags & TEXFLAG_PEG_MID_BACK)]);
+		} else
+		{
+			if(editor_texture[dest->idx].type == X16G_TEX_TYPE_PLANE)
+			{
+				dest->flags ^= TEXFLAG_SWAP_XY;
+				edit_status_printf("Texture rotate: %s", txt_yes_no[!(dest->flags & TEXFLAG_SWAP_XY)]);
+			}
 		}
 
 		return 1;
@@ -1038,14 +1048,16 @@ void e3d_draw()
 				if(edit_hit.idx > 1)
 				{
 					kge_x16_tex_t *ti = edit_hit.line->texture + 2;
-					editor_texture_t *et = editor_texture + ti->idx;
 					kge_sector_t *sec = edit_hit.extra_sector;
+					uint32_t height;
 
 					if(ti->flags & TEXFLAG_PEG_MID_BACK)
 						sec = edit_hit.line->backsector;
 
+					x16g_get_thingsel_texinfo(ti->idx - 1, NULL, &height, NULL);
+
 					bot = sec->plane[PLANE_BOT].height + ti->oy * 2;
-					top = bot + et->height * 2;
+					top = bot + height * 2;
 				} else
 				if(edit_hit.idx)
 				{
@@ -1061,10 +1073,12 @@ void e3d_draw()
 				if(edit_hit.idx > 1)
 				{
 					kge_x16_tex_t *ti = edit_hit.line->texture + 2;
-					editor_texture_t *et = editor_texture + ti->idx;
+					uint32_t height;
+
+					x16g_get_thingsel_texinfo(ti->idx - 1, NULL, &height, NULL);
 
 					bot = edit_hit.extra_sector->plane[PLANE_BOT].height + ti->oy * 2;
-					top = bot + et->height * 2;
+					top = bot + height * 2;
 				} else
 				if(edit_hit.line->texture_split != INFINITY)
 				{

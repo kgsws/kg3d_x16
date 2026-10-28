@@ -2556,7 +2556,11 @@ static int32_t in2d_blocking()
 static int32_t in2d_masked_line()
 {
 	if(edit_hit.line)
-		edit_ui_texture_select("Select masked texture.", edit_hit.line->texture + 2, 2);
+	{
+		memset(&edit_fake_masked_th, 0, sizeof(edit_fake_masked_th));
+		edit_fake_masked_th.masked_line = edit_hit.line;
+		edit_ui_thing_select(&edit_fake_masked_th);
+	}
 	return 1;
 }
 
